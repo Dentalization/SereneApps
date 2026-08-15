@@ -44,8 +44,8 @@ const MeasurementLabel = memo(function MeasurementLabel({
   );
   const canDrag = measurement.draggable !== false && Boolean(measurement.sourceId || measurement.id);
 
-  const [dragOffset, setDragOffset] = useState(storedOffset);
-  const [isDragging, setIsDragging] = useState(false);
+  const dragOffsetRef = useRef(storedOffset);
+  const isDraggingRef = useRef(false);
   const dragStartRef = useRef(null);
   const dragMovedRef = useRef(false);
 
@@ -54,16 +54,20 @@ const MeasurementLabel = memo(function MeasurementLabel({
   }, [measurement.label]);
 
   useEffect(() => {
-    if (!isDragging) {
-      setDragOffset(storedOffset);
+    if (!isDraggingRef.current) {
+      dragOffsetRef.current = storedOffset;
+      if (elementRef.current && position) {
+        elementRef.current.style.left = `${position.x + storedOffset.x}px`;
+        elementRef.current.style.top = `${position.y + storedOffset.y}px`;
+      }
     }
-  }, [isDragging, storedOffset]);
+  }, [position, storedOffset]);
 
   useEffect(() => {
     if (!elementRef.current || !position) return;
-    elementRef.current.style.left = `${position.x + dragOffset.x}px`;
-    elementRef.current.style.top = `${position.y + dragOffset.y}px`;
-  }, [position, dragOffset]);
+    elementRef.current.style.left = `${position.x + dragOffsetRef.current.x}px`;
+    elementRef.current.style.top = `${position.y + dragOffsetRef.current.y}px`;
+  }, [position]);
 
   const handlePointerDown = (event) => {
     event.stopPropagation();
@@ -71,18 +75,18 @@ const MeasurementLabel = memo(function MeasurementLabel({
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     dragMovedRef.current = false;
+    isDraggingRef.current = true;
     dragStartRef.current = {
       startX: event.clientX,
       startY: event.clientY,
-      offsetX: dragOffset.x,
-      offsetY: dragOffset.y,
-      currentOffset: dragOffset,
+      offsetX: dragOffsetRef.current.x,
+      offsetY: dragOffsetRef.current.y,
+      currentOffset: { ...dragOffsetRef.current },
     };
-    setIsDragging(true);
   };
 
   const handlePointerMove = (event) => {
-    if (!isDragging || !dragStartRef.current) return;
+    if (!isDraggingRef.current || !dragStartRef.current) return;
     event.stopPropagation();
     const dx = event.clientX - dragStartRef.current.startX;
     const dy = event.clientY - dragStartRef.current.startY;
@@ -94,15 +98,20 @@ const MeasurementLabel = memo(function MeasurementLabel({
       y: dragStartRef.current.offsetY + dy,
     };
     dragStartRef.current.currentOffset = nextOffset;
-    setDragOffset(nextOffset);
+    dragOffsetRef.current = nextOffset;
+
+    if (elementRef.current && position) {
+      elementRef.current.style.left = `${position.x + nextOffset.x}px`;
+      elementRef.current.style.top = `${position.y + nextOffset.y}px`;
+    }
   };
 
   const handlePointerUp = (event) => {
-    if (!isDragging) return;
+    if (!isDraggingRef.current) return;
     event.stopPropagation();
     try { event.currentTarget.releasePointerCapture(event.pointerId); } catch (_) {}
-    const finalOffset = dragStartRef.current?.currentOffset || dragOffset;
-    setIsDragging(false);
+    const finalOffset = dragStartRef.current?.currentOffset || dragOffsetRef.current;
+    isDraggingRef.current = false;
     dragStartRef.current = null;
     onMove?.(measurement.sourceId || measurement.id, finalOffset);
   };
@@ -123,6 +132,8 @@ const MeasurementLabel = memo(function MeasurementLabel({
         opacity: visible && hasPosition ? 1 : 0,
         pointerEvents: visible && hasPosition ? 'auto' : 'none',
         touchAction: 'none',
+        left: position ? `${position.x + dragOffsetRef.current.x}px` : undefined,
+        top: position ? `${position.y + dragOffsetRef.current.y}px` : undefined,
       }}
       title={editing ? '' : 'Drag to move · Double-click to rename · Click to copy'}
       onPointerDown={handlePointerDown}
@@ -133,7 +144,7 @@ const MeasurementLabel = memo(function MeasurementLabel({
         setEditing(true);
       }}
       onClick={(event) => {
-        if (editing || isDragging || dragMovedRef.current) {
+        if (editing || isDraggingRef.current || dragMovedRef.current) {
           dragMovedRef.current = false;
           return;
         }
@@ -169,84 +180,228 @@ const MeasurementLabel = memo(function MeasurementLabel({
   );
 });
 
-const renderProjectedAnnotations = (
+const ProjectedAnnotationsGroup = memo(function ProjectedAnnotationsGroup({
   annotations = [],
   strokeWidth = '2',
   includeText = false,
   hoverHandlers = {},
-) => (
-  <>
-    <svg className="pointer-events-none absolute inset-0 h-full w-full">
-      {annotations.map((annotation) => {
-        if (annotation.type === 'arrow') {
-          return (
-            <g
-              key={annotation.id}
-              opacity={annotation.opacity ?? 1}
-              style={{ pointerEvents: 'visiblePainted' }}
-              onMouseEnter={(event) => hoverHandlers.onEnter?.(annotation, event)}
-              onMouseMove={(event) => hoverHandlers.onMove?.(event)}
-              onMouseLeave={hoverHandlers.onLeave}
-            >
-              <line
-                x1={annotation.startScreen.x}
-                y1={annotation.startScreen.y}
-                x2={annotation.endScreen.x}
-                y2={annotation.endScreen.y}
+  className = 'pointer-events-none absolute inset-0',
+}) {
+  if (!annotations || annotations.length === 0) return null;
+
+  return (
+    <div data-xcore-ui="true" className={className}>
+      <svg className="pointer-events-none absolute inset-0 h-full w-full">
+        {annotations.map((annotation) => {
+          if (annotation.type === 'arrow') {
+            return (
+              <g
+                key={annotation.id}
+                opacity={annotation.opacity ?? 1}
+                style={{ pointerEvents: 'visiblePainted' }}
+                onMouseEnter={(event) => hoverHandlers.onEnter?.(annotation, event)}
+                onMouseMove={(event) => hoverHandlers.onMove?.(event)}
+                onMouseLeave={hoverHandlers.onLeave}
+              >
+                <line
+                  x1={annotation.startScreen.x}
+                  y1={annotation.startScreen.y}
+                  x2={annotation.endScreen.x}
+                  y2={annotation.endScreen.y}
+                  stroke={annotation.color}
+                  strokeWidth={strokeWidth}
+                  strokeLinecap="round"
+                />
+                <polygon
+                  points={arrowHeadPoints(annotation.startScreen, annotation.endScreen)}
+                  fill={annotation.color}
+                />
+              </g>
+            );
+          }
+          if (annotation.type === 'circle') {
+            const radius = Math.max(2, Math.hypot(
+              annotation.endScreen.x - annotation.startScreen.x,
+              annotation.endScreen.y - annotation.startScreen.y,
+            ));
+            return (
+              <circle
+                key={annotation.id}
+                style={{ pointerEvents: 'visiblePainted' }}
+                cx={annotation.startScreen.x}
+                cy={annotation.startScreen.y}
+                r={radius}
                 stroke={annotation.color}
                 strokeWidth={strokeWidth}
-                strokeLinecap="round"
+                fill="none"
+                opacity={annotation.opacity ?? 1}
+                onMouseEnter={(event) => hoverHandlers.onEnter?.(annotation, event)}
+                onMouseMove={(event) => hoverHandlers.onMove?.(event)}
+                onMouseLeave={hoverHandlers.onLeave}
               />
-              <polygon
-                points={arrowHeadPoints(annotation.startScreen, annotation.endScreen)}
-                fill={annotation.color}
-              />
-            </g>
-          );
-        }
-        if (annotation.type === 'circle') {
-          const radius = Math.max(2, Math.hypot(
-            annotation.endScreen.x - annotation.startScreen.x,
-            annotation.endScreen.y - annotation.startScreen.y,
-          ));
+            );
+          }
+          return null;
+        })}
+      </svg>
+      {includeText && annotations.filter((annotation) => annotation.type === 'text').map((annotation) => (
+        <div
+          key={annotation.id}
+          className="pointer-events-auto absolute -translate-y-1/2 rounded-full border border-white/15 bg-slate-950/85 px-2 py-0.5 text-[10px] font-semibold text-white shadow-xl"
+          style={{
+            left: annotation.screenPoint.x,
+            top: annotation.screenPoint.y,
+            opacity: annotation.opacity ?? 1,
+          }}
+          onMouseEnter={(event) => hoverHandlers.onEnter?.(annotation, event)}
+          onMouseMove={(event) => hoverHandlers.onMove?.(event)}
+          onMouseLeave={hoverHandlers.onLeave}
+        >
+          {annotation.label}
+        </div>
+      ))}
+    </div>
+  );
+});
+
+const MeasurementOverlaysLayer = memo(function MeasurementOverlaysLayer({
+  overlays = [],
+}) {
+  if (!overlays || overlays.length === 0) return null;
+
+  return (
+    <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
+      {overlays.map((overlay) => {
+        if (overlay.type === 'polyline') {
           return (
-            <circle
-              key={annotation.id}
-              style={{ pointerEvents: 'visiblePainted' }}
-              cx={annotation.startScreen.x}
-              cy={annotation.startScreen.y}
-              r={radius}
-              stroke={annotation.color}
-              strokeWidth={strokeWidth}
+            <polyline
+              key={overlay.id}
+              points={(overlay.points || []).map((point) => `${point.x},${point.y}`).join(' ')}
               fill="none"
-              opacity={annotation.opacity ?? 1}
-              onMouseEnter={(event) => hoverHandlers.onEnter?.(annotation, event)}
-              onMouseMove={(event) => hoverHandlers.onMove?.(event)}
-              onMouseLeave={hoverHandlers.onLeave}
+              stroke={overlay.color || 'rgba(29, 158, 117, 0.92)'}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="7 5"
             />
           );
         }
-        return null;
+        return (
+          <g key={overlay.id}>
+            <line
+              x1={overlay.startScreen.x}
+              y1={overlay.startScreen.y}
+              x2={overlay.endScreen.x}
+              y2={overlay.endScreen.y}
+              stroke={overlay.color || 'rgba(29, 158, 117, 0.92)'}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeDasharray="7 5"
+            />
+            {[overlay.startScreen, overlay.endScreen].map((point, index) => (
+              <circle
+                key={`${overlay.id}-${index}`}
+                cx={point.x}
+                cy={point.y}
+                r="4"
+                fill="rgba(29, 158, 117, 0.95)"
+                stroke="rgba(255,255,255,0.9)"
+                strokeWidth="1.5"
+              />
+            ))}
+          </g>
+        );
       })}
     </svg>
-    {includeText && annotations.filter((annotation) => annotation.type === 'text').map((annotation) => (
+  );
+});
+
+const WorldOverlayPreviewLayer = memo(function WorldOverlayPreviewLayer({
+  preview,
+}) {
+  if (!preview) return null;
+
+  return (
+    <div data-xcore-ui="true" className="pointer-events-none absolute inset-0 z-[16]">
+      <svg className="absolute inset-0 h-full w-full">
+        {preview.type === 'arrow' && (
+          <g opacity="0.9">
+            <line
+              x1={preview.startScreen.x}
+              y1={preview.startScreen.y}
+              x2={preview.endScreen.x}
+              y2={preview.endScreen.y}
+              stroke={preview.color}
+              strokeWidth="2"
+              strokeDasharray="6 5"
+              strokeLinecap="round"
+            />
+          </g>
+        )}
+        {preview.type === 'circle' && (
+          <circle
+            cx={preview.startScreen.x}
+            cy={preview.startScreen.y}
+            r={Math.max(2, Math.hypot(
+              preview.endScreen.x - preview.startScreen.x,
+              preview.endScreen.y - preview.startScreen.y,
+            ))}
+            stroke={preview.color}
+            strokeWidth="2"
+            strokeDasharray="6 5"
+            fill="none"
+            opacity="0.9"
+          />
+        )}
+      </svg>
+    </div>
+  );
+});
+
+const MeasurementPreviewLayer = memo(function MeasurementPreviewLayer({
+  preview,
+}) {
+  if (!preview) return null;
+
+  return (
+    <>
+      <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
+        <line
+          x1={preview.startScreen.x}
+          y1={preview.startScreen.y}
+          x2={preview.endScreen.x}
+          y2={preview.endScreen.y}
+          stroke="rgba(29, 158, 117, 0.92)"
+          strokeWidth="2"
+          strokeDasharray="6 5"
+          strokeLinecap="round"
+        />
+        <circle
+          cx={preview.startScreen.x}
+          cy={preview.startScreen.y}
+          r="4.5"
+          fill="rgba(29, 158, 117, 0.96)"
+          stroke="rgba(255,255,255,0.92)"
+          strokeWidth="1.5"
+        />
+        <circle
+          cx={preview.endScreen.x}
+          cy={preview.endScreen.y}
+          r="4.5"
+          fill="rgba(29, 158, 117, 0.96)"
+          stroke="rgba(255,255,255,0.92)"
+          strokeWidth="1.5"
+        />
+      </svg>
       <div
-        key={annotation.id}
-        className="pointer-events-auto absolute -translate-y-1/2 rounded-full border border-white/15 bg-slate-950/85 px-2 py-0.5 text-[10px] font-semibold text-white shadow-xl"
-        style={{
-          left: annotation.screenPoint.x,
-          top: annotation.screenPoint.y,
-          opacity: annotation.opacity ?? 1,
-        }}
-        onMouseEnter={(event) => hoverHandlers.onEnter?.(annotation, event)}
-        onMouseMove={(event) => hoverHandlers.onMove?.(event)}
-        onMouseLeave={hoverHandlers.onLeave}
+        className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-950/80 px-2.5 py-1 text-[11px] font-semibold text-white shadow-xl ring-1 ring-emerald-400/30"
+        style={{ left: preview.midpointScreen.x, top: preview.midpointScreen.y }}
       >
-        {annotation.label}
+        {preview.distance.toFixed(2)} mm
       </div>
-    ))}
-  </>
-);
+    </>
+  );
+});
 
 export default function Volume3DOverlayLayer({
   annotateMode,
@@ -275,6 +430,7 @@ export default function Volume3DOverlayLayer({
 }) {
   const [hoveredAnnotation, setHoveredAnnotation] = useState(null);
   const [hoverPosition, setHoverPosition] = useState(null);
+
   const hoverHandlers = useMemo(() => ({
     onEnter: (annotation, event) => {
       setHoveredAnnotation(annotation);
@@ -286,50 +442,26 @@ export default function Volume3DOverlayLayer({
       setHoverPosition(null);
     },
   }), []);
+
   return (
     <>
-      {projectedSnapshotWorldOverlayAnnotations.length > 0 && (
-        <div data-xcore-ui="true" className="pointer-events-none absolute inset-0 z-[14]">
-          {renderProjectedAnnotations(projectedSnapshotWorldOverlayAnnotations, '2', true, hoverHandlers)}
-        </div>
-      )}
+      <ProjectedAnnotationsGroup
+        annotations={projectedSnapshotWorldOverlayAnnotations}
+        strokeWidth="2"
+        includeText={true}
+        hoverHandlers={hoverHandlers}
+        className="pointer-events-none absolute inset-0 z-[14]"
+      />
 
-      {projectedWorldOverlayAnnotations.length > 0 && (
-        <div data-xcore-ui="true" className="pointer-events-none absolute inset-0 z-[15]">
-          {renderProjectedAnnotations(projectedWorldOverlayAnnotations, '2.25', true, hoverHandlers)}
-          <svg className="absolute inset-0 h-full w-full">
-            {worldOverlayPreview && worldOverlayPreview.type === 'arrow' && (
-              <g opacity="0.9">
-                <line
-                  x1={worldOverlayPreview.startScreen.x}
-                  y1={worldOverlayPreview.startScreen.y}
-                  x2={worldOverlayPreview.endScreen.x}
-                  y2={worldOverlayPreview.endScreen.y}
-                  stroke={worldOverlayPreview.color}
-                  strokeWidth="2"
-                  strokeDasharray="6 5"
-                  strokeLinecap="round"
-                />
-              </g>
-            )}
-            {worldOverlayPreview && worldOverlayPreview.type === 'circle' && (
-              <circle
-                cx={worldOverlayPreview.startScreen.x}
-                cy={worldOverlayPreview.startScreen.y}
-                r={Math.max(2, Math.hypot(
-                  worldOverlayPreview.endScreen.x - worldOverlayPreview.startScreen.x,
-                  worldOverlayPreview.endScreen.y - worldOverlayPreview.startScreen.y,
-                ))}
-                stroke={worldOverlayPreview.color}
-                strokeWidth="2"
-                strokeDasharray="6 5"
-                fill="none"
-                opacity="0.9"
-              />
-            )}
-          </svg>
-        </div>
-      )}
+      <ProjectedAnnotationsGroup
+        annotations={projectedWorldOverlayAnnotations}
+        strokeWidth="2.25"
+        includeText={true}
+        hoverHandlers={hoverHandlers}
+        className="pointer-events-none absolute inset-0 z-[15]"
+      />
+
+      <WorldOverlayPreviewLayer preview={worldOverlayPreview} />
 
       {textDraft3D && textDraftScreenPoint && (
         <div
@@ -366,51 +498,7 @@ export default function Volume3DOverlayLayer({
         </div>
       )}
 
-      {measurementScreenOverlays?.length > 0 && (
-        <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
-          {measurementScreenOverlays.map((overlay) => {
-            if (overlay.type === 'polyline') {
-              return (
-                <polyline
-                  key={overlay.id}
-                  points={(overlay.points || []).map((point) => `${point.x},${point.y}`).join(' ')}
-                  fill="none"
-                  stroke={overlay.color || 'rgba(29, 158, 117, 0.92)'}
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeDasharray="7 5"
-                />
-              );
-            }
-            return (
-              <g key={overlay.id}>
-                <line
-                  x1={overlay.startScreen.x}
-                  y1={overlay.startScreen.y}
-                  x2={overlay.endScreen.x}
-                  y2={overlay.endScreen.y}
-                  stroke={overlay.color || 'rgba(29, 158, 117, 0.92)'}
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeDasharray="7 5"
-                />
-                {[overlay.startScreen, overlay.endScreen].map((point, index) => (
-                  <circle
-                    key={`${overlay.id}-${index}`}
-                    cx={point.x}
-                    cy={point.y}
-                    r="4"
-                    fill="rgba(29, 158, 117, 0.95)"
-                    stroke="rgba(255,255,255,0.9)"
-                    strokeWidth="1.5"
-                  />
-                ))}
-              </g>
-            );
-          })}
-        </svg>
-      )}
+      <MeasurementOverlaysLayer overlays={measurementScreenOverlays} />
 
       {(measurements3D || []).map((measurement) => (
         <MeasurementLabel
@@ -423,44 +511,7 @@ export default function Volume3DOverlayLayer({
         />
       ))}
 
-      {measurementPreview && (
-        <>
-          <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
-            <line
-              x1={measurementPreview.startScreen.x}
-              y1={measurementPreview.startScreen.y}
-              x2={measurementPreview.endScreen.x}
-              y2={measurementPreview.endScreen.y}
-              stroke="rgba(29, 158, 117, 0.92)"
-              strokeWidth="2"
-              strokeDasharray="6 5"
-              strokeLinecap="round"
-            />
-            <circle
-              cx={measurementPreview.startScreen.x}
-              cy={measurementPreview.startScreen.y}
-              r="4.5"
-              fill="rgba(29, 158, 117, 0.96)"
-              stroke="rgba(255,255,255,0.92)"
-              strokeWidth="1.5"
-            />
-            <circle
-              cx={measurementPreview.endScreen.x}
-              cy={measurementPreview.endScreen.y}
-              r="4.5"
-              fill="rgba(29, 158, 117, 0.96)"
-              stroke="rgba(255,255,255,0.92)"
-              strokeWidth="1.5"
-            />
-          </svg>
-          <div
-            className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-950/80 px-2.5 py-1 text-[11px] font-semibold text-white shadow-xl ring-1 ring-emerald-400/30"
-            style={{ left: measurementPreview.midpointScreen.x, top: measurementPreview.midpointScreen.y }}
-          >
-            {measurementPreview.distance.toFixed(2)} mm
-          </div>
-        </>
-      )}
+      <MeasurementPreviewLayer preview={measurementPreview} />
 
       {measureMode3D && measurePoints.length === 1 && (
         <div className="pointer-events-none absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-full bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-100 ring-1 ring-emerald-400/40 backdrop-blur">
