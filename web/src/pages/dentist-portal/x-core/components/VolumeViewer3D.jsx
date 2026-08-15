@@ -507,6 +507,9 @@ async function suppressFovBackgroundInPlace(imageData, options = {}) {
 function applyMapperQuality(mapper, qualityKey, presetName) {
     if (!mapper) return;
     const q = QUALITY_SETTINGS[qualityKey] || QUALITY_SETTINGS.standard;
+    if (mapper.setImageSampleDistance) {
+        mapper.setImageSampleDistance(1.0);
+    }
     if (presetName === 'mip' || presetName === 'xray') {
         mapper.setSampleDistance(Math.min(q.sampleDist, 0.35));
         mapper.setMaximumSamplesPerRay(Math.max(q.maxSamples, 2200));
@@ -1337,10 +1340,16 @@ const VolumeViewer3D = ({
         if (!ctx?.interactor || !ctx?.renderWindow || loading || error) return undefined;
 
         let renderRaf = 0;
+        let lastProjectionStateTime = 0;
         const bumpProjection = () => {
+            updateMeasurementLabelPositionsRef.current?.();
+
+            const now = performance.now();
+            if (now - lastProjectionStateTime < 50) return;
             if (renderRaf) return;
             renderRaf = requestAnimationFrame(() => {
                 renderRaf = 0;
+                lastProjectionStateTime = performance.now();
                 setProjectionTick((value) => value + 1);
                 updateMeasurementLabelPositionsRef.current?.();
             });
@@ -1629,8 +1638,9 @@ const VolumeViewer3D = ({
             },
             render: () => renderCoalescerRef.current?.requestRender?.('interactive_quality'),
             interactiveSampleDistance: SAMPLE_DISTANCE_INTERACTIVE,
-            interactiveMaxSamplesPerRay: Math.min(QUALITY_SETTINGS.standard.maxSamples, 420),
-            settleDelayMs: 180,
+            interactiveImageSampleDistance: 1.8,
+            interactiveMaxSamplesPerRay: Math.min(QUALITY_SETTINGS.standard.maxSamples, 320),
+            settleDelayMs: 160,
         });
         return () => {
             annotationInteractionQualityRef.current?.cancel?.();
@@ -2756,9 +2766,20 @@ const VolumeViewer3D = ({
         const ctx = vtkContextRef.current;
         if (!autoRotate || !ctx) return undefined;
 
+        let autoRotateRaf = 0;
+        let lastTimestamp = 0;
+
+        const stopRaf = () => {
+            if (autoRotateRaf) {
+                cancelAnimationFrame(autoRotateRaf);
+                autoRotateRaf = 0;
+            }
+            lastTimestamp = 0;
+        };
+
         const startAutoRotate = () => {
             if (!ctx?.renderer || !ctx?.renderWindow || !ctx?.imageData || autoRotatePausedRef.current) return;
-            if (autoRotateIntervalRef.current) clearInterval(autoRotateIntervalRef.current);
+            stopRaf();
             const camera = ctx.renderer.getActiveCamera();
             const bounds = ctx.imageData.getBounds();
             const center = [
@@ -2766,13 +2787,24 @@ const VolumeViewer3D = ({
                 (bounds[2] + bounds[3]) / 2,
                 (bounds[4] + bounds[5]) / 2,
             ];
-            autoRotateIntervalRef.current = setInterval(() => {
-                if (autoRotatePausedRef.current) return;
-                camera.azimuth(0.6);
+
+            const step = (timestamp) => {
+                if (autoRotatePausedRef.current) {
+                    stopRaf();
+                    return;
+                }
+                const dt = lastTimestamp ? Math.min((timestamp - lastTimestamp) / 1000, 0.05) : 0.016;
+                lastTimestamp = timestamp;
+
+                camera.azimuth(15 * dt); // 15 degrees per second
                 camera.setFocalPoint(center[0], center[1], center[2]);
                 camera.orthogonalizeViewUp();
                 ctx.renderWindow.render();
-            }, 50);
+
+                autoRotateRaf = requestAnimationFrame(step);
+            };
+
+            autoRotateRaf = requestAnimationFrame(step);
         };
 
         startAutoRotate();
@@ -2782,10 +2814,7 @@ const VolumeViewer3D = ({
                 clearTimeout(autoRotateResumeTimerRef.current);
                 autoRotateResumeTimerRef.current = null;
             }
-            if (autoRotateIntervalRef.current) {
-                clearInterval(autoRotateIntervalRef.current);
-                autoRotateIntervalRef.current = null;
-            }
+            stopRaf();
         });
         const endSub = ctx.interactor?.onEndInteraction?.(() => {
             if (autoRotateResumeTimerRef.current) {
@@ -2803,10 +2832,7 @@ const VolumeViewer3D = ({
                 clearTimeout(autoRotateResumeTimerRef.current);
                 autoRotateResumeTimerRef.current = null;
             }
-            if (autoRotateIntervalRef.current) {
-                clearInterval(autoRotateIntervalRef.current);
-                autoRotateIntervalRef.current = null;
-            }
+            stopRaf();
             try { startSub?.unsubscribe?.(); } catch (_) { }
             try { endSub?.unsubscribe?.(); } catch (_) { }
         };

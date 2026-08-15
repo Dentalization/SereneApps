@@ -157,6 +157,7 @@ export const createInteractionQualityController = ({
   applyBaseQuality,
   render,
   interactiveSampleDistance = 1.4,
+  interactiveImageSampleDistance = 1.8,
   interactiveMaxSamplesPerRay = 360,
   settleDelayMs = 0,
   scheduleTimeout = (callback, ms) => globalThis.setTimeout(callback, ms),
@@ -203,6 +204,9 @@ export const createInteractionQualityController = ({
         const mapper = typeof getMapper === 'function' ? getMapper() : null;
         if (mapper?.setSampleDistance) {
           mapper.setSampleDistance(interactiveSampleDistance);
+        }
+        if (mapper?.setImageSampleDistance) {
+          mapper.setImageSampleDistance(interactiveImageSampleDistance);
         }
         if (mapper?.setMaximumSamplesPerRay) {
           mapper.setMaximumSamplesPerRay(interactiveMaxSamplesPerRay);
