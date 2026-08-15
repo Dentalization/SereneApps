@@ -193,7 +193,7 @@ const LoadingSplash = ({ message = 'Menghubungkan ke Serene...' }) => {
         useNativeDriver: true,
         easing: Easing.out(Easing.exp),
       }),
-      // Scale Up Logo (Breathing effect saat muncul)
+      // Scale Up Logo (Breathing effect saat muncul) yauda oke yauda nanti ajaa yakan hahahah
       Animated.timing(scaleAnim, {
         toValue: 1,
         duration: 1200,

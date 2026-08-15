@@ -926,7 +926,7 @@ export const saveStudyAnnotations = async (req, res) => {
                 annotation.updatedAt
                 && !Number.isNaN(annotation.updatedAt.getTime())
                 && existing.updated_at
-                && new Date(existing.updated_at).getTime() > annotation.updatedAt.getTime() + 5
+                && new Date(existing.updated_at).getTime() > annotation.updatedAt.getTime() + 5000
             ) {
                 conflicts.push({ id: annotation.id, reason: 'Annotation was modified by another save' });
             }

@@ -1938,10 +1938,8 @@ const SliceViewer = ({
         setCaseCaptureState('saving');
         setCaseCaptureError('');
         try {
-            try {
+            if (annotationPersistence && typeof annotationPersistence.flushPendingSave === 'function') {
                 await annotationPersistence.flushPendingSave();
-            } catch (flushError) {
-                console.warn('[SliceViewer] flushPendingSave failed, proceeding with in-memory annotations:', flushError);
             }
             const renders = await captureCurrentViewDataUrl();
             if (!renders) throw new Error('Viewer belum siap untuk dirender');
@@ -1956,15 +1954,6 @@ const SliceViewer = ({
         }
     }, [annotationPersistence, captureCurrentViewDataUrl, onCaptureForCase]);
  
-    useEffect(() => {
-        if (!loading && imageData && analysisCaseContext && onCaptureForCase && caseCaptureState === 'idle') {
-            const timer = setTimeout(() => {
-                captureForAnalysisCase();
-            }, 500);
-            return () => clearTimeout(timer);
-        }
-    }, [loading, imageData, analysisCaseContext, onCaptureForCase, caseCaptureState, captureForAnalysisCase]);
-
     // Mark render as stale when slice/annotations/filter change.
     // We do NOT auto-retrigger capture — the drg must explicitly update.
     useEffect(() => {
@@ -1973,18 +1962,10 @@ const SliceViewer = ({
         }
     }, [annotations, measurementRevision, measurementClinicalRecords, inverted, windowCenter, windowWidth, sliceIndex, axis]); // eslint-disable-line react-hooks/exhaustive-deps
  
-    const handleBack = useCallback(async () => {
-        if (analysisCaseContext && onCaptureForCase && caseCaptureState !== 'saved') {
-            try {
-                await captureForAnalysisCase();
-            } catch (err) {
-                console.error('[SliceViewer] Auto-capture on back failed:', err);
-            }
-        }
-        if (typeof onBack === 'function') {
-            onBack();
-        }
-    }, [analysisCaseContext, onCaptureForCase, caseCaptureState, captureForAnalysisCase, onBack]);
+    const handleBack = useCallback(() => {
+        // Report capture is explicit: leaving a viewer must never start a competing save.
+        onBack?.();
+    }, [onBack]);
 
     useEffect(() => {
         const onFullscreenChange = () => {

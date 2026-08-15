@@ -23,6 +23,7 @@ import {
     reviewStudyAnnotations,
     saveAnnotationSnapshot,
 } from '../utils/annotationApi';
+import { captureAnalysisCaseItem } from '../../../../features/x-core-analysis/captureAnalysisCaseItem';
 import {
     deleteLocalAnnotationSession,
     loadLocalAnnotationSessions,
@@ -268,8 +269,12 @@ const ImageViewer2D = ({
     const showBack = typeof onBack === 'function';
     const allowSeriesSwitch = !study?.readOnly && typeof onSwitchSeries === 'function';
 
+    const sopInstanceUid = analysisCaseContext?.sopInstanceUid || analysisCaseContext?.sop_instance_uid || null;
+    const imageEndpoint = sopInstanceUid
+        ? `/image/${studyKey}/${seriesUid}?sop_instance_uid=${encodeURIComponent(sopInstanceUid)}`
+        : `/image/${studyKey}/${seriesUid}`;
     const imageUrl = buildImagingUrl(
-        `/image/${studyKey}/${seriesUid}`,
+        imageEndpoint,
         buildStudyAssetParams(study, { retry: retryCount })
     );
     const aiClient = useMemo(() => createDeepDentalClient({
@@ -1050,30 +1055,10 @@ const ImageViewer2D = ({
 
     const captureForAnalysisCase = useCallback(async (forcedAnnotations) => {
         if (!onCaptureForCase) return;
-        const sourceWidth = imageSize.width || imgRef.current?.naturalWidth || 0;
-        const sourceHeight = imageSize.height || imgRef.current?.naturalHeight || 0;
-        const isImageReady = imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth > 0 && imgRef.current.naturalHeight > 0;
-        if (!sourceWidth || !sourceHeight || !isImageReady) {
-            console.warn('[ImageViewer2D] captureForAnalysisCase skipped: image element or dimensions not ready yet');
-            setCaseCaptureState('idle');
-            return;
-        }
-
         captureInProgressRef.current = true;
         setCaseCaptureState('saving');
         setCaseCaptureError('');
         try {
-            let saveResult = null;
-            try {
-                saveResult = await annotationPersistence.flushPendingSave();
-            } catch (flushError) {
-                console.warn('[ImageViewer2D] flushPendingSave failed, proceeding with in-memory annotations:', flushError);
-            }
-            const activeAnnotations = Array.isArray(forcedAnnotations)
-                ? forcedAnnotations
-                : (saveResult && Array.isArray(saveResult.annotations)
-                    ? saveResult.annotations
-                    : (Array.isArray(annotations) ? annotations : []));
             const effectiveImageFilter = (() => {
                 const parts = [];
                 if (inverted) parts.push('invert(100%)');
@@ -1089,35 +1074,28 @@ const ImageViewer2D = ({
                 return parts.length > 0 ? parts.join(' ') : 'none';
             })();
 
-            const renders = buildCanonical2DReportRenders({
-                image: imgRef.current,
-                sourceWidth,
-                sourceHeight,
-                imageFilter: effectiveImageFilter,
-                annotations: activeAnnotations,
-                markerAnnotations: [...activeAnnotations, ...measurementClinicalRecords],
+            await captureAnalysisCaseItem({
+                imgRef,
+                annotations,
+                measurementClinicalRecords,
                 measurements,
                 findings: analysisCaseContext?.structuredFindings || analysisCaseContext?.structured_findings || [],
-                pixelSpacing: effectivePixelSpacing,
+                persistence: annotationPersistence,
+                onCaptureForCase,
+                analysisCaseContext,
+                study,
+                seriesUid,
+                effectiveImageFilter,
+                effectivePixelSpacing,
+                windowCenter,
+                windowWidth,
+                inverted,
                 drawAnnotations,
                 drawMeasurements: drawMeasurementOverlay,
                 drawScaleBar,
                 getScaleBar,
-                metadata: {
-                    case_item_id: analysisCaseContext?.itemId,
-                    study_id: study?.id,
-                    series_uid: seriesUid,
-                    // Phase 6: Instance-level identity for annotation bleed prevention
-                    source_instance_key: analysisCaseContext?.sourceInstanceKey || analysisCaseContext?.source_instance_key || null,
-                    source_kind: analysisCaseContext?.sourceKind || analysisCaseContext?.source_kind || null,
-                    window_center: windowCenter,
-                    window_width: windowWidth,
-                    invert: inverted,
-                    rotation: 0,
-                    annotation_revision: activeAnnotations.map((entry) => `${entry.id}:${entry.updated_at || entry.created_at || ''}`).join('|'),
-                },
+                forcedAnnotations,
             });
-            await onCaptureForCase(renders);
             setCaseCaptureState('saved');
         } catch (error) {
             console.error('[ImageViewer2D] Case snapshot failed:', error);
@@ -1130,46 +1108,34 @@ const ImageViewer2D = ({
         analysisCaseContext,
         annotationPersistence,
         annotations,
-        calibrationFactor,
+        drawMeasurementOverlay,
+        drawScaleBar,
         effectivePixelSpacing,
+        getScaleBar,
         imageFilter,
-        imageSize.height,
-        imageSize.width,
         inverted,
         measurements,
         measurementClinicalRecords,
         onCaptureForCase,
-        pixelSpacing,
         seriesUid,
+        study,
+        windowCenter,
+        windowWidth,
     ]);
  
-    useEffect(() => {
-        if (imageLoaded && analysisCaseContext && onCaptureForCase && caseCaptureState === 'idle') {
-            captureForAnalysisCase();
-        }
-    }, [imageLoaded, analysisCaseContext, onCaptureForCase, caseCaptureState, captureForAnalysisCase]);
-
     // Mark render as stale when annotations/measurements/filter change.
     // We do NOT auto-retrigger capture here — the drg must explicitly click
-    // "Perbarui Gambar Laporan" or trigger via handleBack.
+    // "Perbarui Gambar Laporan".
     useEffect(() => {
         if (analysisCaseContext && caseCaptureState === 'saved') {
             setCaseCaptureState('stale');
         }
     }, [annotations, measurements, imageFilter, inverted, windowCenter, windowWidth]); // eslint-disable-line react-hooks/exhaustive-deps
  
-    const handleBack = useCallback(async () => {
-        if (analysisCaseContext && onCaptureForCase && caseCaptureState !== 'saved') {
-            try {
-                await captureForAnalysisCase();
-            } catch (err) {
-                console.error('[ImageViewer2D] Auto-capture on back failed:', err);
-            }
-        }
-        if (typeof onBack === 'function') {
-            onBack();
-        }
-    }, [analysisCaseContext, onCaptureForCase, caseCaptureState, captureForAnalysisCase, onBack]);
+    const handleBack = useCallback(() => {
+        // Report capture is explicit: leaving a viewer must never start a competing save.
+        onBack?.();
+    }, [onBack]);
 
     const getMeasurementPoint = useCallback((event) => {
         const rect = event.currentTarget.getBoundingClientRect();

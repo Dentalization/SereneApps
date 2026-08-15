@@ -47,6 +47,7 @@ export default function usePersistentAnnotations({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [hydrated, setHydrated] = useState(false);
   const hydratedRef = useRef(false);
   const loadKeyRef = useRef('');
   const saveTimerRef = useRef(null);
@@ -54,6 +55,7 @@ export default function usePersistentAnnotations({
   const knownIdsRef = useRef(new Set());
   const skipNextSaveRef = useRef(false);
   const flushRef = useRef(() => Promise.resolve(null));
+  const saveQueueRef = useRef(Promise.resolve());
   const changeVersionRef = useRef(0);
   const localWriteTimerRef = useRef(null);
   const annotationsRef = useRef(annotations);
@@ -236,25 +238,51 @@ export default function usePersistentAnnotations({
       saveTimerRef.current = null;
     }
 
-    const snapshot = buildSaveSnapshot();
-    if (!snapshot) return Promise.resolve(null);
-    cancelScheduledLocalWrite();
-    writeDraftBackup(snapshot);
-    writeLocalCache(snapshot.annotations, snapshot.deletedAnnotationIds);
+    const queuedSave = saveQueueRef.current.catch(() => null).then(async () => {
+      // Build after older saves complete so this request carries the latest revision.
+      const snapshot = buildSaveSnapshot();
+      if (!snapshot) return null;
+      cancelScheduledLocalWrite();
+      writeDraftBackup(snapshot);
+      writeLocalCache(snapshot.annotations, snapshot.deletedAnnotationIds);
 
-    if (!options.silent) {
-      setSaving(true);
-      setError(null);
-    }
+      if (!options.silent) {
+        setSaving(true);
+        setError(null);
+      }
 
-    return saveStudyAnnotations(studyId, {
-      seriesUid,
-      viewerType,
-      ...scopeRef.current,
-      annotations: snapshot.annotations,
-      deletedAnnotationIds: snapshot.deletedAnnotationIds,
-    }, { keepalive: options.keepalive })
-      .then((payload) => {
+      const saveSnapshot = (annotationsToSave) => saveStudyAnnotations(studyId, {
+          seriesUid,
+          viewerType,
+          ...scopeRef.current,
+          annotations: annotationsToSave,
+          deletedAnnotationIds: snapshot.deletedAnnotationIds,
+        }, { keepalive: options.keepalive });
+
+      try {
+        let payload;
+        try {
+          payload = await saveSnapshot(snapshot.annotations);
+        } catch (saveError) {
+          // A debounced save and an explicit report capture can observe different
+          // updated_at values. Rebase once on the authoritative server revision,
+          // then retry the same local edit. We deliberately do not retry forever.
+          if (saveError?.status !== 409) throw saveError;
+
+          const currentRows = await loadStudyAnnotations(studyId, {
+            seriesUid,
+            viewerType,
+            ...scopeRef.current,
+          });
+          const currentById = new Map((currentRows || []).map((row) => [row.id, row]));
+          const rebasedAnnotations = snapshot.annotations.map((annotation) => {
+            const current = currentById.get(annotation.id);
+            return current?.updated_at
+              ? { ...annotation, updated_at: current.updated_at }
+              : annotation;
+          });
+          payload = await saveSnapshot(rebasedAnnotations);
+        }
         const savedAnnotations = Array.isArray(payload?.annotations) ? payload.annotations : snapshot.annotations;
         knownIdsRef.current = new Set(savedAnnotations.map((annotation) => annotation.id).filter(Boolean));
         const isLatestSave = snapshot.changeVersion === changeVersionRef.current;
@@ -262,28 +290,32 @@ export default function usePersistentAnnotations({
           clearDraftBackup();
           writeLocalCache(savedAnnotations, []);
         }
-        if (isLatestSave && Array.isArray(payload?.annotations) && !options.silent) {
+        if (isLatestSave && Array.isArray(payload?.annotations)) {
           skipNextSaveRef.current = true;
-          setAnnotations((current) => {
-            const savedById = new Map(payload.annotations
-              .filter((annotation) => !isClinicalRecord?.(annotation))
-              .map((annotation) => [annotation.id, annotation]));
-            return current.map((annotation) => savedById.get(annotation.id) || annotation);
-          });
+          const savedById = new Map(payload.annotations
+            .filter((annotation) => !isClinicalRecord?.(annotation))
+            .map((annotation) => [annotation.id, annotation]));
+          // Keep the mutable source in sync before the next queued save starts.
+          // React state updates are asynchronous; without this, a second save can
+          // submit an older updated_at and trigger the API's optimistic-lock check.
+          const nextAnnotations = annotationsRef.current.map((annotation) => (
+            savedById.get(annotation.id) || annotation
+          ));
+          annotationsRef.current = nextAnnotations;
+          setAnnotations(nextAnnotations);
         }
         return payload;
-      })
-      .catch((saveError) => {
+      } catch (saveError) {
         console.warn('[X-Core] Annotation save failed:', saveError);
-        if (!options.silent) {
-          setError(saveError);
-        }
+        if (!options.silent) setError(saveError);
         throw saveError;
-      })
-      .finally(() => {
+      } finally {
         if (!options.silent) setSaving(false);
-      });
-  }, [buildSaveSnapshot, canSaveToApi, cancelScheduledLocalWrite, clearDraftBackup, enabled, isClinicalRecord, seriesUid, setAnnotations, viewerType, writeDraftBackup, writeLocalCache]);
+      }
+    });
+    saveQueueRef.current = queuedSave;
+    return queuedSave;
+  }, [buildSaveSnapshot, canSaveToApi, cancelScheduledLocalWrite, clearDraftBackup, enabled, isClinicalRecord, seriesUid, setAnnotations, studyId, viewerType, writeDraftBackup, writeLocalCache]);
 
   useEffect(() => {
     scopeRef.current = scope || {};
@@ -295,6 +327,9 @@ export default function usePersistentAnnotations({
 
   useEffect(() => {
     hydratedRef.current = false;
+    // The previous series must never be considered ready while this scope is
+    // being hydrated. Report capture uses this state as a hard prerequisite.
+    setHydrated(false);
     loadKeyRef.current = loadKey;
     if (saveTimerRef.current) {
       window.clearTimeout(saveTimerRef.current);
@@ -329,6 +364,7 @@ export default function usePersistentAnnotations({
     if (!studyId) {
       hydrateFromLocalOnly();
       hydratedRef.current = true;
+      setHydrated(true);
       return undefined;
     }
 
@@ -365,6 +401,7 @@ export default function usePersistentAnnotations({
         hydratePersistedItems(hydratedAnnotations);
         knownIdsRef.current = new Set((serverAnnotations.length ? serverAnnotations : hydratedAnnotations).map((annotation) => annotation.id).filter(Boolean));
         hydratedRef.current = true;
+        setHydrated(true);
       })
       .catch((loadError) => {
         if (cancelled) return;
@@ -372,6 +409,7 @@ export default function usePersistentAnnotations({
         setError(loadError);
         hydrateFromLocalOnly();
         hydratedRef.current = true;
+        setHydrated(true);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -437,5 +475,5 @@ export default function usePersistentAnnotations({
     };
   }, [cancelScheduledLocalWrite, enabled]);
 
-  return { loading, saving, error, flushPendingSave };
+  return { loading, hydrated, saving, error, flushPendingSave };
 }
