@@ -1,0 +1,299 @@
+\documentclass[journal]{IEEEtran}
+
+\usepackage{cite}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage[hidelinks]{hyperref}
+
+\hyphenation{op-tical net-works semi-conduc-tor tele-den-tis-try micro-ser-vices den-tal im-ag-ing re-source-lim-it-ed}
+
+% Figures compile safely before manuscript screenshots are added.
+\newcommand{\missingfigure}[3]{%
+  \fbox{\begin{minipage}[c][#2][c]{#3}\centering
+  \textbf{Screenshot placeholder}\\[2pt]Upload: \texttt{\detokenize{#1}}
+  \end{minipage}}%
+}
+\newcommand{\xcorefigure}[5]{%
+\begin{figure}[!t]\centering
+\IfFileExists{#1}{\includegraphics[width=#2]{#1}}{\missingfigure{#1}{#3}{#2}}
+\caption{#4}\label{#5}\end{figure}}
+\newcommand{\xcorewidefigure}[5]{%
+\begin{figure*}[!t]\centering
+\IfFileExists{#1}{\includegraphics[width=#2]{#1}}{\missingfigure{#1}{#3}{#2}}
+\caption{#4}\label{#5}\end{figure*}}
+
+\begin{document}
+
+\title{Development of X-Core as a Lightweight Imaging Framework for Evidence-Based Dental Care}
+
+\author{Adrian~Halim, Alva~Erwin, Intan~Farizka, M.~Novo~Lubis, Binti~Solihah, and Ratna~Shofiati%
+\thanks{Adrian Halim is with the Informatics Study Program, Faculty of Industrial Technology, Universitas Trisakti, Jakarta, Indonesia (e-mail: adrianhalim05@gmail.com).}%
+\thanks{Alva Erwin is with the Center for Artificial Intelligence and Advanced Technology (CAPTIVATE), Institution for Research and Community Services, Universitas Trisakti, Indonesia.}%
+\thanks{Intan Farizka and M. Novo Lubis are with the Faculty of Dentistry, Universitas Trisakti, Jakarta, Indonesia. Author affiliations should be verified before submission.}%
+\thanks{Binti Solihah and Ratna Shofiati: affiliation should be verified before submission.}}
+
+\markboth{Evidence-Based Dental Care --- X-Core Imaging Framework, 2026}%
+{Halim \MakeLowercase{\textit{et al.}}: X-Core as a Lightweight Imaging Framework}
+\maketitle
+
+\begin{abstract}
+Radiographic imaging is a central source of patient-specific evidence for dental diagnosis, treatment planning, monitoring, referral communication, and documentation. Yet, in small practices, training institutions, and resource-constrained settings, imaging studies are often stored in separate folders, reviewed through disconnected viewers, and summarized in unstructured notes. This paper presents X-Core, a lightweight web-based dental imaging framework that integrates study management, 2D/3D visualization, multi-planar slice review, structured annotation, physical measurement, series comparison, and report-oriented documentation. X-Core is a clinical imaging support layer rather than an autonomous diagnostic system; dentists retain all interpretive and clinical authority. The framework uses a three-tier design comprising a dentist-facing interaction layer, a clinical data management layer, and an imaging preparation layer for DICOM/CBCT processing. The current implementation additionally introduces X-Core Analysis Case, which binds multiple radiographs, findings linked to numbered image markers, measurements, canonical report renders, and versioned PDF reports with immutable snapshots. Functional verification confirms the implemented workflow. A five-run prototype benchmark using one complete representative CBCT folder (1467.77 MB; 550 reconstructed files) measured ingest, volume preparation, slice rendering, memory use, classification agreement, and processing success. The results characterize technical feasibility of the prototype; clinical utility and educational workflow impact require subsequent participant studies.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Digital dentistry, dental imaging, CBCT, panoramic radiography, DICOM, evidence-based dental care, teledentistry, clinical documentation, medical imaging workflow, lightweight framework.
+\end{IEEEkeywords}
+
+\section{Introduction}
+\label{sec:introduction}
+
+\IEEEPARstart{R}{adiographic} imaging is not only a diagnostic aid in dentistry but also a source of patient-specific evidence for treatment planning, case discussion, monitoring, and documentation. Panoramic radiographs provide a broad survey of dental and jaw structures, whereas cone-beam computed tomography (CBCT) provides volumetric information for implant planning, impacted-tooth assessment, jaw morphology evaluation, endodontic assessment, and complex surgical planning \cite{ref:scarfe2008,ref:demagalhaes2025}. The value of these modalities depends not only on image acquisition quality but also on the dentist's ability to review, measure, annotate, compare, and document findings in a structured and retrievable form.
+
+In practice, the imaging-to-documentation workflow often remains fragmented. Study folders may reside on local workstations, scanner-specific viewers may be disconnected from patient records, and measurements may be copied into free-text notes. This fragmentation is consequential for documentation-intensive activities, including implant planning, orthognathic assessment, and medico-legal review \cite{ref:rahim2025,ref:li2022,ref:schwendicke2025}. It is particularly relevant to smaller practices and dental training environments that cannot assume enterprise imaging infrastructure, dedicated high-specification workstations, or proprietary per-seat software \cite{ref:fahim2022,ref:nascimento2023,ref:owolabi2022}.
+
+The problem also affects professional dental education. When image analysis, annotations, and report preparation depend on hard-copy documentation or unlinked files, supervisors cannot readily trace which image, location, measurement, and explanatory finding form the basis of a trainee's submission. Moreover, referral communication based on screenshots or compressed JPEG images can reduce diagnostic fidelity by discarding series context and interactive review capabilities such as windowing, inversion, slice navigation, and measurement. In this paper, \emph{lossless clinical communication} denotes controlled access to the same imaging study and analysis context, not a claim that every transport layer is compression-free \cite{ref:talla2024,ref:nemeth2023}.
+
+Commercial imaging products and open-source systems such as 3D Slicer provide powerful visualization capabilities \cite{ref:fedorov2012}. However, general-purpose research platforms are not primarily organized around a web-based dental documentation workflow, persistent series-scoped annotations, multi-radiograph analysis cases, and immutable report versions. X-Core addresses this narrower workflow gap. It is not a replacement for PACS, a vendor acquisition application, or professional radiographic interpretation. Instead, it is a clinical imaging evidence-organization layer that operates under dentist authority.
+
+The contributions of this work are fourfold:
+\begin{enumerate}
+\item \textbf{Framework design contribution}: a lightweight three-tier architecture separating the clinical interaction, clinical data management, and imaging preparation concerns.
+\item \textbf{Technical pipeline contribution}: a DICOM/CBCT workflow covering series grouping, 2D/3D classification, intensity preparation, affine-orientation handling, windowed slice extraction, foreground cropping, measurement, and VTI export.
+\item \textbf{Analysis-case contribution}: a reusable multi-radiograph documentation model that links radiograph type, tooth numbers, annotations, measurements, numbered finding markers, canonical report renders, and immutable versioned PDFs.
+\item \textbf{Verification and benchmark contribution}: functional verification and a repeated-run prototype benchmark of ingest, volume preparation, slice rendering, memory usage, 3D classification agreement, and processing success.
+\end{enumerate}
+
+\section{Related Work and Research Gap}
+\label{sec:related}
+
+\subsection{Dental Imaging, Digital Dentistry, and Teledentistry}
+
+Evidence-based dental care integrates scientific evidence, clinical expertise, and patient-specific information. Imaging becomes clinically useful when findings can be reviewed and documented in relation to patient records and clinical reasoning. Digital dentistry has expanded the use of digital radiography, CBCT, intraoral scanning, guided treatment, electronic records, and teledentistry \cite{ref:eggmann2024,ref:lam2025}. However, technology availability alone does not organize imaging evidence into a traceable clinical workflow.
+
+Teledentistry research identifies implementation barriers involving cost, user acceptance, image quality, connectivity, workflow fit, and training \cite{ref:fahim2022,ref:nemeth2023,ref:talla2024}. Indonesian dentists' perceptions and Indonesian program evaluations indicate that digital oral-health transformation is locally relevant but still depends on readiness and implementation support \cite{ref:soegyanto2022,ref:mathur2025}. These findings support the need for clinically grounded, lightweight documentation workflows rather than isolated image-display tools.
+
+\subsection{Existing Imaging Systems}
+
+Vendor systems are typically integrated with acquisition devices but may require specific workstations, licenses, or local workflows. 3D Slicer is a highly capable open-source image-computing platform, but its primary orientation is research imaging rather than web-based dental case documentation \cite{ref:fedorov2012}. Browser DICOM viewers can reduce installation barriers, yet they do not necessarily persist annotations, bind visual markers to structured findings, or create immutable report snapshots.
+
+\begin{table*}[!t]
+\caption{Analytical Positioning of X-Core}
+\label{tab:positioning}
+\centering
+\begin{tabular}{p{3.0cm}p{5.1cm}p{6.1cm}}
+\toprule
+\textbf{Category} & \textbf{Primary strength} & \textbf{Position of X-Core}\\
+\midrule
+Vendor imaging software & Acquisition integration and manufacturer-specific display capabilities. & X-Core does not replace vendor acquisition software; it adds a web-oriented evidence-organization and documentation layer.\\
+3D Slicer & Broad image-computing, visualization, and research extensibility. & X-Core has a narrower dentist-facing scope: study organization, persistent annotations, case-level documentation, and report workflow.\\
+Web DICOM viewers & Accessible browser-based image display. & X-Core adds multi-radiograph cases, marker--finding linkage, canonical report rendering, versioned PDFs, and access-controlled persistence.\\
+X-Core & Three-tier architecture, 2D/3D/slice review, structured clinical artifacts, and report-oriented workflow. & The prototype has not yet undergone clinical validation, enterprise-scale evaluation, or institutional PACS/RME integration.\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Research Gap}
+
+The literature identifies barriers in cost, infrastructure, workflow complexity, interoperability, and fragmented documentation \cite{ref:nascimento2023,ref:owolabi2022,ref:schwendicke2025}. A practical gap remains for a modular web framework that combines DICOM/CBCT visualization with persistent, item-scoped annotations and measurements, multi-radiograph documentation, and report traceability. X-Core addresses that gap while retaining an explicit human-in-the-loop boundary: it does not issue diagnoses or treatment recommendations. Its structured context can support future AI-assisted modules, but no AI diagnostic performance is claimed in this work \cite{ref:uribe2024,ref:katsumata2023,ref:ding2023}.
+
+\section{Methodology and System Architecture}
+\label{sec:methodology}
+
+\subsection{Study Design}
+
+This study uses a development-oriented experimental design. The primary object is the X-Core prototype. Development covers requirements analysis, architecture, imaging-pipeline design, implementation, and functional verification. The reported evaluation is a technical prototype benchmark. A scenario-based participant study comparing manual and X-Core-supported workflows is specified as future empirical work rather than reported as a clinical outcome.
+
+\subsection{Functional Requirements}
+
+X-Core was designed to: (i) upload dental study folders containing DICOM or extensionless scanner files; (ii) classify series as 2D, 3D, report, or non-image objects; (iii) extract study and series metadata; (iv) support 2D, 3D, and axial/coronal/sagittal review; (v) persist annotations and measurements; (vi) compare series; (vii) bind one or more radiographs to an analysis case; and (viii) prepare report-oriented documentation without autonomous diagnostic claims.
+
+\subsection{Three-Tier Architecture}
+
+\xcorewidefigure{figures/xcore-architecture.png}{0.88\textwidth}{5cm}
+{Clinical-oriented X-Core architecture. Raw dental imaging studies are transformed into structured assets for review, annotation, measurement, comparison, documentation, and controlled access.}
+{fig:xcore-architecture}
+
+X-Core consists of three clinical layers. The \textit{Clinical Interaction Layer} is the React-based web environment for study gallery navigation, 2D/3D/slice review, annotation, measurement, comparison, and Analysis Case interaction. The \textit{Clinical Data Management Layer} uses Node.js, Prisma ORM, and PostgreSQL to manage study metadata, clinical artifacts, access control, storage, report snapshots, and version records. The \textit{Imaging Preparation Layer} uses Python/FastAPI, pydicom, NumPy, OpenCV, MONAI, and VTK/vtk.js to read DICOM data, group and classify series, reconstruct volumes, create browser-ready assets, and support slice extraction \cite{ref:monai-docs,ref:vtkjs,ref:schroeder2006}.
+
+\xcorewidefigure{figures/xcore-gallery-series.png}{0.88\textwidth}{5cm}
+{X-Core study gallery and series-selection workflow. The screenshot should show only de-identified data and demonstrate that 2D and 3D series are organized before clinical review.}
+{fig:xcore-gallery-series}
+
+\xcorefigure{figures/xcore-2d-annotation.png}{0.95\linewidth}{4cm}
+{Actual 2D radiograph review in X-Core with persisted annotation and measurement overlays. Identifying patient information must be redacted before publication.}
+{fig:xcore-2d-annotation}
+
+\xcorefigure{figures/xcore-3d-mpr.png}{0.95\linewidth}{4cm}
+{CBCT review in X-Core showing volumetric visualization and synchronized axial, coronal, and sagittal slice inspection.}
+{fig:xcore-3d-mpr}
+
+\subsection{Analysis Case and Canonical Report Rendering}
+
+An Analysis Case binds one patient, clinical case data, and one or more radiograph items. Each item stores the source study/series/image or slide reference, radiograph type, optional tooth numbers, display order, title, structured findings, and references to annotations and measurements. Two periapical radiographs remain distinct items even when they belong to the same case.
+
+A structured finding has a stable marker number, optional annotation or measurement reference, location or region, optional tooth number, short title, narrative description, annotation type, and display order. Marker numbering is unique inside a radiograph and may restart for the next radiograph. A marker cannot enter a report without its paired finding. Measurements without separate narrative findings remain available in a measurement table with identifiable labels.
+
+Report rendering is canonical rather than viewport-dependent. A dedicated canvas renders the actual radiograph in fit-image mode using source dimensions, relevant windowing/inversion/orientation state, annotations, measurements, valid scale bars, and finding markers. The system can store \texttt{CLEAN} and \texttt{ANNOTATED} renders; the PDF uses the annotated render as the main image. Render acceptance validates file format, decodability, dimensions, scope, checksum, and image characteristics so that 1$\times$1, uniform, empty, or mismatched images are rejected. A preflight check blocks PDF generation when a render is absent or stale relative to its persisted annotations and findings.
+
+Each PDF generation creates a new version. The report snapshot retains the case state, item order, findings, and render references used at generation time. The file location, status, creator, timestamp, version number, and SHA-256 checksum are recorded. A later case edit can create a new version but cannot overwrite the older report, snapshot, or checksum.
+
+\xcorewidefigure{figures/xcore-analysis-case-workspace.png}{0.88\textwidth}{5cm}
+{X-Core Analysis Case workspace. The figure should show a de-identified case with multiple radiograph items, radiograph type, tooth numbers where relevant, display order, and report-readiness state.}
+{fig:xcore-analysis-workspace}
+
+\xcorefigure{figures/xcore-marker-finding-linkage.png}{0.95\linewidth}{4cm}
+{Canonical annotated report render: each numbered marker on the radiograph is linked to the correspondingly numbered structured finding. The main image is rendered from the radiograph source rather than from a browser viewport screenshot.}
+{fig:xcore-marker-finding-linkage}
+
+\xcorefigure{figures/xcore-report-preflight-versioning.png}{0.95\linewidth}{4cm}
+{Report preflight and version history. The screenshot should demonstrate a ready item, a stale item after a clinical change, and distinct immutable report versions with their checksums.}
+{fig:xcore-report-versioning}
+
+\subsection{Scenario-Based Evaluation Protocol}
+
+Future participant evaluation can compare a baseline workflow with an X-Core-supported workflow using five tasks: upload and identify a study (T1), locate metadata and series information (T2), inspect a 2D or 3D series (T3), create annotations and measurements (T4), and prepare a structured summary (T5). Candidate dependent variables are completion time, task success, documentation completeness, workflow steps, and usability score. Participant recruitment, ethical approval, and analysis plans are outside the present technical benchmark.
+
+\section{Mathematical Imaging Pipeline}
+\label{sec:math}
+
+\subsection{Series Grouping and Classification}
+
+Let $F=\{f_1,\ldots,f_n\}$ be candidate files in an uploaded study. Files are grouped by \texttt{SeriesInstanceUID}. For series $s$, $F_s$ denotes the file set and $M_s$ its modality. The prototype rule is:
+\begin{equation}
+\operatorname{class}(s)=
+\begin{cases}
+\mathrm{report}, & M_s\in\{\mathrm{SR},\mathrm{PR},\mathrm{KO},\mathrm{SEG}\},\\
+2\mathrm{D}, & M_s\in\{\mathrm{DX},\mathrm{PX},\mathrm{CR},\mathrm{IO},\mathrm{RG},\mathrm{MG},\mathrm{XA}\},\\
+3\mathrm{D}, & M_s\in\{\mathrm{CT},\mathrm{MR},\mathrm{PT},\mathrm{NM}\},\\
+3\mathrm{D}, & |F_s|>10,\\
+2\mathrm{D}, & \text{otherwise}.
+\end{cases}
+\end{equation}
+The rule is an engineering classification mechanism and does not replace clinical validation of examination type \cite{ref:dicom}.
+
+\subsection{Normalization and Measurement}
+
+After volume reconstruction, intensity is normalized as
+\begin{equation}
+\hat{V}=\operatorname{clip}\left(\frac{V-H_{\min}}{H_{\max}-H_{\min}},0,1\right),
+\end{equation}
+where $H_{\min}=-1000$ HU and $H_{\max}=3000$ HU in the prototype. For a polyline in voxel space with spacing $\mathbf{s}=(s_x,s_y,s_z)$, physical length is computed by
+\begin{equation}
+L_{3D}=\sum_{i=1}^{n-1}\left\|(\mathbf{p}_{i+1}-\mathbf{p}_i)\odot\mathbf{s}\right\|_2.
+\end{equation}
+The current prototype uses a simplified axial-alignment assumption for certain scanner-aligned CBCT data. Full \texttt{ImageOrientationPatient}-based affine support remains future work.
+
+\section{Implementation and Functional Verification}
+\label{sec:implementation}
+
+\subsection{Implemented Modules}
+
+\begin{table}[!t]
+\caption{Implemented X-Core Clinical Functions}
+\label{tab:modules}
+\centering
+\begin{tabular}{p{2.5cm}p{4.7cm}}
+\toprule
+\textbf{Function} & \textbf{Implemented role}\\
+\midrule
+Study upload and metadata & Accepts dental imaging folders and extracts study, modality, and series data.\\
+2D/3D/slice review & Supports native 2D image viewing, processed volume review, and orthogonal slices.\\
+Annotation and measurement & Supports structured visual annotations and physical measurement records.\\
+Comparison & Supports selected-series side-by-side review.\\
+Analysis Case & Persists multi-radiograph case items, clinical data, tooth numbers, findings, and order.\\
+Report rendering & Produces clean and annotated canonical renders from actual viewer source data.\\
+Versioned PDF & Creates immutable report versions with snapshots, checksums, and stored locations.\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Functional verification checked study upload, metadata extraction, 2D/3D classification, 2D rendering, VTI conversion, slice navigation, annotation persistence, measurement persistence, comparison, case persistence after refresh, render freshness, marker--finding linkage, report generation, report immutability, and access checks. The verification is evidence that modules operated as specified; it is not clinical validation.
+
+\subsection{Report Workflow}
+
+For each radiograph, the report contains one annotated main image, its numbered findings, and associated measurements. Clean images are optional and are not repeated by default. For a case containing two periapicals and one panoramic image, the report contains three main images in display order. This design avoids using only the currently active viewer image and avoids duplicating the same radiograph without a clinical or visual need.
+
+\xcorefigure{figures/xcore-versioned-pdf-page.png}{0.95\linewidth}{4cm}
+{De-identified example of a generated X-Core PDF page. One annotated radiograph is shown once as the main image, followed by its numbered findings and measurements.}
+{fig:xcore-versioned-pdf-page}
+
+\section{Results and Discussion}
+\label{sec:discussion}
+
+\subsection{Prototype Benchmark Results}
+
+A repeated-run prototype benchmark used one complete representative CBCT study folder totaling 1467.77 MB and 550 reconstructed files. Five successful runs characterized prototype-level workflow performance rather than enterprise capacity.
+
+\begin{table}[!t]
+\caption{Repeated-Run Prototype Benchmark Results}
+\label{tab:benchmark}
+\centering
+\begin{tabular}{p{3.65cm}p{1.05cm}p{2.0cm}}
+\toprule
+\textbf{Metric} & \textbf{Unit} & \textbf{Result}\\
+\midrule
+Ingest and study registration latency & s & $8.62\pm6.04$\\
+3D dental volume preparation latency & s & $7.03\pm1.96$\\
+Axial slice rendering latency & ms & $1226.20\pm371.44$\\
+Coronal slice rendering latency & ms & $559.60\pm47.45$\\
+Sagittal slice rendering latency & ms & $556.00\pm43.75$\\
+Peak RSS memory during volume processing & MB & $1586.93\pm265.94$\\
+Strict 3D classification agreement & \% & $100.0$\\
+Processing success rate & \% & $100.0$\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The benchmark recorded 8.62$\pm$6.04 s for ingest and registration and 7.03$\pm$1.96 s for volume preparation. Axial rendering was slower than coronal and sagittal rendering. Peak RSS memory was 1586.93$\pm$265.94 MB. These findings show that browser access does not imply zero processing cost: volume preparation remains resource-intensive at the service layer. The five successful runs and 100\% classification agreement apply only to the representative study and prototype configuration.
+
+\subsection{Clinical Documentation and Educational Implications}
+
+X-Core reduces fragmentation by linking study management, image review, annotations, measurements, and documentation inside a single structured environment. Its Analysis Case model creates a potential digital educational pipeline: a trainee can prepare image-linked evidence and a standard report artifact for review without treating the PDF as a substitute for supervisory judgment. The architecture may also support controlled referral review because authorized parties can review the same study context rather than an untraceable compressed copy.
+
+The AI-related contribution is infrastructural rather than diagnostic. Structured data such as radiograph type, tooth numbers, annotations, measurements, and findings could supply context for future AI-assisted features. Any future AI output must remain reviewable by clinicians and be separately evaluated for validity, bias, safety, privacy, and regulatory suitability.
+
+\subsection{Limitations}
+
+First, the prototype has not undergone clinical validation with dentists, trainees, or supervisors. Second, it is not diagnostic software and must not replace professional interpretation or specialist consultation. Third, there is no participant workflow evaluation, cost-effectiveness evaluation, or enterprise-scale load test. Fourth, the affine-orientation implementation is incomplete for non-axially acquired studies. Fifth, the prototype does not yet integrate production PACS, practice-management systems, institutional RME, or HIS. Finally, the benchmark is limited to one representative CBCT folder; it does not establish multi-scanner, multi-patient, or production generalizability.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+This paper presented X-Core as a lightweight web-based imaging framework for evidence-based dental care. It integrates study upload, DICOM metadata extraction, 2D/3D classification, multi-planar review, annotation, measurement, comparison, and report-oriented documentation. The enhanced Analysis Case workflow additionally links multiple radiographs to structured markers and findings, canonical renders derived from actual radiographs, and immutable versioned PDF reports. Technical verification and repeated-run benchmarking demonstrate prototype feasibility, not clinical effectiveness. Future work should include clinician and trainee usability studies, comparative workflow evaluation, broader imaging datasets, complete orientation handling, interoperability with institutional systems, and appropriately governed human-in-the-loop AI evaluation.
+
+\section*{Acknowledgment}
+The authors thank the academic and dental professionals who provided feedback during X-Core prototype development. The authors acknowledge the importance of interdisciplinary collaboration in safe, usable, evidence-oriented dental informatics.
+
+\begin{thebibliography}{99}
+\bibitem{ref:eggmann2024} F. Eggmann and M. B. Blatz, ``Recent advances in intraoral scanners,'' \emph{Journal of Dental Research}, vol. 103, pp. 1349--1357, 2024.
+\bibitem{ref:lam2025} W. Lam et al., ``Digital dentistry in clinical practice: A scoping review of current capabilities and future directions,'' \emph{International Dental Journal}, vol. 76, 2025.
+\bibitem{ref:talla2024} K. P. Talla et al., ``Teledentistry for improving access to, and quality of oral health care,'' \emph{Journal of Medical Internet Research}, vol. 27, 2024.
+\bibitem{ref:fahim2022} A. Fahim et al., ``Exploring challenges and mitigation strategies towards practicing teledentistry,'' \emph{BMC Oral Health}, vol. 22, 2022.
+\bibitem{ref:nemeth2023} O. N\'emeth et al., ``The impact of digital healthcare and teledentistry on dentistry in the 21st century,'' \emph{BMC Oral Health}, vol. 23, 2023.
+\bibitem{ref:nascimento2023} I. Nascimento et al., ``Barriers and facilitators to utilizing digital health technologies by healthcare professionals,'' \emph{npj Digital Medicine}, vol. 6, 2023.
+\bibitem{ref:rahim2025} S. H. Rahim, N. Davoody, and S. Bonacina, ``Exploring medical information needs and accessibility in Swedish dental care,'' \emph{JMIR Human Factors}, vol. 13, 2025.
+\bibitem{ref:schwendicke2025} F. Schwendicke et al., ``Electronic health records in dentistry: Relevance, challenges and policy directions,'' \emph{International Dental Journal}, vol. 75, 2025.
+\bibitem{ref:li2022} S. Li et al., ``How do dental clinicians obtain up-to-date patient medical histories?'' \emph{Frontiers in Digital Health}, vol. 4, 2022.
+\bibitem{ref:soegyanto2022} A. Soegyanto et al., ``Indonesian dentists' perception of the use of teledentistry,'' \emph{International Dental Journal}, vol. 72, pp. 674--681, 2022.
+\bibitem{ref:mathur2025} M. R. Mathur et al., ``Evaluation of a teledentistry programme among Indonesian adults,'' \emph{BMC Oral Health}, vol. 25, 2025.
+\bibitem{ref:owolabi2022} M. Owolabi, N. Suwanwela, and J. Yaria, ``Barriers to implementation of evidence into clinical practice in low-resource settings,'' \emph{Nature Reviews Neurology}, vol. 18, pp. 451--452, 2022.
+\bibitem{ref:scarfe2008} W. C. Scarfe and A. G. Farman, ``What is cone-beam CT and how does it work?'' \emph{Dental Clinics of North America}, vol. 52, no. 4, pp. 707--730, 2008.
+\bibitem{ref:demagalhaes2025} A. D. De Magalh\~{a}es and A. T. Santos, ``Advancements in diagnostic methods and imaging technologies in dentistry,'' \emph{Journal of Clinical Medicine}, vol. 14, 2025.
+\bibitem{ref:fedorov2012} A. Fedorov et al., ``3D Slicer as an image computing platform for the Quantitative Imaging Network,'' \emph{Magnetic Resonance Imaging}, vol. 30, no. 9, pp. 1323--1341, 2012.
+\bibitem{ref:uribe2024} S. Uribe et al., ``Publicly available dental image datasets for artificial intelligence,'' \emph{Journal of Dental Research}, vol. 103, pp. 1365--1374, 2024.
+\bibitem{ref:katsumata2023} A. Katsumata, ``Deep learning and artificial intelligence in dental diagnostic imaging,'' \emph{The Japanese Dental Science Review}, vol. 59, pp. 329--333, 2023.
+\bibitem{ref:ding2023} H. Ding et al., ``Artificial intelligence in dentistry---A review,'' \emph{Frontiers in Dental Medicine}, vol. 4, 2023.
+\bibitem{ref:dicom} National Electrical Manufacturers Association, \emph{Digital Imaging and Communications in Medicine (DICOM) Standard}, 2025. [Online]. Available: \url{https://www.dicomstandard.org/}
+\bibitem{ref:monai-docs} Project MONAI, ``MONAI documentation.'' [Online]. Available: \url{https://docs.monai.io/}
+\bibitem{ref:vtkjs} Kitware, ``vtk.js documentation.'' [Online]. Available: \url{https://kitware.github.io/vtk-js/}
+\bibitem{ref:schroeder2006} W. Schroeder, K. Martin, and B. Lorensen, \emph{The Visualization Toolkit: An Object-Oriented Approach to 3D Graphics}, 4th ed. Kitware, 2006.
+\end{thebibliography}
+
+\end{document}

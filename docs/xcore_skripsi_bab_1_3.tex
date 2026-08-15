@@ -1,0 +1,308 @@
+\documentclass[12pt,a4paper,oneside]{report}
+
+% Draf Bab I--III Skripsi/Tesis X-Core.
+% File ini berdiri sendiri dan dapat dipisahkan dengan \input{} bila kampus
+% menyediakan template skripsi tersendiri.
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[indonesian]{babel}
+\usepackage{newtxtext,newtxmath}
+\usepackage{geometry}
+\usepackage{setspace}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\geometry{left=4cm,right=3cm,top=3cm,bottom=3cm}
+\onehalfspacing
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{0pt}
+\renewcommand{\arraystretch}{1.25}
+\newcommand{\sitasi}[1]{\textit{[Sitasi: #1]}}
+\newcommand{\xcore}{\textit{X-Core}}
+
+\begin{document}
+
+\begin{center}
+{\Large \textbf{DRAF BAB I, BAB II, DAN BAB III}}\\[4pt]
+{\large \textbf{Pengembangan X-Core sebagai Kerangka Kerja Pencitraan Ringan untuk Perawatan Kedokteran Gigi Berbasis Bukti}}\\[10pt]
+{\normalsize Dokumen kerja akademik---disusun dari draf artikel ``Development of X-Core as a Lightweight Imaging Framework for Evidence-Based Dental Care'' dan implementasi X-Core terkini.}
+\end{center}
+
+\chapter{PENDAHULUAN}
+\label{bab:pendahuluan}
+
+\section{Latar Belakang}
+
+Transformasi digital kesehatan gigi menempatkan radiografi sebagai bagian dari bukti klinis yang harus dapat ditinjau ulang, dibandingkan, dan ditelusuri, bukan sekadar sebagai berkas pendukung pemeriksaan. Radiograf panoramik memberikan gambaran umum dentomaksilofasial, sedangkan \textit{cone-beam computed tomography} (CBCT) menyediakan informasi volumetrik untuk, antara lain, perencanaan implan, evaluasi gigi impaksi, penilaian morfologi rahang, pemeriksaan endodontik kompleks, dan perencanaan tindakan bedah. Nilai klinis kedua modalitas tersebut tidak hanya ditentukan oleh kualitas akuisisi, melainkan juga oleh kemampuan dokter gigi untuk menelaah citra, melakukan pengukuran, memberi anotasi, menghubungkan temuan dengan data pasien, dan mendokumentasikan hasilnya secara terstruktur \sitasi{Penulis tentang radiografi panoramik dan CBCT, Tahun}.
+
+Di Indonesia, kebutuhan tersebut berhadapan dengan kondisi infrastruktur yang tidak seragam. Fasilitas kesehatan tingkat pertama, klinik mandiri, dan sebagian rumah sakit pendidikan dapat memiliki perangkat radiografi digital, tetapi belum selalu memiliki stasiun kerja berkapasitas tinggi, lisensi perangkat lunak vendor, atau personel teknologi informasi yang memadai untuk mengelola data DICOM dan volume CBCT secara terintegrasi. Pada saat yang sama, transformasi menuju Rekam Medis Elektronik (RME) menuntut informasi klinis menjadi lebih tertib, dapat ditelusuri, dan dapat dipertukarkan secara terkendali. Dukungan RME terhadap aset radiologi gigi tiga dimensi, anotasi terstruktur, serta relasi antara citra dan temuan klinis masih merupakan tantangan implementasi yang perlu dikaji dalam konteks lokal \sitasi{Regulasi RME Indonesia, Tahun}; \sitasi{Penelitian kesiapan transformasi digital kesehatan gigi di Indonesia, Tahun}.
+
+Dalam alur kerja yang umum, folder studi DICOM disimpan pada komputer lokal atau media penyimpanan terpisah, dibuka melalui perangkat lunak bawaan alat, lalu diringkas kembali pada catatan klinis atau dokumen lain. Seorang dokter yang perlu memeriksa pengukuran dari studi CBCT terdahulu, membandingkan dua radiograf panoramik, atau menyiapkan dokumentasi radiografik untuk diskusi kasus harus berpindah antara penjelajah berkas, \textit{viewer} khusus vendor, catatan bebas, dan rekam medis pasien. Fragmentasi tersebut memisahkan bukti radiografik dari konteks klinisnya sehingga proses penelusuran, pembandingan lintas waktu, dan audit dokumentasi menjadi tidak efisien \sitasi{Penulis tentang dokumentasi klinis dan akses informasi kedokteran gigi, Tahun}.
+
+Masalah fragmentasi juga nyata pada pendidikan profesi dokter gigi. Dokumentasi analisis radiologi pada tahap koas sering masih bergantung pada cetakan, pengumpulan berkas fisik, atau paraf dan tanda tangan langsung dari Dokter Penanggung Jawab Pelayanan (DPJP). Mekanisme ini menambah perpindahan dokumen, memperpanjang waktu tunggu umpan balik, dan menyulitkan penelusuran hubungan antara citra, anotasi mahasiswa, temuan, serta keputusan pembimbing. Persoalan tersebut bukan semata-mata masalah digitalisasi administrasi. Pada analisis radiografik, pembimbing perlu mengetahui citra mana yang dirujuk, lokasi yang ditandai, pengukuran yang dilakukan, dan uraian temuan yang menyertainya. Oleh karena itu, dokumen digital yang hanya berisi narasi tanpa kaitan dengan citra tidak cukup untuk mendukung pembelajaran radiologi yang dapat diaudit \sitasi{Penulis tentang pendidikan radiologi kedokteran gigi digital, Tahun}.
+
+Persoalan berikutnya adalah \textit{diagnostic fidelity} dalam komunikasi rujukan. Dalam praktik sehari-hari, radiograf kerap dikirim sebagai tangkapan layar atau JPEG terkompresi melalui aplikasi percakapan. Cara tersebut dapat mengubah resolusi, menghilangkan metadata atau konteks seri, dan tidak mempertahankan kemampuan interaktif seperti pengaturan \textit{window center/window width}, inversi, navigasi irisan, maupun pengukuran yang dilakukan pada citra asal. Akibatnya, penerima rujukan dapat menilai representasi yang berbeda dari aset radiografik yang ditinjau dokter pengirim. Kebutuhan yang relevan bukan hanya pengiriman gambar, melainkan komunikasi klinis yang memungkinkan pihak berwenang mengakses studi yang sama, dengan kontrol akses dan jejak dokumentasi yang sesuai \sitasi{Penulis tentang kualitas citra pada teledentistry dan rujukan digital, Tahun}.
+
+Perangkat komersial dan perangkat lunak umum seperti 3D Slicer memiliki kemampuan visualisasi yang kuat, tetapi tidak selalu dirancang untuk alur dokumentasi kedokteran gigi berbasis web, persistensi anotasi per seri, pengelolaan kasus multi-citra, atau penyusunan laporan yang berhubungan langsung dengan temuan. Pada klinik kecil dan lingkungan pendidikan, kebutuhan instalasi lokal, konfigurasi, perangkat keras, lisensi, serta antarmuka yang berorientasi riset dapat menjadi hambatan adopsi. Sebaliknya, aplikasi web tidak boleh menyederhanakan data medis menjadi gambar statis berkualitas rendah. Tantangannya adalah membangun kerangka kerja ringan yang memindahkan beban komputasi secara proporsional ke layanan persiapan citra dan \textit{client-side rendering}, sambil mempertahankan aset klinis, anotasi, dan keterlacakan data \sitasi{Fedorov dkk., 2012}; \sitasi{Penulis tentang arsitektur pencitraan medis berbasis web, Tahun}.
+
+Penelitian ini mengembangkan \xcore{} sebagai kerangka kerja pencitraan kedokteran gigi berbasis web yang mengintegrasikan manajemen studi, visualisasi radiograf dua dimensi dan CBCT tiga dimensi, penelusuran irisan multiplanar, anotasi, pengukuran, perbandingan seri, serta dokumentasi klinis. Arsitektur \xcore{} memisahkan lapisan interaksi klinis, manajemen data klinis, dan persiapan pencitraan. Pemisahan tersebut memungkinkan berkas DICOM/CBCT diproses menjadi aset yang dapat ditinjau pada peramban, tanpa menempatkan seluruh beban rekonstruksi volume pada perangkat pengguna. Sistem ini bukan perangkat diagnosis otonom; interpretasi radiografik, keputusan klinis, dan tanggung jawab profesional tetap berada pada dokter gigi.
+
+Pengembangan terbaru pada \xcore{} memperluas lapisan dokumentasi menjadi \textit{X-Core Analysis Case}. Satu kasus mengikat pasien, satu atau lebih item radiografi, jenis radiografi, nomor gigi bila relevan, anotasi, pengukuran, temuan terstruktur, data klinis, kesimpulan, dan urutan tampilan. Setiap item memiliki \textit{canonical report render} yang dibuat dari radiograf aktual beserta anotasi dan marker temuan, bukan dari tangkapan layar panel peramban. Render tersebut diperiksa validitasnya, disimpan dengan metadata, dan digunakan untuk membentuk laporan PDF berversi. Laporan menyimpan \textit{snapshot} imutabel sehingga perubahan anotasi atau temuan setelah pembuatan laporan tidak mengubah versi terdahulu. Rancangan ini membentuk \textit{digital educational pipeline}: mahasiswa atau dokter dapat menyusun bukti radiografik secara terarah, menghasilkan PDF standar, dan menyiapkan dasar yang dapat dipakai pada proses penilaian atau umpan balik jarak jauh tanpa menjadikan fitur tersebut sebagai pengganti kewenangan DPJP.
+
+Selain itu, \xcore{} diposisikan sebagai infrastruktur yang siap mengakomodasi bantuan kecerdasan artifisial secara terkendali. Sistem menyediakan konteks citra, anotasi, metadata, dan temuan terstruktur yang dapat menjadi masukan bagi auto-anotasi atau \textit{agentic reasoning} pada penelitian lanjutan. Namun, model AI bukan objek utama penelitian ini dan tidak digunakan untuk menghasilkan diagnosis klinis mandiri. Pendekatan \textit{human-in-the-loop} dipertahankan melalui kewajiban peninjauan pengguna terhadap anotasi, temuan, dan laporan \sitasi{Penulis tentang human-in-the-loop pada AI medis, Tahun}.
+
+Dengan demikian, kebaruan penelitian terletak pada integrasi tiga persoalan yang lazim dipisahkan: visualisasi pencitraan gigi ringan berbasis web, dokumentasi analisis radiografik yang persisten dan berversi untuk alur pendidikan/klinis, serta komunikasi rujukan yang menjaga kesetiaan terhadap aset radiografik asal. Penelitian ini tidak mengklaim bahwa \xcore{} menggantikan PACS, perangkat lunak vendor, pembacaan radiologis, atau sistem RME institusional. Kontribusinya adalah menyediakan lapisan organisasi bukti pencitraan yang dapat diintegrasikan dan dievaluasi lebih lanjut pada konteks layanan serta pendidikan kedokteran gigi.
+
+\section{Identifikasi Masalah}
+
+Berdasarkan latar belakang tersebut, masalah yang diidentifikasi adalah sebagai berikut.
+\begin{enumerate}[label=\arabic*.]
+  \item Alur pengelolaan, peninjauan, anotasi, pengukuran, dan dokumentasi radiograf gigi masih terfragmentasi pada perangkat, folder, dan dokumen yang berbeda.
+  \item Fasilitas dengan sumber daya terbatas membutuhkan akses visualisasi 2D/3D yang tidak bergantung sepenuhnya pada stasiun kerja khusus, tanpa menurunkan keterlacakan bukti pencitraan.
+  \item Dokumentasi analisis radiologi untuk kebutuhan klinis dan pendidikan belum selalu menghubungkan radiograf aktual, marker, anotasi, pengukuran, temuan, dan versi laporan dalam satu objek kasus yang persisten.
+  \item Pertukaran citra melalui tangkapan layar atau JPEG terkompresi berisiko menurunkan konteks dan kesetiaan informasi diagnostik.
+\end{enumerate}
+
+\section{Rumusan Masalah}
+
+Rumusan masalah penelitian ini adalah:
+\begin{enumerate}[label=\arabic*.]
+  \item Bagaimana merancang dan membangun \xcore{} sebagai kerangka kerja pencitraan kedokteran gigi berbasis web dengan arsitektur tiga lapis yang mendukung manajemen studi, visualisasi 2D/3D, anotasi, pengukuran, dan dokumentasi secara terintegrasi?
+  \item Bagaimana membangun \textit{X-Core Analysis Case} yang menyimpan keterkaitan antara radiograf aktual, anotasi, marker temuan, pengukuran, data klinis, serta PDF berversi dan imutabel untuk mendukung alur dokumentasi klinis dan pendidikan?
+  \item Bagaimana karakteristik kinerja teknis prototipe \xcore{} pada pengolahan satu studi CBCT representatif, ditinjau dari latensi ingest, persiapan volume, render irisan, penggunaan memori, ketepatan klasifikasi 3D, dan keberhasilan pemrosesan?
+\end{enumerate}
+
+\section{Tujuan Penelitian}
+
+Tujuan penelitian ini disusun linier dengan rumusan masalah sebagai berikut.
+\begin{enumerate}[label=\arabic*.]
+  \item Merancang dan mengimplementasikan \xcore{} sebagai kerangka kerja pencitraan kedokteran gigi berbasis web dengan arsitektur tiga lapis untuk mengintegrasikan alur studi, visualisasi, anotasi, pengukuran, dan dokumentasi.
+  \item Mengimplementasikan \textit{X-Core Analysis Case} serta mekanisme render dan laporan PDF yang menghubungkan citra aktual dengan marker, temuan, pengukuran, persistensi data, \textit{snapshot} imutabel, dan versioning laporan.
+  \item Mengukur dan mendeskripsikan kinerja teknis prototipe menggunakan prosedur benchmark berulang pada studi CBCT representatif.
+\end{enumerate}
+
+\section{Manfaat Penelitian}
+
+\subsection{Manfaat Teoretis}
+
+Penelitian ini diharapkan memperkaya kajian informatika kesehatan dan rekayasa perangkat lunak melalui: (a) model arsitektur web ringan untuk organisasi bukti pencitraan gigi; (b) rancangan hubungan antara anotasi spasial, temuan klinis, dan laporan imutabel; serta (c) landasan evaluasi teknis yang membedakan verifikasi fungsi prototipe dari validasi utilitas klinis. Penelitian ini juga memberikan model konseptual untuk mengkaji \textit{digital educational workflow} pada radiologi gigi tanpa membuat klaim bahwa otomasi dokumen setara dengan penilaian klinis.
+
+\subsection{Manfaat Praktis}
+
+Bagi dokter gigi dan klinik, \xcore{} dapat menjadi dasar alur kerja yang lebih terorganisasi untuk meninjau, menandai, mengukur, dan mendokumentasikan radiograf. Bagi institusi pendidikan, \textit{Analysis Case} dan PDF berversi dapat mendukung bukti analisis yang lebih tertata sebelum proses supervisi. Bagi pengembang sistem, hasil penelitian menyediakan kebutuhan fungsional, kontrak data, dan metrik teknis untuk pengembangan lanjutan, termasuk integrasi RME/PACS atau modul AI yang tetap memelihara otoritas dokter. Bagi pasien dan rujukan antar-sejawat, pendekatan akses terkontrol terhadap studi yang sama berpotensi mengurangi ketergantungan pada representasi citra yang terkompresi.
+
+\section{Batasan Penelitian}
+
+Penelitian ini dibatasi pada pengembangan dan verifikasi teknis prototipe \xcore{}. Sistem mendukung studi radiograf 2D dan seri CBCT/CT yang dapat diproses oleh pipeline yang tersedia. Benchmark menggunakan satu folder CBCT representatif berukuran 1467,77 MB dengan 550 berkas rekonstruksi dan diulang lima kali; hasilnya tidak dimaksudkan sebagai bukti generalisasi multi-pasien atau kapasitas skala perusahaan. Penelitian ini tidak melakukan diagnosis otomatis, tidak membandingkan akurasi klinis dengan radiolog, tidak melakukan uji efektivitas biaya, dan belum mencakup integrasi produksi dengan PACS, PMS, HIS, maupun RME institusional. Evaluasi pengguna yang melibatkan dokter, mahasiswa, atau DPJP ditempatkan sebagai rancangan evaluasi lanjutan, bukan hasil yang telah diklaim.
+
+\section{Sistematika Penulisan}
+
+Bab I menguraikan konteks, masalah, tujuan, manfaat, dan batasan penelitian. Bab II menyajikan sintesis pustaka, landasan teori, posisi \xcore{} terhadap sistem yang ada, serta kerangka berpikir. Bab III menjelaskan metode pengembangan, data, arsitektur, prosedur implementasi, dan rancangan evaluasi. Bab IV dapat menyajikan hasil implementasi serta benchmark; Bab V dapat memuat pembahasan, kesimpulan, dan saran sesuai pedoman institusi.
+
+\chapter{TINJAUAN PUSTAKA}
+\label{bab:tinjauan-pustaka}
+
+\section{Teledentistry dan Perawatan Kedokteran Gigi Berbasis Bukti}
+
+Perawatan kedokteran gigi berbasis bukti merupakan pengambilan keputusan yang mengintegrasikan bukti ilmiah terbaik, keahlian klinis, dan kondisi individual pasien. Dalam konteks radiologi gigi, radiograf merupakan bukti pasien-spesifik yang membantu diagnosis, perencanaan perawatan, pemantauan, dan komunikasi kasus. Karena itu, kualitas proses tidak berhenti pada akuisisi citra. Bukti harus dapat ditemukan kembali, ditelaah dengan konteks yang tepat, dan dikaitkan dengan catatan klinis secara dapat ditelusuri \sitasi{Penulis tentang evidence-based dentistry, Tahun}.
+
+Teledentistry memperluas kemungkinan konsultasi, triase, pendidikan, dan koordinasi layanan dengan memanfaatkan teknologi informasi dan komunikasi. Namun, keberhasilan teledentistry dipengaruhi oleh kualitas citra, kesiapan infrastruktur, alur kerja, penerimaan pengguna, pelatihan, tata kelola, serta perlindungan data. Komunikasi radiografik yang hanya memindahkan JPEG atau tangkapan layar tidak otomatis memenuhi kebutuhan telaah berbasis bukti, karena konteks seri, kondisi tampilan, dan kemampuan interaktif dapat terlepas dari sumbernya. Oleh sebab itu, konsep komunikasi \textit{lossless} dalam penelitian ini dimaknai secara operasional sebagai akses terkontrol terhadap aset studi dan konteks peninjauannya, bukan sebagai klaim bahwa setiap transmisi jaringan selalu bebas kompresi pada seluruh lapisan sistem \sitasi{Penulis tentang teledentistry, mutu citra, dan keamanan data, Tahun}.
+
+\section{Pencitraan DICOM, Radiograf 2D, dan CBCT}
+
+Digital Imaging and Communications in Medicine (DICOM) menyediakan struktur data dan metadata untuk pertukaran citra medis. Dalam studi gigi, satu folder dapat memuat beberapa seri, objek laporan, gambar 2D, atau ratusan irisan volume. Pengelompokan berdasarkan \texttt{SeriesInstanceUID}, pengurutan irisan berdasarkan \texttt{InstanceNumber} atau posisi pasien, dan pemisahan objek non-citra merupakan prasyarat agar pemrosesan tidak salah menganggap laporan sebagai volume.
+
+Pada prototipe \xcore{}, seri diklasifikasikan berdasarkan modalitas dan jumlah berkas. Modalitas seperti DX, PX, CR, IO, RG, MG, dan XA diperlakukan sebagai kandidat 2D; CT, MR, PT, dan NM sebagai kandidat 3D; sedangkan SR, PR, KO, dan SEG dikecualikan dari konversi citra-volume. Jika metadata modalitas tidak cukup, jumlah berkas menjadi aturan cadangan dengan ambang prototipe lebih dari 10 berkas untuk kandidat 3D. Aturan ini adalah mekanisme rekayasa untuk pengolahan awal, bukan pengganti validasi klinis terhadap jenis pemeriksaan \sitasi{Standar DICOM, Tahun}.
+
+Rekonstruksi CBCT pada \xcore{} mencakup penumpukan irisan menjadi volume, penerapan \textit{rescale slope/intercept} atau normalisasi pseudo-Hounsfield unit, orientasi affine yang saat ini diasumsikan selaras aksial untuk data tertentu, \textit{resampling}, normalisasi intensitas, pemotongan latar depan, dan ekspor VTI terkompresi untuk visualisasi pada peramban. Pengukuran fisik dihitung dengan mengalikan jarak ruang citra dengan \textit{voxel spacing}. Dukungan penuh terhadap akuisisi non-aksial melalui transformasi \texttt{ImageOrientationPatient} merupakan pengembangan lanjutan dan tidak boleh diklaim sudah lengkap.
+
+\section{Sistem Terkini dan Kesenjangan Penelitian}
+
+Sistem pencitraan yang tersedia dapat dikelompokkan secara ringkas ke dalam perangkat lunak vendor, platform pencitraan medis umum, viewer DICOM berbasis web, dan kerangka kerja \xcore{}. Perbandingan pada Tabel~\ref{tab:sota} bersifat analitis; kemampuan produk tertentu harus diverifikasi terhadap versi, konfigurasi, dan kebijakan lisensinya.
+
+\begin{longtable}{p{3.0cm}p{3.7cm}p{3.7cm}p{3.5cm}}
+\caption{Sintesis kritis sistem pencitraan dan posisi X-Core}\label{tab:sota}\\
+\toprule
+\textbf{Kategori} & \textbf{Kekuatan utama} & \textbf{Keterbatasan terhadap kebutuhan penelitian} & \textbf{Posisi X-Core} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Kategori} & \textbf{Kekuatan utama} & \textbf{Keterbatasan terhadap kebutuhan penelitian} & \textbf{Posisi X-Core} \\
+\midrule
+\endhead
+Perangkat lunak bawaan vendor & Integrasi kuat dengan alat akuisisi, preset khusus, dan alur kerja scanner. & Dapat bergantung pada perangkat, lisensi, format, serta stasiun kerja tertentu; dokumentasi lintas-seri dan akses web bervariasi. & Tidak menggantikan fungsi vendor; menyediakan lapisan organisasi, dokumentasi, dan akses web yang dapat melengkapi alur tersebut. \\
+3D Slicer dan platform umum & Visualisasi dan pemrosesan medis sangat kaya, ekstensi luas, serta komunitas riset aktif. & Memerlukan instalasi dan penguasaan antarmuka berorientasi riset; bukan terutama untuk kasus radiologi gigi berbasis web dan laporan klinis persisten. & Mengambil ruang lingkup yang lebih sempit: manajemen studi gigi, anotasi/temuan persisten, dan dokumentasi kasus. \\
+Viewer DICOM berbasis web & Akses peramban dan kemudahan menampilkan citra tanpa instalasi lokal besar. & Tidak selalu mengikat anotasi, pengukuran, data klinis, temuan, snapshot laporan, dan versioning dalam satu kasus. & Menambahkan \textit{Analysis Case}, render kanonis, marker--temuan, dan PDF berversi. \\
+X-Core & Arsitektur tiga lapis, 2D/3D/slice viewer, anotasi dan pengukuran persisten, perbandingan, serta dokumentasi. & Belum tervalidasi klinis, belum terintegrasi PACS/RME produksi, dan benchmark masih terbatas pada satu studi representatif. & Menjadi objek penelitian; klaim dibatasi pada pengembangan dan verifikasi teknis prototipe. \\
+\bottomrule
+\end{longtable}
+
+Kesenjangan yang menjadi dasar penelitian adalah belum tersedianya kerangka kerja modular berbasis web yang secara bersamaan: (a) mengelola studi radiograf gigi 2D dan CBCT/3D; (b) mempersistenkan anotasi dan pengukuran pada lingkup seri/item yang tepat; (c) mengaitkan marker citra dengan temuan terstruktur; dan (d) menghasilkan dokumen laporan dengan snapshot imutabel yang dapat ditelusuri. Kesenjangan ini terutama relevan pada lingkungan yang tidak dapat mengandalkan perangkat lunak perusahaan berbiaya tinggi atau stasiun kerja khusus untuk seluruh pengguna.
+
+\section{Landasan Teori}
+
+\subsection{Pilar I: Teledentistry dan Bukti Klinis yang Dapat Ditelusuri}
+
+Pilar pertama adalah prinsip bahwa bukti radiografik harus tersedia bagi pihak yang berwenang dalam bentuk yang cukup untuk mendukung telaah dan komunikasi. Dalam kerangka ini, integritas bukti mencakup identitas studi, seri, kondisi tampilan yang relevan, anotasi, pengukuran, dan narasi temuan. Pengendalian akses diperlukan agar ketersediaan tidak mengabaikan kerahasiaan dan otorisasi. \xcore{} menerapkan prinsip tersebut melalui pengikatan artefak pada studi/item, otorisasi akses yang ada, dan penyimpanan metadata laporan. Sistem tidak menentukan diagnosis; ia membantu menata bukti yang akan ditafsirkan manusia.
+
+\subsection{Pilar II: Microservices dan Client-Side Rendering untuk Data Medis}
+
+Pilar kedua adalah pemisahan tanggung jawab pada arsitektur layanan. Lapisan persiapan pencitraan melakukan pekerjaan intensif seperti pembacaan DICOM, pengelompokan seri, rekonstruksi volume, normalisasi, dan penyiapan aset browser. Lapisan manajemen data klinis menangani metadata studi, anotasi, pengukuran, kontrol akses, kuota, penyimpanan, dan rekam jejak. Lapisan interaksi klinis menyajikan gallery dan viewer melalui peramban. Pendekatan ini mengurangi kebutuhan pengguna untuk memasang perangkat lunak khusus, tetapi tidak menghapus kebutuhan server yang memadai untuk pekerjaan pemrosesan volume.
+
+\textit{Client-side rendering} pada penelitian ini berarti visualisasi dan interaksi dilakukan oleh peramban menggunakan aset yang sudah dipersiapkan, misalnya citra 2D dan VTI untuk viewer berbasis VTK/vtk.js. Untuk laporan, sistem menggunakan \textit{offscreen/canonical canvas render} dengan dimensi yang ditentukan oleh citra, bukan oleh ukuran panel atau zoom peramban pengguna. Rasio citra dipertahankan, marker ditempatkan dalam koordinat citra, dan hasilnya divalidasi sebelum diterima sebagai render laporan. Dengan demikian, ``ringan'' merujuk pada akses dan interaksi pengguna, bukan klaim bahwa data CBCT tidak membutuhkan sumber daya komputasi.
+
+\subsection{Pilar III: Digital Educational Workflow dalam Informatika Medis}
+
+Pilar ketiga menempatkan sistem sebagai pendukung proses belajar dan supervisi, bukan sebagai mesin pemberi nilai. \textit{Digital educational workflow} memerlukan bukti yang terstruktur: mahasiswa menautkan anotasi dan pengukuran pada citra tertentu, menulis temuan, lalu menghasilkan artefak yang dapat ditinjau pembimbing. Pada \xcore{}, marker bernomor pada satu radiograf terhubung dengan daftar temuan pada item yang sama. Kasus dapat berisi beberapa radiograf, misalnya dua periapikal dan satu panoramik, tanpa mencampurkan anotasinya. PDF menggunakan satu citra utama beranotasi per radiograf; citra bersih hanya bersifat pilihan bila dibutuhkan untuk telaah tambahan.
+
+Snapshot laporan adalah prinsip penting pada pilar ini. Ketika PDF dibuat, sistem menyimpan keadaan kasus, urutan item, temuan, referensi render, dan metadata versi. Perubahan kemudian pada kasus membentuk laporan versi baru dan tidak mengubah checksum atau isi laporan lama. Hal ini mendukung keterlacakan proses pembelajaran dan audit dokumentasi, tetapi persetujuan, supervisi, dan penilaian DPJP tetap membutuhkan kebijakan serta workflow institusional tersendiri.
+
+\subsection{Anotasi, Temuan Terstruktur, dan Render Laporan}
+
+Anotasi adalah objek spasial yang berada pada koordinat citra atau volume; temuan adalah uraian klinis yang merujuk pada anotasi atau pengukuran relevan. Pemisahan ini mencegah teks bebas kehilangan lokasi visualnya. Setiap marker laporan harus memiliki pasangan temuan; marker dapat dimulai kembali dari angka satu pada radiograf lain karena ruang lingkupnya adalah item citra. Pengukuran yang tidak membutuhkan temuan tersendiri tetap dapat disajikan dalam tabel, tetapi harus dapat ditelusuri melalui labelnya.
+
+Render laporan memiliki dua tipe: \texttt{CLEAN} dan \texttt{ANNOTATED}. \texttt{ANNOTATED} digunakan sebagai gambar utama PDF dan mencakup marker, anotasi, pengukuran, serta scale bar jika valid. \texttt{CLEAN} disimpan untuk pembandingan atau lampiran opsional. Render divalidasi terhadap format, dekodabilitas, dimensi minimum, karakteristik luminans/variansi, metadata scope, checksum, dan fingerprint anotasi/temuan. Validasi tidak dimaksudkan menolak radiograf yang secara klinis gelap, melainkan mengidentifikasi placeholder, gambar 1$\times$1, atau citra seragam yang menandakan kegagalan render.
+
+\subsection{AI-Assisted Infrastructure dan Human-in-the-Loop}
+
+Infrastruktur \xcore{} dapat menyediakan konteks terstruktur bagi modul AI, seperti identitas seri, status tampilan, anotasi, dan temuan. Potensi penerapannya mencakup saran auto-anotasi atau dukungan penalaran yang harus ditinjau dokter. Dalam penelitian ini, AI diposisikan sebagai arah arsitektural dan bukan sebagai klaim kinerja diagnostik. Tidak ada hasil sensitivitas, spesifisitas, akurasi diagnosis, atau rekomendasi terapi AI yang dilaporkan. Setiap penerapan AI lanjutan harus dievaluasi secara terpisah terhadap keselamatan, bias, privasi, validitas eksternal, dan pertanggungjawaban klinis \sitasi{Pedoman evaluasi AI klinis, Tahun}.
+
+\section{Penelitian Terdahulu dan Posisi Penelitian}
+
+Penelitian terdahulu tentang digital dentistry menunjukkan manfaat digitalisasi terhadap presisi, komunikasi, dan efisiensi, tetapi juga memperlihatkan bahwa kesiapan infrastruktur, biaya, pelatihan, kualitas citra, dan penerimaan pengguna menentukan keberhasilan implementasi \sitasi{Penulis tentang digital dentistry, Tahun}. Studi teledentistry menekankan akses dan komunikasi layanan, namun hasilnya bergantung pada jenis tugas klinis serta konteks implementasi \sitasi{Penulis tentang systematic review teledentistry, Tahun}. Sementara itu, literatur EDR dan dokumentasi klinis menekankan pentingnya akses informasi mutakhir dan keterlacakan data pasien \sitasi{Penulis tentang electronic dental record, Tahun}.
+
+Posisi penelitian ini adalah pengembangan artefak perangkat lunak yang mengoperasionalkan temuan tersebut pada domain pencitraan gigi: bukan sebagai viewer umum, bukan sebagai PACS penuh, dan bukan sebagai sistem diagnosis AI. Kontribusi yang diuji pada tahap ini ialah koherensi pipeline pengolahan, keberadaan fungsi klinis yang dirancang, persistensi objek analisis, dan performa teknis prototipe. Dampak terhadap efisiensi kerja, kualitas pembelajaran, atau kualitas keputusan klinis harus diuji melalui studi partisipan berikutnya.
+
+\section{Kerangka Berpikir}
+
+Kerangka berpikir penelitian disusun sebagai hubungan sebab-akibat berikut. Kondisi awal berupa keterbatasan perangkat, fragmentasi folder--viewer--catatan, birokrasi dokumentasi pendidikan, dan pertukaran citra terkompresi berpotensi menghasilkan bukti radiografik yang sulit ditelusuri. Masalah tersebut diterjemahkan menjadi kebutuhan sistem: akses web, pemisahan proses berat, pengelolaan studi/seri, anotasi dan pengukuran persisten, dokumentasi berbasis item citra, serta kontrol akses.
+
+Intervensi penelitian adalah pengembangan \xcore{} dengan arsitektur tiga lapis. Layanan persiapan mengubah data mentah menjadi aset yang dapat ditinjau; layanan data mengikat metadata dan artefak klinis; antarmuka web mendukung interaksi. Pada lapisan dokumentasi, \textit{Analysis Case} menggabungkan beberapa radiograf dalam satu kasus dan menjaga isolasi anotasi antar-item. Render kanonis serta PDF berversi menghubungkan gambar aktual dengan marker dan temuan. Keluaran langsung yang diamati pada penelitian ini adalah keberhasilan fungsi, struktur data, dan metrik performa teknis. Keluaran antara yang perlu diuji kemudian adalah pengurangan langkah kerja dan peningkatan kelengkapan dokumentasi. Dampak klinis atau pendidikan tidak disimpulkan tanpa studi pengguna.
+
+Secara ringkas, alurnya adalah: \textit{fragmentasi dan keterbatasan infrastruktur} $\rightarrow$ \textit{kebutuhan organisasi bukti pencitraan} $\rightarrow$ \textit{pengembangan X-Core tiga lapis dan Analysis Case} $\rightarrow$ \textit{verifikasi fungsi, persistensi, dan benchmark teknis} $\rightarrow$ \textit{hipotesis peningkatan efisiensi workflow dan keterlacakan dokumentasi yang diuji pada penelitian lanjutan}.
+
+\chapter{METODOLOGI PENELITIAN}
+\label{bab:metodologi}
+
+\section{Jenis dan Desain Penelitian}
+
+Penelitian ini menggunakan desain penelitian pengembangan berorientasi eksperimen (\textit{development-oriented experimental research}) dengan model pengembangan iteratif berbasis prototipe. Model ini dipilih karena objek utama penelitian adalah artefak perangkat lunak \xcore{} yang harus dirancang, dibangun, diverifikasi fungsinya, dan diukur karakteristik teknisnya sebelum dinilai dalam konteks pengguna. Pendekatan iteratif sesuai dengan arsitektur tiga lapis karena perubahan pada antarmuka klinis, layanan data, dan pipeline pencitraan dapat diuji serta diperbaiki secara bertahap tanpa mengharuskan seluruh sistem ditulis ulang.
+
+Penelitian terdiri atas dua lingkup evaluasi. Lingkup yang dilaporkan sebagai hasil teknis adalah verifikasi fungsi dan benchmark prototipe pada dataset studi CBCT representatif. Lingkup yang dirancang untuk penelitian lanjutan adalah evaluasi skenario berbasis pengguna untuk membandingkan workflow manual dengan workflow yang didukung \xcore{}. Pemisahan ini penting agar hasil benchmark sistem tidak ditafsirkan sebagai bukti manfaat klinis atau efektivitas pendidikan.
+
+\section{Tahapan Pengembangan Sistem}
+
+Tahapan iteratif yang digunakan adalah sebagai berikut.
+\begin{enumerate}[label=\arabic*.]
+  \item \textbf{Analisis kebutuhan.} Kebutuhan diturunkan dari alur upload studi, pengelolaan seri, peninjauan 2D/3D, navigasi slice, anotasi, pengukuran, perbandingan, kontrol akses, dan dokumentasi.
+  \item \textbf{Perancangan arsitektur dan kontrak data.} Sistem dibagi menjadi lapisan interaksi klinis, manajemen data klinis, dan persiapan pencitraan. Pada fase ini dirancang juga scope anotasi berdasarkan \texttt{study\_id}, \texttt{series\_uid}, tipe viewer, dan bila tersedia identitas instance.
+  \item \textbf{Implementasi prototipe.} Antarmuka React membangun gallery dan viewer; Node.js/Prisma/PostgreSQL mengelola data; Python/FastAPI dan pustaka pencitraan memproses DICOM/CBCT menjadi aset browser.
+  \item \textbf{Implementasi Analysis Case dan laporan.} Kasus multi-citra, temuan terstruktur, marker, render kanonis \texttt{CLEAN}/\texttt{ANNOTATED}, preflight freshness, snapshot imutabel, checksum SHA-256, dan versioning PDF diimplementasikan pada fondasi yang sama.
+  \item \textbf{Verifikasi dan perbaikan iteratif.} Setiap fungsi diuji terhadap skenario, data disimpan dan dibuka kembali, serta error render atau persistensi ditangani tanpa menggunakan state peramban sebagai sumber data klinis utama.
+  \item \textbf{Benchmark teknis.} Pipeline diuji berulang pada studi CBCT representatif; hasil diringkas dengan rata-rata dan simpangan baku.
+\end{enumerate}
+
+\section{Objek, Data, dan Sumber Data}
+
+Objek penelitian adalah prototipe \xcore{} beserta pipeline pengolahan studi pencitraan gigi. Data primer teknis berupa satu folder studi CBCT representatif yang digunakan untuk benchmark. Folder tersebut berukuran total 1467,77 MB dan memuat 550 berkas rekonstruksi. Untuk melindungi privasi, naskah tesis tidak perlu memuat identitas pasien, nama berkas, atau metadata pengenal. Dataset harus diperoleh dan digunakan sesuai persetujuan akses, kebijakan institusi, serta prosedur de-identifikasi yang berlaku \sitasi{Pedoman etika penggunaan data DICOM untuk penelitian, Tahun}.
+
+Data evaluasi terdiri atas: (a) log waktu ingest dan registrasi studi; (b) log waktu persiapan volume 3D; (c) log waktu render irisan aksial, koronal, dan sagital; (d) penggunaan memori RSS puncak pada pemrosesan volume; (e) hasil klasifikasi seri 3D dibanding label rujukan; (f) keberhasilan pemrosesan setiap pengulangan; serta (g) bukti verifikasi fungsi berupa keluaran modul dan data persisten. Bila evaluasi pengguna dilakukan kemudian, data tambahannya mencakup waktu penyelesaian tugas, tingkat keberhasilan tugas, kelengkapan dokumentasi, jumlah langkah, dan skor usability.
+
+\section{Arsitektur Sistem dan Alur Data}
+
+Arsitektur \xcore{} memiliki tiga lapisan.
+\begin{enumerate}[label=\arabic*.]
+  \item \textbf{Clinical Interaction Layer}: portal dokter gigi berbasis React yang memfasilitasi upload, gallery, viewer 2D, viewer 3D, slice viewer, anotasi, pengukuran, perbandingan, workspace kasus, dan tindakan pembuatan laporan.
+  \item \textbf{Clinical Data Management Layer}: layanan Node.js dengan Prisma dan PostgreSQL untuk metadata studi, relasi pasien, anotasi, pengukuran, \textit{Analysis Case}, render, laporan, snapshot, checksum, storage, serta otorisasi.
+  \item \textbf{Imaging Preparation Layer}: layanan Python/FastAPI dengan pydicom, NumPy, OpenCV, MONAI, dan VTK/vtk.js untuk pembacaan DICOM, klasifikasi seri, rekonstruksi volume, ekstraksi slice, dan penyiapan VTI atau aset citra bagi peramban.
+\end{enumerate}
+
+Alur data dimulai dari folder studi yang dipindai secara rekursif. Berkas dikelompokkan menurut \texttt{SeriesInstanceUID}, diklasifikasikan, lalu diproses sesuai tipe. Aset yang sudah dipersiapkan diregistrasikan beserta metadata dan link viewer. Ketika pengguna membuat anotasi atau pengukuran, sistem menyimpannya dengan scope seri/item; perpindahan antar-citra tidak boleh menyalin anotasi ke item lain. Pada kasus analisis, pengguna memilih beberapa item radiografi satu pasien, menetapkan jenis radiografi dan nomor gigi, lalu mengisi temuan. Render laporan dibuat dari viewer menggunakan dimensi kanonis, divalidasi backend, dan disimpan. PDF dibuat hanya apabila semua item siap dan fingerprint render masih sesuai dengan keadaan anotasi/temuan yang tersimpan.
+
+\section{Prosedur Pengolahan Citra}
+
+Untuk seri 3D, volume $V(z,y,x)$ dibentuk dari irisan yang telah diurutkan. Intensitas dinormalisasi pada rentang yang dibatasi:
+\begin{equation}
+\hat{V}=\operatorname{clip}\left(\frac{V-H_{\min}}{H_{\max}-H_{\min}},0,1\right),
+\end{equation}
+dengan $H_{\min}=-1000$ HU dan $H_{\max}=3000$ HU pada prototipe. Volume kemudian dapat di-\textit{resample}, dipotong pada latar depan, dan diekspor sebagai VTI terkompresi. Untuk pengukuran polyline 3D, panjang fisik dihitung dengan:
+\begin{equation}
+L_{3D}=\sum_{i=1}^{n-1}\left\|(\mathbf{p}_{i+1}-\mathbf{p}_{i})\odot\mathbf{s}\right\|_2,
+\end{equation}
+dengan $\mathbf{s}=(s_x,s_y,s_z)$ sebagai voxel spacing. Pengukuran 2D menggunakan bentuk yang setara pada bidang citra. Formula ini menjelaskan transformasi koordinat ke skala milimeter; validitas klinis pengukuran tetap dipengaruhi metadata DICOM, kalibrasi, dan kualitas akuisisi.
+
+\section{Prosedur Pembuatan dan Validasi Laporan}
+
+Prosedur laporan \textit{Analysis Case} dilakukan sebagai berikut.
+\begin{enumerate}[label=\arabic*.]
+  \item Pengguna membuka item radiografi dan menyelesaikan anotasi, pengukuran, marker, serta temuan.
+  \item Anotasi dan pengukuran disimpan ke backend. Kegagalan simpan menghentikan capture; sistem tidak menggunakan state memori sebagai pengganti data persisten untuk laporan.
+  \item Pengguna menjalankan tindakan pembaruan gambar laporan. Canvas kanonis merender radiograf aktual dengan mode \textit{fit image}, mempertahankan rasio, dan menambahkan anotasi, pengukuran, scale bar yang valid, serta marker pasangan temuan.
+  \item Frontend mengirim render \texttt{CLEAN} dan \texttt{ANNOTATED}, metadata tampilan, serta fingerprint/annotation revision ke endpoint item kasus yang telah berotorisasi.
+  \item Backend memvalidasi dekodabilitas, ukuran, karakteristik citra, scope kasus--item--studi--seri, jenis render, dan checksum. Render yang 1$\times$1, seragam, kosong, atau tidak sesuai scope ditolak. Citra gelap yang memiliki variasi tekstur tidak diperlakukan sebagai placeholder hitam.
+  \item Sebelum PDF dibuat, preflight memeriksa kelengkapan item, keterhubungan marker--temuan, dan kesegaran fingerprint. Render stale mencegah pembuatan PDF sampai item diperbarui.
+  \item Backend membentuk snapshot imutabel dan menghasilkan PDF baru dengan nomor versi berikutnya. Versi terdahulu, lokasi file, checksum, dan urutan item tidak ditimpa.
+\end{enumerate}
+
+\section{Rancangan Pengujian dan Metrik Evaluasi}
+
+\subsection{Setup Benchmark Teknis}
+
+Benchmark dilakukan pada satu folder CBCT representatif, dengan lima pengulangan yang berhasil. Setiap pengulangan dimulai dari kondisi penyimpanan benchmark yang dibersihkan secara terkendali tanpa menghapus folder sumber asli. Lingkungan perangkat keras, versi sistem operasi, versi layanan, konfigurasi resource, dan metode pencatatan waktu harus dicatat pada laporan final karena tidak dicantumkan secara lengkap dalam draf artikel sumber.
+
+Tabel~\ref{tab:benchmark} menyajikan parameter dan hasil yang diekstrak dari naskah sumber. Nilai ditulis sebagai rata-rata $\pm$ simpangan baku dari lima pengulangan. Nilai tersebut adalah karakteristik prototipe pada dataset yang digunakan, bukan service-level agreement produksi.
+
+\begin{longtable}{p{5.7cm}p{2.0cm}p{4.4cm}}
+\caption{Parameter benchmark teknis X-Core}\label{tab:benchmark}\\
+\toprule
+\textbf{Metrik} & \textbf{Satuan} & \textbf{Hasil/Definisi} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Metrik} & \textbf{Satuan} & \textbf{Hasil/Definisi} \\
+\midrule
+\endhead
+Ukuran folder studi & MB & 1467,77; 550 berkas rekonstruksi. \\
+Jumlah pengulangan berhasil & kali & 5. \\
+Latensi ingest data dan registrasi studi & s & $8{,}62 \pm 6{,}04$; dari proses penerimaan/pemindaian sampai studi tercatat. \\
+Latensi persiapan volume dental 3D & s & $7{,}03 \pm 1{,}96$; mencakup tahap pipeline volume yang diukur. \\
+Latensi render slice aksial & ms & $1226{,}20 \pm 371{,}44$. \\
+Latensi render slice koronal & ms & $559{,}60 \pm 47{,}45$. \\
+Latensi render slice sagital & ms & $556{,}00 \pm 43{,}75$. \\
+RSS memori puncak pemrosesan volume & MB & $1586{,}93 \pm 265{,}94$. \\
+Kesepakatan ketat klasifikasi 3D & \% & 100,0; prediksi klasifikasi sama dengan label rujukan. \\
+Tingkat keberhasilan pemrosesan & \% & 100,0; seluruh pengulangan benchmark berhasil menyelesaikan pipeline. \\
+\bottomrule
+\end{longtable}
+
+Untuk setiap metrik waktu $t_i$ pada $n=5$ pengulangan, rata-rata dan simpangan baku dihitung sebagai:
+\begin{equation}
+\bar{t}=\frac{1}{n}\sum_{i=1}^{n}t_i,\qquad s=\sqrt{\frac{1}{n-1}\sum_{i=1}^{n}(t_i-\bar{t})^2}.
+\end{equation}
+Kesepakatan klasifikasi ketat dihitung sebagai $A=(c/n)\times100\%$, dengan $c$ jumlah hasil yang tepat sama dengan label rujukan. Tingkat keberhasilan pemrosesan dihitung sebagai $S=(r/n)\times100\%$, dengan $r$ jumlah pengulangan yang selesai tanpa kegagalan pipeline.
+
+\subsection{Verifikasi Fungsional}
+
+Verifikasi fungsional dilakukan dengan skenario yang menguji: upload folder, ekstraksi metadata, klasifikasi seri, render 2D, konversi/visualisasi 3D, navigasi axial--coronal--sagittal, persistensi anotasi, persistensi pengukuran, perbandingan seri, dan dokumentasi. Untuk \textit{Analysis Case}, pengujian ditambah dengan pembukaan kasus satu citra lama, penyimpanan dua periapikal dan satu panoramik, isolasi anotasi antar-item, refresh halaman, urutan citra, preflight render stale, marker--temuan, versioning PDF, imutabilitas snapshot, serta penolakan akses lintas pengguna atau pasien.
+
+Pengujian PDF tidak hanya memeriksa keberadaan file. Artefak PDF dirender menjadi PNG untuk pemeriksaan visual terhadap keterlihatan radiograf, marker, rasio citra, orientasi, margin, header/footer, nomor halaman, keterbacaan teks, serta ketiadaan area hitam kosong yang dominan akibat kesalahan viewport. Untuk laporan multi-citra, satu radiograf harus menghasilkan satu citra utama beranotasi; gambar bersih tidak diulang secara default. Hasil uji disertai checksum dan referensi snapshot untuk memastikan versi lama tetap identik setelah kasus diubah.
+
+\subsection{Rancangan Evaluasi Workflow Lanjutan}
+
+Apabila penelitian dilanjutkan ke evaluasi pengguna, desain dapat menggunakan perbandingan kondisi baseline manual dan kondisi \xcore{} pada tugas terstruktur: (T1) upload/identifikasi studi, (T2) menemukan metadata pasien dan seri, (T3) membuka serta meninjau seri 2D/3D, (T4) membuat anotasi dan pengukuran, serta (T5) menyiapkan ringkasan dokumentasi. Variabel bebas adalah kondisi workflow. Variabel terikat meliputi waktu penyelesaian, tingkat keberhasilan, kelengkapan dokumentasi, jumlah perpindahan langkah/perangkat, dan skor usability. Sampel, kriteria inklusi, persetujuan etik, instrumen, serta metode analisis statistik harus ditetapkan dan mendapat persetujuan institusi sebelum pengambilan data.
+
+\section{Teknik Analisis Data}
+
+Data kuantitatif benchmark dianalisis secara deskriptif menggunakan rata-rata, simpangan baku, nilai minimum, maksimum, dan tingkat keberhasilan. Log kegagalan dicatat menurut tahap pipeline agar kegagalan ingest, persiapan volume, render slice, penyimpanan anotasi, validasi render, dan pembuatan laporan tidak disatukan menjadi satu kategori umum. Data verifikasi fungsional dianalisis dengan status lulus/gagal dan bukti keluaran. Untuk studi pengguna lanjutan, pemilihan uji statistik harus disesuaikan dengan distribusi data, rancangan berpasangan, dan ukuran sampel; penelitian ini tidak melaporkan hasil uji tersebut.
+
+\section{Keabsahan, Keamanan, dan Etika Penelitian}
+
+Keabsahan konstrak dijaga dengan mendefinisikan setiap metrik secara operasional dan mencatat titik awal/akhir pengukuran. Keandalan pengukuran ditingkatkan melalui pengulangan benchmark dan pencatatan konfigurasi yang konsisten. Validitas eksternal masih terbatas karena satu studi CBCT representatif tidak mencakup variasi scanner, ukuran volume, kualitas akuisisi, ataupun beban pengguna bersamaan. Oleh karena itu, generalisasi harus dibatasi secara eksplisit.
+
+Data DICOM dan radiograf adalah data sensitif. Dataset pengujian harus dide-identifikasi, dibatasi aksesnya, dan tidak dimasukkan ke repository atau artefak publik. Kontrol akses aplikasi harus memverifikasi bahwa pengguna memiliki hak terhadap kasus dan seluruh item studi. Laporan PDF memuat hanya identitas pasien yang diizinkan, menyimpan checksum dan lokasi file secara aman, serta tidak boleh mengubah snapshot versi lama. Penggunaan AI di masa depan memerlukan evaluasi keamanan, persetujuan, dan tata kelola tersendiri.
+
+\end{document}

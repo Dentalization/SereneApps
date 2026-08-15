@@ -117,6 +117,12 @@ test('render metadata keeps CLEAN and ANNOTATED distinct and validates marker co
     { item: { ...items[0], source_kind: 'STATIC_JPG' }, renderType: 'ANNOTATED' }
   );
   assert.equal(normalizedWithKind.source_kind, 'STATIC_JPG');
+  const normalizedWithoutWindowing = normalizeRenderMetadata(
+    { ...base, window_center: null, window_width: null },
+    { item: items[0], renderType: 'ANNOTATED' },
+  );
+  assert.equal(normalizedWithoutWindowing.window_center, null);
+  assert.equal(normalizedWithoutWindowing.window_width, null);
 });
 
 test('fingerprint changes after annotation or finding changes and marks render stale', () => {
@@ -233,4 +239,3 @@ test('instance-level imaging migration 062 adds columns and unique constraints',
   assert.match(migration, /ADD COLUMN IF NOT EXISTS source_instance_key/);
   assert.match(migration, /xcore_analysis_case_items_instance_unique/);
 });
-

@@ -43,20 +43,42 @@ export const normalizeAnnotationForPersistence = (annotation, scope = {}) => {
   };
 };
 
-export const buildAnnotationSavePayload = ({ seriesUid, viewerType, annotations, deletedAnnotationIds = [] }) => ({
-  series_uid: seriesUid,
-  viewer_type: viewerType,
-  annotations: Array.isArray(annotations) ? annotations : [],
-  deleted_annotation_ids: Array.isArray(deletedAnnotationIds) ? deletedAnnotationIds : [],
-});
+export const buildAnnotationSavePayload = ({
+  seriesUid,
+  viewerType,
+  sourceInstanceKey,
+  source_instance_key,
+  sopInstanceUid,
+  sop_instance_uid,
+  annotations,
+  deletedAnnotationIds = [],
+}) => {
+  const key = sourceInstanceKey || source_instance_key;
+  const sop = sopInstanceUid || sop_instance_uid;
+  return {
+    series_uid: seriesUid,
+    viewer_type: viewerType,
+    ...(key ? { source_instance_key: key } : {}),
+    ...(sop ? { sop_instance_uid: sop } : {}),
+    annotations: Array.isArray(annotations) ? annotations : [],
+    deleted_annotation_ids: Array.isArray(deletedAnnotationIds) ? deletedAnnotationIds : [],
+  };
+};
 
-export const loadStudyAnnotations = async (studyId, { seriesUid, viewerType, tooth, reviewStatus } = {}) => {
+export const loadStudyAnnotations = async (
+  studyId,
+  { seriesUid, viewerType, sourceInstanceKey, source_instance_key, sopInstanceUid, sop_instance_uid, tooth, reviewStatus } = {}
+) => {
   if (!studyId || !seriesUid || !viewerType) return [];
 
   const params = new URLSearchParams({
     series_uid: seriesUid,
     viewer_type: viewerType,
   });
+  const key = sourceInstanceKey || source_instance_key;
+  const sop = sopInstanceUid || sop_instance_uid;
+  if (key) params.set('source_instance_key', String(key));
+  if (sop) params.set('sop_instance_uid', String(sop));
   if (tooth) params.set('tooth', String(tooth));
   if (reviewStatus) params.set('review_status', reviewStatus);
 
@@ -74,7 +96,7 @@ export const loadStudyAnnotations = async (studyId, { seriesUid, viewerType, too
 
 export const saveStudyAnnotations = async (
   studyId,
-  { seriesUid, viewerType, annotations, deletedAnnotationIds = [] },
+  { seriesUid, viewerType, sourceInstanceKey, source_instance_key, sopInstanceUid, sop_instance_uid, annotations, deletedAnnotationIds = [] },
   options = {}
 ) => {
   if (!studyId || !seriesUid || !viewerType) return null;
@@ -82,6 +104,8 @@ export const saveStudyAnnotations = async (
   const body = JSON.stringify(buildAnnotationSavePayload({
     seriesUid,
     viewerType,
+    sourceInstanceKey: sourceInstanceKey || source_instance_key,
+    sopInstanceUid: sopInstanceUid || sop_instance_uid,
     annotations,
     deletedAnnotationIds,
   }));

@@ -29,6 +29,12 @@ function stringValue(value, maxLength) {
   return result.slice(0, maxLength);
 }
 
+function optionalFiniteNumber(value) {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function normalizeStructuredFindings(value = []) {
   if (value == null) return [];
   if (!Array.isArray(value)) {
@@ -211,8 +217,8 @@ export function normalizeRenderMetadata(metadata, { item, renderType }) {
     source_height: Number(metadata.source_height ?? metadata.sourceHeight) || null,
     render_width: Number(metadata.render_width ?? metadata.renderWidth) || null,
     render_height: Number(metadata.render_height ?? metadata.renderHeight) || null,
-    window_center: Number.isFinite(Number(metadata.window_center ?? metadata.windowCenter)) ? Number(metadata.window_center ?? metadata.windowCenter) : null,
-    window_width: Number.isFinite(Number(metadata.window_width ?? metadata.windowWidth)) ? Number(metadata.window_width ?? metadata.windowWidth) : null,
+    window_center: optionalFiniteNumber(metadata.window_center ?? metadata.windowCenter),
+    window_width: optionalFiniteNumber(metadata.window_width ?? metadata.windowWidth),
     invert: Boolean(metadata.invert ?? metadata.inverted),
     rotation: Number(metadata.rotation) || 0,
     slice_index: Number.isInteger(Number(metadata.slice_index ?? metadata.sliceIndex)) ? Number(metadata.slice_index ?? metadata.sliceIndex) : null,

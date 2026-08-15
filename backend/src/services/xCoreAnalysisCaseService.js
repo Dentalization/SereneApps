@@ -99,7 +99,7 @@ async function loadScopedAnnotations(item, client = prisma) {
       WHERE study_id=${studyId}
         AND series_uid=${seriesUid}
         AND viewer_type=${viewerType}
-        AND (source_instance_key=${sourceInstanceKey} OR source_instance_key IS NULL OR source_instance_key=${`series:${seriesUid}:legacy`})
+        AND source_instance_key=${sourceInstanceKey}
       ORDER BY created_at ASC, id ASC
     `);
   } else {
@@ -111,6 +111,7 @@ async function loadScopedAnnotations(item, client = prisma) {
       WHERE study_id=${studyId}
         AND series_uid=${seriesUid}
         AND viewer_type=${viewerType}
+        AND (source_instance_key IS NULL OR source_instance_key=${`series:${seriesUid}:legacy`})
       ORDER BY created_at ASC, id ASC
     `);
   }
