@@ -8,11 +8,24 @@ import SeriesSidebar from './SeriesSidebar';
 import LinkedViewer from './LinkedViewer';
 import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 
+const resolveInitialViewMode = (targetStudy, isAnalysisContext) => {
+    const seriesType = targetStudy?.selectedSeriesType;
+    const classification = targetStudy?.classification;
+    const modality = targetStudy?.modality;
+    const is3D = seriesType === '3D Volume' || seriesType === '3D' || classification === '3D';
+    const is2D = seriesType === '2D Image' || seriesType === '2D' || classification === '2D' || modality === 'Panoramic' || modality === 'Cephalometric' || modality === 'OPG';
+
+    if (isAnalysisContext && is3D) return 'slice';
+    if (is3D) return '3d';
+    if (is2D) return '2d';
+    return '2d';
+};
+
 const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnabled = false, analysisCaseContext = null, onCaptureForCase = null }) => {
     const [activeStudy, setActiveStudy] = useState(study);
     const { allSeries } = useSeriesList(activeStudy);
     const [showSeriesSelector, setShowSeriesSelector] = useState(false);
-    const [viewMode, setViewMode] = useState('auto'); // 'auto', '3d', 'slice', '2d'
+    const [viewMode, setViewMode] = useState(() => resolveInitialViewMode(study, Boolean(analysisCaseContext)));
     const parentWrapperRef = useRef(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
 

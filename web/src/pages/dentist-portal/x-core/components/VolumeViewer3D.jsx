@@ -1342,8 +1342,6 @@ const VolumeViewer3D = ({
         let renderRaf = 0;
         let lastProjectionStateTime = 0;
         const bumpProjection = () => {
-            updateMeasurementLabelPositionsRef.current?.();
-
             const now = performance.now();
             if (now - lastProjectionStateTime < 50) return;
             if (renderRaf) return;

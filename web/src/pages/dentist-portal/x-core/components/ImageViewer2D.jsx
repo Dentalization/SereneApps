@@ -672,6 +672,19 @@ const ImageViewer2D = ({
     }, []);
 
     useEffect(() => {
+        const img = imgRef.current;
+        if (img && img.complete && img.naturalWidth > 0) {
+            setImageLoaded(true);
+            setImageError(false);
+            setImageSize({
+                width: img.naturalWidth,
+                height: img.naturalHeight,
+            });
+            window.requestAnimationFrame?.(syncImageBounds);
+        }
+    }, [displayedImageUrl, syncImageBounds]);
+
+    useEffect(() => {
         if (measureMode) return;
         setPendingPoint(null);
         setPreviewPoint(null);
@@ -1951,7 +1964,7 @@ const ImageViewer2D = ({
                         transition: 'none',
                         width: imageSize.width || undefined,
                         height: imageSize.height || undefined,
-                        display: imageLoaded ? 'block' : 'none',
+                        visibility: imageLoaded ? 'visible' : 'hidden',
                     }}
                 >
                     <img

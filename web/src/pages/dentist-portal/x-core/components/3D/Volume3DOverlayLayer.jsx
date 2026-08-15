@@ -403,6 +403,31 @@ const MeasurementPreviewLayer = memo(function MeasurementPreviewLayer({
   );
 });
 
+const HoverTooltip = memo(function HoverTooltip({
+  hoveredAnnotation,
+  hoverPosition,
+  visible,
+}) {
+  if (!visible || !hoveredAnnotation || !hoverPosition) return null;
+
+  return (
+    <div
+      className="pointer-events-none fixed z-[200] rounded-xl border border-white/15 bg-slate-950/95 px-3 py-2 text-xs text-white shadow-2xl backdrop-blur"
+      style={{ left: hoverPosition.x + 12, top: hoverPosition.y - 8 }}
+    >
+      <div className="flex items-center gap-1.5 font-semibold text-slate-200">
+        <AppIcon name="Info" size={11} className="text-cyan-400" />
+        {hoveredAnnotation.metadata?.finding_type || hoveredAnnotation.type || 'Annotation'}
+      </div>
+      {hoveredAnnotation.metadata?.severity && (
+        <div className="mt-0.5 text-[10px] text-slate-400">
+          Severity: {hoveredAnnotation.metadata.severity}
+        </div>
+      )}
+    </div>
+  );
+});
+
 export default function Volume3DOverlayLayer({
   annotateMode,
   annotationTool,
@@ -448,17 +473,18 @@ export default function Volume3DOverlayLayer({
       <ProjectedAnnotationsGroup
         annotations={projectedSnapshotWorldOverlayAnnotations}
         strokeWidth="2"
-        includeText={true}
-        hoverHandlers={hoverHandlers}
-        className="pointer-events-none absolute inset-0 z-[14]"
+        strokeDasharray="6 4"
+        opacity={0.88}
+        onHoverEnter={hoverHandlers.onEnter}
+        onHoverMove={hoverHandlers.onMove}
+        onHoverLeave={hoverHandlers.onLeave}
       />
 
       <ProjectedAnnotationsGroup
         annotations={projectedWorldOverlayAnnotations}
-        strokeWidth="2.25"
-        includeText={true}
-        hoverHandlers={hoverHandlers}
-        className="pointer-events-none absolute inset-0 z-[15]"
+        onHoverEnter={hoverHandlers.onEnter}
+        onHoverMove={hoverHandlers.onMove}
+        onHoverLeave={hoverHandlers.onLeave}
       />
 
       <WorldOverlayPreviewLayer preview={worldOverlayPreview} />
@@ -466,35 +492,29 @@ export default function Volume3DOverlayLayer({
       {textDraft3D && textDraftScreenPoint && (
         <div
           data-xcore-ui="true"
-          className="absolute z-[82] -translate-y-1/2"
-          style={{
-            left: textDraftScreenPoint.x,
-            top: textDraftScreenPoint.y,
-          }}
+          className="absolute z-30"
+          style={{ left: textDraftScreenPoint.x, top: textDraftScreenPoint.y }}
         >
-          <input
-            type="text"
-            value={textDraft3D.value}
-            onChange={(event) => setTextDraft3D((current) => current ? { ...current, value: event.target.value } : current)}
-            onBlur={(event) => commitTextDraft3D(event.target.value)}
-            onPointerDown={stopUiEvent}
-            onClick={stopUiEvent}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                event.stopPropagation();
-                commitTextDraft3D(textDraft3D.value);
-              }
-              if (event.key === 'Escape') {
-                event.preventDefault();
-                event.stopPropagation();
-                setTextDraft3D(null);
-              }
-            }}
-            placeholder="Add note"
-            autoFocus
-            className="w-40 rounded-lg border border-slate-600 bg-slate-900/95 px-3 py-1.5 text-xs text-white outline-none"
-          />
+          <div className="flex items-center gap-1 rounded-lg border border-cyan-500/40 bg-slate-900/90 p-1 shadow-xl backdrop-blur">
+            <input
+              type="text"
+              autoFocus
+              value={textDraft3D.text}
+              placeholder="Label..."
+              className="w-32 bg-transparent px-2 py-0.5 text-xs text-white placeholder-slate-400 focus:outline-none"
+              onChange={(e) => setTextDraft3D({ ...textDraft3D, text: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitTextDraft3D();
+                if (e.key === 'Escape') setTextDraft3D(null);
+              }}
+            />
+            <button
+              onClick={commitTextDraft3D}
+              className="rounded bg-cyan-600 px-2 py-0.5 text-xs font-semibold text-white hover:bg-cyan-500"
+            >
+              OK
+            </button>
+          </div>
         </div>
       )}
 
@@ -537,22 +557,11 @@ export default function Volume3DOverlayLayer({
         </div>
       )}
 
-      {hoveredAnnotation && hoverPosition && !annotateMode && (
-        <div
-          className="pointer-events-none fixed z-[200] rounded-xl border border-white/15 bg-slate-950/95 px-3 py-2 text-xs text-white shadow-2xl backdrop-blur"
-          style={{ left: hoverPosition.x + 12, top: hoverPosition.y - 8 }}
-        >
-          <div className="flex items-center gap-1.5 font-semibold text-slate-200">
-            <AppIcon name="Info" size={11} className="text-cyan-400" />
-            {hoveredAnnotation.metadata?.finding_type || hoveredAnnotation.type || 'Annotation'}
-          </div>
-          {hoveredAnnotation.metadata?.severity && (
-            <div className="mt-0.5 text-[10px] text-slate-400">
-              Severity: {hoveredAnnotation.metadata.severity}
-            </div>
-          )}
-        </div>
-      )}
+      <HoverTooltip
+        hoveredAnnotation={hoveredAnnotation}
+        hoverPosition={hoverPosition}
+        visible={!annotateMode}
+      />
     </>
   );
 }

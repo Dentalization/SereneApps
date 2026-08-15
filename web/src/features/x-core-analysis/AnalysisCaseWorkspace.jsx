@@ -635,34 +635,51 @@ function FindingEditor({ item, onChange }) {
         const isMeasurement = (type) => ['measurement', 'distance', 'line', 'polyline', 'angle', 'area', 'calibration', 'ruler', 'length'].includes(String(type || '').toLowerCase());
         const clinicalAnnotations = rows.filter((r) => !isMeasurement(r.type) && r.metadata?.clinical_record_type !== 'measurement');
 
-        if (clinicalAnnotations.length > 0) {
-          const currentFindings = item.structured_findings || [];
-          const existingMap = new Map(currentFindings.filter(f => f.annotation_id).map(f => [String(f.annotation_id), f]));
+        const currentFindings = item.structured_findings || [];
+        const existingAnnotationIds = new Set(
+          currentFindings.filter(f => f.annotation_id).map(f => String(f.annotation_id))
+        );
+        const unlinkedAnnotations = clinicalAnnotations.filter(
+          ann => !existingAnnotationIds.has(String(ann.id))
+        );
 
+        if (currentFindings.length === 0 && clinicalAnnotations.length > 0) {
           const autoFindings = clinicalAnnotations.map((annotation, index) => {
-            const existing = existingMap.get(String(annotation.id));
             const details = extractAnnotationDetails(annotation);
             return {
-              id: existing?.id || newId(),
-              marker_number: existing?.marker_number || (index + 1),
+              id: newId(),
+              marker_number: index + 1,
               annotation_id: annotation.id,
               measurement_id: null,
-              region: details.region || existing?.region || 'Regio tidak spesifik',
-              tooth_numbers: details.region?.includes('Gigi') ? [details.region.replace('Gigi ', '')] : (existing?.tooth_numbers || item.tooth_numbers || []),
-              title: existing?.title || details.title || 'Temuan Radiografi',
-              description: existing?.description || details.description || 'Anotasi klinis terdeteksi.',
+              region: details.region || 'Regio tidak spesifik',
+              tooth_numbers: details.region?.includes('Gigi') ? [details.region.replace('Gigi ', '')] : (item.tooth_numbers || []),
+              title: details.title || 'Temuan Radiografi',
+              description: details.description || 'Anotasi klinis terdeteksi.',
               annotation_type: annotation.type || annotation.annotation_type || null,
-              display_order: existing?.display_order ?? index,
+              display_order: index,
             };
           });
-
-          currentFindings.forEach((f) => {
-            if (!f.annotation_id || !clinicalAnnotations.some((ann) => String(ann.id) === String(f.annotation_id))) {
-              autoFindings.push(f);
-            }
-          });
-
           onChange(autoFindings);
+        } else if (unlinkedAnnotations.length > 0) {
+          let maxMarker = Math.max(0, ...currentFindings.map(f => Number(f.marker_number) || 0));
+          const newFindings = unlinkedAnnotations.map((annotation, i) => {
+            maxMarker += 1;
+            const details = extractAnnotationDetails(annotation);
+            return {
+              id: newId(),
+              marker_number: maxMarker,
+              annotation_id: annotation.id,
+              measurement_id: null,
+              region: details.region || 'Regio tidak spesifik',
+              tooth_numbers: details.region?.includes('Gigi') ? [details.region.replace('Gigi ', '')] : (item.tooth_numbers || []),
+              title: details.title || 'Temuan Radiografi',
+              description: details.description || 'Anotasi klinis terdeteksi.',
+              annotation_type: annotation.type || annotation.annotation_type || null,
+              display_order: currentFindings.length + i,
+            };
+          });
+          const validCurrent = currentFindings.filter(f => !f.annotation_id || clinicalAnnotations.some(ann => String(ann.id) === String(f.annotation_id)));
+          onChange([...validCurrent, ...newFindings]);
         }
       })
       .catch((loadError) => { if (!cancelled) setError(loadError.message); })

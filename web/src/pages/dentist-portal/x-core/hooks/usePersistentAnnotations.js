@@ -396,10 +396,11 @@ export default function usePersistentAnnotations({
             viewerType,
           }))
           : null;
-        const hydratedAnnotations = draftAnnotations || cacheAnnotations || serverAnnotations;
-        skipNextSaveRef.current = !draftAnnotations && !cacheAnnotations;
+        const hydratedAnnotations = draftAnnotations || serverAnnotations;
+        skipNextSaveRef.current = !draftAnnotations;
         hydratePersistedItems(hydratedAnnotations);
         knownIdsRef.current = new Set((serverAnnotations.length ? serverAnnotations : hydratedAnnotations).map((annotation) => annotation.id).filter(Boolean));
+        writeLocalCache(serverAnnotations, []);
         hydratedRef.current = true;
         setHydrated(true);
       })
