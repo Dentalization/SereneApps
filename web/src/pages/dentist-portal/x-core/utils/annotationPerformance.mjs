@@ -25,6 +25,12 @@ const compactNumberTuple = (tuple, expectedLength, digits) => {
   return values.every((value) => value !== null) ? values : null;
 };
 
+export const INTERACTION_STATE = Object.freeze({
+  IDLE: 'IDLE',
+  INTERACTING: 'INTERACTING',
+  SETTLING: 'SETTLING',
+});
+
 export const buildSurfaceAnchor = ({
   point,
   normal,
@@ -98,14 +104,75 @@ export const createRafInputScheduler = ({
   };
 };
 
+export const createRenderCoalescer = ({
+  render,
+  requestFrame = fallbackRequestFrame,
+  cancelFrame = fallbackCancelFrame,
+} = {}) => {
+  let frameId = 0;
+  let lastReason = null;
+
+  const flush = () => {
+    frameId = 0;
+    const reason = lastReason;
+    lastReason = null;
+    if (typeof render === 'function') {
+      render(reason);
+    }
+  };
+
+  return {
+    requestRender(reason = 'interaction') {
+      lastReason = reason;
+      if (!frameId) {
+        frameId = requestFrame(flush);
+      }
+      return frameId;
+    },
+    renderNow(reason = 'immediate') {
+      if (frameId) {
+        cancelFrame(frameId);
+        frameId = 0;
+      }
+      lastReason = null;
+      if (typeof render === 'function') {
+        render(reason);
+      }
+    },
+    cancel() {
+      if (frameId) {
+        cancelFrame(frameId);
+        frameId = 0;
+      }
+      lastReason = null;
+    },
+    isPending() {
+      return Boolean(frameId);
+    },
+  };
+};
+
 export const createInteractionQualityController = ({
   getMapper,
   applyBaseQuality,
   render,
   interactiveSampleDistance = 1.4,
   interactiveMaxSamplesPerRay = 360,
+  settleDelayMs = 0,
+  scheduleTimeout = (callback, ms) => globalThis.setTimeout(callback, ms),
+  cancelTimeout = (timerId) => globalThis.clearTimeout(timerId),
 } = {}) => {
-  let active = false;
+  let state = INTERACTION_STATE.IDLE;
+  let settleTimerId = null;
+  const stateListeners = new Set();
+
+  const notifyState = () => {
+    stateListeners.forEach((listener) => {
+      try {
+        listener(state);
+      } catch (_) {}
+    });
+  };
 
   const renderNow = () => {
     if (typeof render === 'function') {
@@ -113,9 +180,26 @@ export const createInteractionQualityController = ({
     }
   };
 
+  const restoreBaseQuality = () => {
+    if (settleTimerId) {
+      cancelTimeout(settleTimerId);
+      settleTimerId = null;
+    }
+    state = INTERACTION_STATE.IDLE;
+    if (typeof applyBaseQuality === 'function') {
+      applyBaseQuality();
+    }
+    notifyState();
+  };
+
   return {
     begin() {
-      if (!active) {
+      if (settleTimerId) {
+        cancelTimeout(settleTimerId);
+        settleTimerId = null;
+      }
+
+      if (state !== INTERACTION_STATE.INTERACTING) {
         const mapper = typeof getMapper === 'function' ? getMapper() : null;
         if (mapper?.setSampleDistance) {
           mapper.setSampleDistance(interactiveSampleDistance);
@@ -123,19 +207,84 @@ export const createInteractionQualityController = ({
         if (mapper?.setMaximumSamplesPerRay) {
           mapper.setMaximumSamplesPerRay(interactiveMaxSamplesPerRay);
         }
-        active = true;
+        state = INTERACTION_STATE.INTERACTING;
+        notifyState();
       }
       renderNow();
     },
-    end() {
-      if (!active) return;
-      active = false;
-      if (typeof applyBaseQuality === 'function') {
-        applyBaseQuality();
+    end({ immediate = false, delayMs = settleDelayMs } = {}) {
+      if (state === INTERACTION_STATE.IDLE && !settleTimerId) return;
+
+      if (settleTimerId) {
+        cancelTimeout(settleTimerId);
+        settleTimerId = null;
       }
+
+      const effectiveDelay = immediate ? 0 : Math.max(0, Number(delayMs) || 0);
+
+      if (effectiveDelay === 0) {
+        restoreBaseQuality();
+        return;
+      }
+
+      state = INTERACTION_STATE.SETTLING;
+      notifyState();
+      settleTimerId = scheduleTimeout(() => {
+        settleTimerId = null;
+        restoreBaseQuality();
+      }, effectiveDelay);
+    },
+    settleNow() {
+      if (state === INTERACTION_STATE.IDLE) return;
+      restoreBaseQuality();
+    },
+    cancel() {
+      if (settleTimerId) {
+        cancelTimeout(settleTimerId);
+        settleTimerId = null;
+      }
+      state = INTERACTION_STATE.IDLE;
+      notifyState();
     },
     isActive() {
-      return active;
+      return state !== INTERACTION_STATE.IDLE;
+    },
+    getState() {
+      return state;
+    },
+    subscribe(listener) {
+      stateListeners.add(listener);
+      return () => stateListeners.delete(listener);
+    },
+  };
+};
+
+export const createProjectionCache = () => {
+  let currentKey = '';
+  const cache = new Map();
+
+  return {
+    get(cameraKey, pointKey) {
+      if (currentKey !== cameraKey) {
+        currentKey = cameraKey;
+        cache.clear();
+        return undefined;
+      }
+      return cache.get(pointKey);
+    },
+    set(cameraKey, pointKey, value) {
+      if (currentKey !== cameraKey) {
+        currentKey = cameraKey;
+        cache.clear();
+      }
+      cache.set(pointKey, value);
+    },
+    clear() {
+      currentKey = '';
+      cache.clear();
+    },
+    getKey() {
+      return currentKey;
     },
   };
 };
