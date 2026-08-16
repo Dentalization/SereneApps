@@ -1,7 +1,7 @@
 import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData.js';
 import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray.js';
 
-export const SURFACE_TRACE_MIN_STEP_MM = 0.65;
+export const SURFACE_TRACE_MIN_STEP_MM = 0.25;
 export const BRUSH_RADIUS_MIN_MM = 0.8;
 export const BRUSH_RADIUS_MAX_MM = 8;
 export const BRUSH_RADIUS_DEFAULT_MM = 2.6;
@@ -199,8 +199,27 @@ export function hashWorldAnnotation(annotation, selectedId = null) {
   const brush = annotation.coordinates?.world_brush;
   if (brush) {
     const centers = Array.isArray(brush.centers) ? brush.centers : [];
-    parts.push(String(centers.length), String(Number(brush.radius_mm || 0).toFixed(2)));
+    parts.push(String(Number(brush.radius_mm || 0).toFixed(2)));
     if (centers.length > 0) {
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      let minZ = Infinity;
+      let maxZ = -Infinity;
+      for (const p of centers) {
+        if (p[0] < minX) minX = p[0];
+        if (p[0] > maxX) maxX = p[0];
+        if (p[1] < minY) minY = p[1];
+        if (p[1] > maxY) maxY = p[1];
+        if (p[2] < minZ) minZ = p[2];
+        if (p[2] > maxZ) maxZ = p[2];
+      }
+      parts.push(
+        `${minX.toFixed(1)},${maxX.toFixed(1)}`,
+        `${minY.toFixed(1)},${maxY.toFixed(1)}`,
+        `${minZ.toFixed(1)},${maxZ.toFixed(1)}`,
+      );
       const first = centers[0] || [];
       const last = centers[centers.length - 1] || [];
       parts.push(
@@ -347,7 +366,7 @@ export function createBrushMaskImage(sourceImageData, centers, radiusMm) {
   if (direction && typeof maskImage.setDirection === 'function') {
     try {
       maskImage.setDirection(direction);
-    } catch (_) {}
+    } catch (_) { }
   }
   maskImage.getPointData().setScalars(vtkDataArray.newInstance({
     name: 'ManualBrushMask',
@@ -428,41 +447,70 @@ export function rasterizeWorldPathAnnotation(annotation, imageData, targetValues
   const dims = imageData.getDimensions?.() || [0, 0, 0];
   if (!dims[0] || !dims[1] || !dims[2]) return 0;
 
-  const indexPath = path
+  const indexPoints = path
     .map((worldPoint) => imageData.worldToIndex?.(worldPoint))
     .filter((point) => Array.isArray(point) && point.length >= 3 && point.every((value) => Number.isFinite(value)));
-  if (indexPath.length < 3) return 0;
+  if (indexPoints.length < 3) return 0;
 
-  const minK = Math.max(0, Math.floor(Math.min(...indexPath.map((point) => point[2]))));
-  const maxK = Math.min(dims[2] - 1, Math.ceil(Math.max(...indexPath.map((point) => point[2]))));
-  const polygon2D = indexPath.map((point) => ({ i: point[0], j: point[1] }));
+  // Calculate polygon normal via Newell's method in index space
+  const normal = [0, 0, 0];
+  for (let idx = 0; idx < indexPoints.length; idx += 1) {
+    const c = indexPoints[idx];
+    const n = indexPoints[(idx + 1) % indexPoints.length];
+    normal[0] += (c[1] - n[1]) * (c[2] + n[2]);
+    normal[1] += (c[2] - n[2]) * (c[0] + n[0]);
+    normal[2] += (c[0] - n[0]) * (c[1] + n[1]);
+  }
+
+  const absN = normal.map(Math.abs);
+  const maxAxis = absN[0] > absN[1] ? (absN[0] > absN[2] ? 0 : 2) : (absN[1] > absN[2] ? 1 : 2);
+
+  // Map 3D index axes to 2D projection plane (u, v) and slice sweep axis w
+  const axisMap = {
+    0: { u: 1, v: 2, w: 0 }, // Sagittal dominant (constant X / I)
+    1: { u: 0, v: 2, w: 1 }, // Coronal dominant (constant Y / J)
+    2: { u: 0, v: 1, w: 2 }, // Axial dominant (constant Z / K)
+  }[maxAxis];
+
+  const poly2D = indexPoints.map((p) => ({ u: p[axisMap.u], v: p[axisMap.v] }));
+  const wVals = indexPoints.map((p) => p[axisMap.w]);
+  const minW = Math.max(0, Math.floor(Math.min(...wVals)));
+  const maxW = Math.min(dims[axisMap.w] - 1, Math.ceil(Math.max(...wVals)));
+
+  const vVals = poly2D.map((p) => p.v);
+  const minV = Math.max(0, Math.floor(Math.min(...vVals)));
+  const maxV = Math.min(dims[axisMap.v] - 1, Math.ceil(Math.max(...vVals)));
 
   let painted = 0;
-  for (let k = minK; k <= maxK; k += 1) {
-    const jValues = polygon2D.map((point) => point.j);
-    const jStart = Math.max(0, Math.floor(Math.min(...jValues)));
-    const jEnd = Math.min(dims[1] - 1, Math.ceil(Math.max(...jValues)));
+  const dimX = dims[0];
+  const dimXY = dims[0] * dims[1];
 
-    for (let j = jStart; j <= jEnd; j += 1) {
-      const intersections = [];
-      for (let index = 0; index < polygon2D.length; index += 1) {
-        const current = polygon2D[index];
-        const next = polygon2D[(index + 1) % polygon2D.length];
-        const y0 = current.j;
-        const y1 = next.j;
-        const crosses = ((y0 <= j) && (y1 > j)) || ((y1 <= j) && (y0 > j));
-        if (!crosses) continue;
-        const t = (j - y0) / ((y1 - y0) || Number.EPSILON);
-        intersections.push(current.i + ((next.i - current.i) * t));
+  for (let w = minW; w <= maxW; w += 1) {
+    for (let v = minV; v <= maxV; v += 1) {
+      const nodes = [];
+      for (let i = 0; i < poly2D.length; i += 1) {
+        const j = (i + 1) % poly2D.length;
+        const pi = poly2D[i];
+        const pj = poly2D[j];
+        if ((pi.v < v && pj.v >= v) || (pj.v < v && pi.v >= v)) {
+          nodes.push(pi.u + (((v - pi.v) / ((pj.v - pi.v) || 1e-6)) * (pj.u - pi.u)));
+        }
       }
-      intersections.sort((a, b) => a - b);
-      for (let index = 0; index + 1 < intersections.length; index += 2) {
-        const iStart = clampIndex(Math.ceil(intersections[index]), dims[0]);
-        const iEnd = clampIndex(Math.floor(intersections[index + 1]), dims[0]);
-        for (let i = iStart; i <= iEnd; i += 1) {
-          const voxelIndex = i + (dims[0] * (j + (dims[1] * k)));
-          if (targetValues[voxelIndex] !== labelValue) {
-            targetValues[voxelIndex] = labelValue;
+      nodes.sort((a, b) => a - b);
+
+      for (let i = 0; i + 1 < nodes.length; i += 2) {
+        const uStart = Math.max(0, Math.ceil(nodes[i]));
+        const uEnd = Math.min(dims[axisMap.u] - 1, Math.floor(nodes[i + 1]));
+
+        for (let u = uStart; u <= uEnd; u += 1) {
+          const coords = [0, 0, 0];
+          coords[axisMap.u] = u;
+          coords[axisMap.v] = v;
+          coords[axisMap.w] = w;
+
+          const voxelIdx = coords[0] + (coords[1] * dimX) + (coords[2] * dimXY);
+          if (targetValues[voxelIdx] !== labelValue) {
+            targetValues[voxelIdx] = labelValue;
             painted += 1;
           }
         }
@@ -533,3 +581,270 @@ export function distanceBetweenSegments(a0, a1, b0, b1) {
   const dz = w[2] + (sc * u[2]) - (tc * v[2]);
   return Math.sqrt((dx * dx) + (dy * dy) + (dz * dz));
 }
+
+/**
+ * Canonical 3D World -> DOM Overlay screen coordinates projector.
+ * Maps [x, y, z] in world space (mm) to { x, y } in CSS pixels relative to containerRect.
+ * Includes strict camera forward-plane dot product check to prevent frustum mirroring.
+ */
+export function projectWorldToOverlay(worldPoint, renderer, renderWindow, containerRect) {
+  if (!isWorldPoint3D(worldPoint) || !renderer || !renderWindow || !containerRect) return null;
+
+  const rectWidth = Number(containerRect.width) || 0;
+  const rectHeight = Number(containerRect.height) || 0;
+  if (rectWidth <= 0 || rectHeight <= 0) return null;
+
+  const camera = renderer.getActiveCamera?.();
+  if (camera) {
+    const camPos = camera.getPosition?.();
+    const camFocal = camera.getFocalPoint?.();
+    if (camPos && camFocal) {
+      const vpn = [camFocal[0] - camPos[0], camFocal[1] - camPos[1], camFocal[2] - camPos[2]];
+      const toPoint = [worldPoint[0] - camPos[0], worldPoint[1] - camPos[1], worldPoint[2] - camPos[2]];
+      const dotForward = (vpn[0] * toPoint[0]) + (vpn[1] * toPoint[1]) + (vpn[2] * toPoint[2]);
+      if (dotForward <= 0) return null; // Discard points behind camera lens plane
+    }
+  }
+
+  const view = renderWindow.getViews?.()?.[0] || renderWindow.getInteractor?.()?.getView?.();
+  if (!view?.worldToDisplay) return null;
+
+  const display = view.worldToDisplay(worldPoint[0], worldPoint[1], worldPoint[2], renderer);
+  if (!display || display.length < 3) return null;
+
+  const displayX = Number(display[0]);
+  const displayY = Number(display[1]);
+  const displayZ = Number(display[2]);
+  if (!Number.isFinite(displayX) || !Number.isFinite(displayY) || !Number.isFinite(displayZ)) return null;
+  if (displayZ < -0.15 || displayZ > 1.15) return null;
+
+  const viewport = renderer.getViewport?.() || [0, 0, 1, 1];
+  const viewSize = view.getSize?.() || [rectWidth, rectHeight];
+  const fbWidth = Math.max(Number(viewSize[0]) || 1, 1);
+  const fbHeight = Math.max(Number(viewSize[1]) || 1, 1);
+
+  const normX = displayX / fbWidth;
+  const normY = displayY / fbHeight;
+
+  return {
+    x: normX * rectWidth,
+    y: (1.0 - normY) * rectHeight,
+    depth: displayZ,
+    inViewport: normX >= viewport[0] && normX <= viewport[2] && normY >= viewport[1] && normY <= viewport[3],
+  };
+}
+
+/**
+ * Canonical DOM Pointer Event -> VTK Display Coordinates converter.
+ * Maps (clientX, clientY) to [x, y] in VTK display space (0..fbWidth, 0..fbHeight, bottom-left origin).
+ */
+export function pointerToVtkDisplayCoords(event, containerRect, renderWindow, renderer = null) {
+  if (!event || !containerRect) return { x: 0, y: 0 };
+
+  const rectLeft = Number(containerRect.left) || 0;
+  const rectTop = Number(containerRect.top) || 0;
+  const rectWidth = Math.max(Number(containerRect.width) || 1, 1);
+  const rectHeight = Math.max(Number(containerRect.height) || 1, 1);
+
+  const domX = (Number(event.clientX) || 0) - rectLeft;
+  const domY = (Number(event.clientY) || 0) - rectTop;
+
+  const view = renderWindow?.getViews?.()?.[0] || renderWindow?.getInteractor?.()?.getView?.();
+  const viewSize = view?.getSize?.() || [rectWidth, rectHeight];
+  const fbWidth = Math.max(Number(viewSize[0]) || 1, 1);
+  const fbHeight = Math.max(Number(viewSize[1]) || 1, 1);
+
+  return {
+    x: (domX / rectWidth) * fbWidth,
+    y: (1.0 - (domY / rectHeight)) * fbHeight,
+  };
+}
+
+/**
+ * Intersects a ray with an Axis-Aligned Bounding Box (AABB).
+ * bounds: [xMin, xMax, yMin, yMax, zMin, zMax]
+ * Returns { hit: boolean, tMin: number, tMax: number }
+ */
+export function intersectRayAABB(rayOrigin, rayDir, bounds) {
+  let tMin = -Infinity;
+  let tMax = Infinity;
+
+  for (let i = 0; i < 3; i++) {
+    const invD = 1.0 / (rayDir[i] || (rayDir[i] >= 0 ? 1e-12 : -1e-12));
+    let t0 = (bounds[i * 2] - rayOrigin[i]) * invD;
+    let t1 = (bounds[i * 2 + 1] - rayOrigin[i]) * invD;
+
+    if (invD < 0) {
+      const temp = t0;
+      t0 = t1;
+      t1 = temp;
+    }
+
+    tMin = Math.max(tMin, t0);
+    tMax = Math.min(tMax, t1);
+
+    if (tMax <= tMin) {
+      return { hit: false, tMin: 0, tMax: 0 };
+    }
+  }
+
+  return { hit: tMax > 0, tMin: Math.max(0, tMin), tMax };
+}
+
+/**
+ * Robust volume ray-march picker for CBCT 3D ImageData.
+ * Traces a ray from camera through the volume and finds the first anatomical surface hit.
+ * Enforces unit ray normalization for millimeter-accurate step sizes.
+ */
+export function pickVolumeRaySurface(rayOrigin, rawRayDir, imageData, thresholdNormalized = 0.20) {
+  if (!imageData || !rayOrigin || !rawRayDir) return null;
+
+  const rayDir = normalizeVector3(rawRayDir);
+  if (!rayDir) return null;
+
+  const bounds = imageData.getBounds?.();
+  if (!bounds || bounds.length < 6) return null;
+
+  const { hit, tMin, tMax } = intersectRayAABB(rayOrigin, rayDir, bounds);
+  if (!hit || tMax <= tMin) return null;
+
+  const dims = imageData.getDimensions?.() || [0, 0, 0];
+  const spacing = imageData.getSpacing?.() || [1, 1, 1];
+  const scalars = imageData.getPointData?.()?.getScalars?.()?.getData?.();
+  if (!scalars || dims[0] <= 0 || dims[1] <= 0 || dims[2] <= 0) {
+    // Return bounding box entry point if scalars unavailable
+    return [
+      rayOrigin[0] + (rayDir[0] * tMin),
+      rayOrigin[1] + (rayDir[1] * tMin),
+      rayOrigin[2] + (rayDir[2] * tMin),
+    ];
+  }
+
+  const range = imageData.getPointData()?.getScalars()?.getRange?.() || [0, 1];
+  const minVal = range[0];
+  const valSpan = Math.max(range[1] - range[0], 1e-6);
+  const rawThreshold = minVal + (thresholdNormalized * valSpan);
+
+  const stepSize = Math.max(Math.min(spacing[0], spacing[1], spacing[2]) * 0.5, 0.2);
+  const steps = Math.min(Math.ceil((tMax - tMin) / stepSize), 1200);
+
+  const dimX = dims[0];
+  const dimXY = dims[0] * dims[1];
+
+  for (let s = 0; s <= steps; s++) {
+    const t = tMin + (s * stepSize);
+    const wx = rayOrigin[0] + (rayDir[0] * t);
+    const wy = rayOrigin[1] + (rayDir[1] * t);
+    const wz = rayOrigin[2] + (rayDir[2] * t);
+
+    const ijk = imageData.worldToIndex?.([wx, wy, wz]);
+    if (!ijk) continue;
+
+    const i = Math.round(ijk[0]);
+    const j = Math.round(ijk[1]);
+    const k = Math.round(ijk[2]);
+
+    if (i >= 0 && i < dims[0] && j >= 0 && j < dims[1] && k >= 0 && k < dims[2]) {
+      const voxelIdx = i + (j * dimX) + (k * dimXY);
+      const val = scalars[voxelIdx];
+      if (val >= rawThreshold) {
+        return [wx, wy, wz];
+      }
+    }
+  }
+
+  // Fallback to entry point into the volume
+  return [
+    rayOrigin[0] + (rayDir[0] * tMin),
+    rayOrigin[1] + (rayDir[1] * tMin),
+    rayOrigin[2] + (rayDir[2] * tMin),
+  ];
+}
+
+/**
+ * Clinical Geometry & Spatial Calibration Validator for CBCT 3D ImageData.
+ * Assesses voxel isotropy, FOV dimension integrity, and potential spatial distortion.
+ *
+ * @param {object} imageData - vtkImageData instance
+ * @param {object} [metadata] - Optional DICOM metadata object
+ * @returns {object} Geometric validation report
+ */
+export function validateVolumeGeometry(imageData, metadata = null) {
+  if (!imageData) {
+    return {
+      status: 'INVALID',
+      isIsotropic: false,
+      maxAnisotropyPct: 100,
+      dimensions: [0, 0, 0],
+      spacing: [1, 1, 1],
+      fovMm: [0, 0, 0],
+      voxelResolutionMm: 0,
+      warnings: ['Volume image data is missing or not initialized.'],
+      recommendations: ['Reload study or inspect DICOM source files.'],
+    };
+  }
+
+  const dims = (imageData.getDimensions?.() || [0, 0, 0]).map((v) => Number(v) || 0);
+  const spacing = (imageData.getSpacing?.() || [1, 1, 1]).map((v) => {
+    const num = Number(v);
+    return Number.isFinite(num) && num > 0 ? num : 1.0;
+  });
+
+  const [dimX, dimY, dimZ] = dims;
+  const [spX, spY, spZ] = spacing;
+
+  const fovMm = [
+    Number((dimX * spX).toFixed(2)),
+    Number((dimY * spY).toFixed(2)),
+    Number((dimZ * spZ).toFixed(2)),
+  ];
+
+  const minSpacing = Math.min(spX, spY, spZ);
+  const maxSpacing = Math.max(spX, spY, spZ);
+  const maxAnisotropyPct = Number((((maxSpacing - minSpacing) / (minSpacing || 1e-6)) * 100).toFixed(2));
+  const voxelResolutionMm = Number(((spX + spY + spZ) / 3).toFixed(3));
+
+  const warnings = [];
+  const recommendations = [];
+
+  if (dimX < 2 || dimY < 2 || dimZ < 2) {
+    warnings.push(`Low volume dimensions: [${dimX}, ${dimY}, ${dimZ}]`);
+  }
+
+  if (spX <= 0 || spY <= 0 || spZ <= 0) {
+    warnings.push('Non-positive voxel spacing detected in dataset.');
+  }
+
+  let status = 'VERIFIED';
+  let isIsotropic = true;
+
+  if (maxAnisotropyPct > 15.0) {
+    status = 'ANOMALOUS';
+    isIsotropic = false;
+    warnings.push(`Significant voxel anisotropy detected (${maxAnisotropyPct}% deviation). Physical calipers may exhibit directional variance.`);
+    recommendations.push('Cross-reference measurements with axial/sagittal 2D slices before critical surgical planning.');
+  } else if (maxAnisotropyPct > 5.0) {
+    status = 'WARNING';
+    isIsotropic = false;
+    warnings.push(`Mild voxel anisotropy detected (${maxAnisotropyPct}% deviation). Spacing is non-cubic.`);
+    recommendations.push('Verify millimeter calibration against anatomical landmarks.');
+  } else {
+    status = 'VERIFIED';
+    isIsotropic = true;
+  }
+
+  return {
+    status,
+    isIsotropic,
+    maxAnisotropyPct,
+    dimensions: dims,
+    spacing: [Number(spX.toFixed(4)), Number(spY.toFixed(4)), Number(spZ.toFixed(4))],
+    fovMm,
+    voxelResolutionMm,
+    warnings,
+    recommendations,
+  };
+}
+
+
+

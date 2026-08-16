@@ -8,14 +8,15 @@ import SeriesSidebar from './SeriesSidebar';
 import LinkedViewer from './LinkedViewer';
 import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 
-const resolveInitialViewMode = (targetStudy, isAnalysisContext) => {
-    const seriesType = targetStudy?.selectedSeriesType;
-    const classification = targetStudy?.classification;
-    const modality = targetStudy?.modality;
+const resolveInitialViewMode = (activeStudy, analysisCaseContext) => {
+    const seriesType = activeStudy?.selectedSeriesType;
+    const classification = activeStudy?.classification;
+    const modality = activeStudy?.modality;
     const is3D = seriesType === '3D Volume' || seriesType === '3D' || classification === '3D';
     const is2D = seriesType === '2D Image' || seriesType === '2D' || classification === '2D' || modality === 'Panoramic' || modality === 'Cephalometric' || modality === 'OPG';
 
-    if (isAnalysisContext && is3D) return 'slice';
+    if (analysisCaseContext && activeStudy?.selectedSeriesType === '3D Volume') return 'slice';
+    if (analysisCaseContext && is3D) return 'slice';
     if (is3D) return '3d';
     if (is2D) return '2d';
     return '2d';
@@ -61,9 +62,16 @@ const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnable
     const [showSrPanel, setShowSrPanel] = useState(false);
     const studyKey = activeStudy?.folderName || activeStudy?.id || '';
 
+    const prevStudyKeyRef = useRef(study?.id || study?.folderName || '');
+
     useEffect(() => {
+        const nextKey = study?.id || study?.folderName || '';
         setActiveStudy(study);
-    }, [study]);
+        if (nextKey !== prevStudyKeyRef.current) {
+            prevStudyKeyRef.current = nextKey;
+            setViewMode(resolveInitialViewMode(study, Boolean(analysisCaseContext)));
+        }
+    }, [study, analysisCaseContext]);
 
     useEffect(() => {
         let cancelled = false;
@@ -201,25 +209,7 @@ const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnable
         }
     }, [activeStudy]);
 
-    // Determine initial view mode based on series type
-    useEffect(() => {
-        const seriesType = activeStudy?.selectedSeriesType;
-        const classification = activeStudy?.classification;
-        const is3D = activeStudy?.selectedSeriesType === '3D Volume' || seriesType === '3D' || classification === '3D';
-        const is2D = seriesType === '2D Image' || seriesType === '2D' || classification === '2D' || activeStudy?.modality === 'Panoramic' || activeStudy?.modality === 'Cephalometric' || activeStudy?.modality === 'OPG';
 
-        if (analysisCaseContext && activeStudy?.selectedSeriesType === '3D Volume') {
-            setViewMode('slice'); // Analysis reports use the canonical slice/quad composite pipeline.
-        } else if (analysisCaseContext && is3D) {
-            setViewMode('slice');
-        } else if (is3D) {
-            setViewMode('3d'); // 3D First for volumetric series
-        } else if (is2D) {
-            setViewMode('2d'); // Dedicated 2D viewer for panoramic/ceph
-        } else {
-            setViewMode('slice'); // Fallback to slice view
-        }
-    }, [activeStudy?.classification, activeStudy?.modality, activeStudy?.selectedSeriesType, activeStudy?.selectedSeriesUid, analysisCaseContext]);
 
     const renderActiveViewer = () => {
         const seriesType = activeStudy?.selectedSeriesType;

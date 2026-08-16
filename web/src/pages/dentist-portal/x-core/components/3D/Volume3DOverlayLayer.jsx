@@ -63,12 +63,6 @@ const MeasurementLabel = memo(function MeasurementLabel({
     }
   }, [position, storedOffset]);
 
-  useEffect(() => {
-    if (!elementRef.current || !position) return;
-    elementRef.current.style.left = `${position.x + dragOffsetRef.current.x}px`;
-    elementRef.current.style.top = `${position.y + dragOffsetRef.current.y}px`;
-  }, [position]);
-
   const handlePointerDown = (event) => {
     event.stopPropagation();
     if (editing || !canDrag) return;
@@ -109,7 +103,7 @@ const MeasurementLabel = memo(function MeasurementLabel({
   const handlePointerUp = (event) => {
     if (!isDraggingRef.current) return;
     event.stopPropagation();
-    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch (_) {}
+    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch (_) { }
     const finalOffset = dragStartRef.current?.currentOffset || dragOffsetRef.current;
     isDraggingRef.current = false;
     dragStartRef.current = null;
@@ -247,10 +241,10 @@ const ProjectedAnnotationsGroup = memo(function ProjectedAnnotationsGroup({
       {includeText && annotations.filter((annotation) => annotation.type === 'text').map((annotation) => (
         <div
           key={annotation.id}
-          className="pointer-events-auto absolute -translate-y-1/2 rounded-full border border-white/15 bg-slate-950/85 px-2 py-0.5 text-[10px] font-semibold text-white shadow-xl"
+          className="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/15 bg-slate-950/85 px-2.5 py-1 text-[11px] font-semibold text-white shadow-xl select-none"
           style={{
-            left: annotation.screenPoint.x,
-            top: annotation.screenPoint.y,
+            left: `${annotation.screenPoint.x}px`,
+            top: `${annotation.screenPoint.y}px`,
             opacity: annotation.opacity ?? 1,
           }}
           onMouseEnter={(event) => hoverHandlers.onEnter?.(annotation, event)}
@@ -472,6 +466,7 @@ export default function Volume3DOverlayLayer({
     <>
       <ProjectedAnnotationsGroup
         annotations={projectedSnapshotWorldOverlayAnnotations}
+        includeText={true}
         strokeWidth="2"
         strokeDasharray="6 4"
         opacity={0.88}
@@ -482,6 +477,7 @@ export default function Volume3DOverlayLayer({
 
       <ProjectedAnnotationsGroup
         annotations={projectedWorldOverlayAnnotations}
+        includeText={true}
         onHoverEnter={hoverHandlers.onEnter}
         onHoverMove={hoverHandlers.onMove}
         onHoverLeave={hoverHandlers.onLeave}
@@ -492,14 +488,14 @@ export default function Volume3DOverlayLayer({
       {textDraft3D && textDraftScreenPoint && (
         <div
           data-xcore-ui="true"
-          className="absolute z-30"
-          style={{ left: textDraftScreenPoint.x, top: textDraftScreenPoint.y }}
+          className="absolute z-30 -translate-x-1/2 -translate-y-1/2"
+          style={{ left: `${textDraftScreenPoint.x}px`, top: `${textDraftScreenPoint.y}px` }}
         >
           <div className="flex items-center gap-1 rounded-lg border border-cyan-500/40 bg-slate-900/90 p-1 shadow-xl backdrop-blur">
             <input
               type="text"
               autoFocus
-              value={textDraft3D.text}
+              value={textDraft3D.text || ''}
               placeholder="Label..."
               className="w-32 bg-transparent px-2 py-0.5 text-xs text-white placeholder-slate-400 focus:outline-none"
               onChange={(e) => setTextDraft3D({ ...textDraft3D, text: e.target.value })}
@@ -509,7 +505,7 @@ export default function Volume3DOverlayLayer({
               }}
             />
             <button
-              onClick={commitTextDraft3D}
+              onClick={() => commitTextDraft3D()}
               className="rounded bg-cyan-600 px-2 py-0.5 text-xs font-semibold text-white hover:bg-cyan-500"
             >
               OK

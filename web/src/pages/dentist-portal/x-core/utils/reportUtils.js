@@ -340,6 +340,9 @@ const formatDateForFilename = (date) => date.toISOString().slice(0, 10);
 
 const summarizeCoordinates = (annotation) => {
   if (annotation.type === 'text') {
+    if (Array.isArray(annotation.coordinates?.world_point) && annotation.coordinates.world_point.length >= 3) {
+      return `world (${annotation.coordinates.world_point.map((v) => Number(v || 0).toFixed(2)).join(', ')}) mm`;
+    }
     return `x=${Number(annotation.coordinates?.x || 0).toFixed(3)}, y=${Number(annotation.coordinates?.y || 0).toFixed(3)}`;
   }
   if (annotation.type === 'region' || annotation.type === 'freehand') {
@@ -357,6 +360,11 @@ const summarizeCoordinates = (annotation) => {
     const path = annotation.coordinates?.path || [];
     const area = annotation.metadata?.lesion_area_px;
     return `${path.length} pts${area ? `, area ${area} px²` : ''}`;
+  }
+  if (annotation.type === 'arrow' || annotation.type === 'circle') {
+    if (Array.isArray(annotation.coordinates?.world_start) && Array.isArray(annotation.coordinates?.world_end)) {
+      return `world (${annotation.coordinates.world_start.map((v) => Number(v || 0).toFixed(1)).join(',')}) → (${annotation.coordinates.world_end.map((v) => Number(v || 0).toFixed(1)).join(',')}) mm`;
+    }
   }
   const start = annotation.coordinates?.start;
   const end = annotation.coordinates?.end;

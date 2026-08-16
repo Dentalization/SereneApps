@@ -73,6 +73,10 @@ import {
     rasterizeWorldPathAnnotation,
     distanceBetweenSegments,
     SURFACE_TRACE_MIN_STEP_MM,
+    projectWorldToOverlay,
+    pointerToVtkDisplayCoords,
+    pickVolumeRaySurface,
+    validateVolumeGeometry,
 } from './3D/volume3DGeometry';
 import { getAccessToken } from '../../../../utils/auth/tokenStorage';
 import {
@@ -988,7 +992,9 @@ const VolumeViewer3D = ({
     const measurementInputSchedulerRef = useRef(null);
     const overlayDraftInputSchedulerRef = useRef(null);
     const overlayDraftPointerRef = useRef(null);
+    const overlayDraftLastSetRef = useRef(0);
     const renderCoalescerRef = useRef(null);
+    const cameraRevisionRef = useRef(0);
     const cameraProjectionRevisionRef = useRef(0);
     const measureHoverPointRef = useRef(null);
     const measureHoverSyncRafRef = useRef(0);
@@ -1079,6 +1085,7 @@ const VolumeViewer3D = ({
     const [heatmapOverlayMode, setHeatmapOverlayMode] = useState(false);
     const [heatmapOpacity, setHeatmapOpacity] = useState(0.4);
     const [measurementRevision, setMeasurementRevision] = useState(0);
+    const [geometryReport, setGeometryReport] = useState(null);
     const [undoToast, setUndoToast] = useState(null);
     const [showNerveOverlay, setShowNerveOverlay] = useState(false);
     const [nerveLoading, setNerveLoading] = useState(false);
@@ -1120,6 +1127,10 @@ const VolumeViewer3D = ({
     const [activeAnnotationColor, setActiveAnnotationColor] = useState(ANNOTATION_COLORS.arrow);
     const [annotationCustomColor, setAnnotationCustomColor] = useState('#4fd1c5');
     const [worldOverlayDraft, setWorldOverlayDraft] = useState(null);
+    const worldOverlayDraftRef = useRef(null);
+    useEffect(() => {
+        worldOverlayDraftRef.current = worldOverlayDraft;
+    }, [worldOverlayDraft]);
     const [textDraft3D, setTextDraft3D] = useState(null);
     const [historyOpen, setHistoryOpen] = useState(false);
     const [snapshots, setSnapshots] = useState([]);
@@ -1347,14 +1358,11 @@ const VolumeViewer3D = ({
         if (!ctx?.interactor || !ctx?.renderWindow || loading || error) return undefined;
 
         let renderRaf = 0;
-        let lastProjectionStateTime = 0;
         const bumpProjection = () => {
-            const now = performance.now();
-            if (now - lastProjectionStateTime < 50) return;
             if (renderRaf) return;
+            cameraRevisionRef.current += 1;
             renderRaf = requestAnimationFrame(() => {
                 renderRaf = 0;
-                lastProjectionStateTime = performance.now();
                 setProjectionTick((value) => value + 1);
                 updateMeasurementLabelPositionsRef.current?.();
             });
@@ -1457,8 +1465,13 @@ const VolumeViewer3D = ({
         }
 
         const bumpProjectionAfterRestore = () => {
+            projectionCacheRef.current.key = null;
+            projectionCacheRef.current.cache.clear();
+            cameraRevisionRef.current += 1;
             window.setTimeout(() => {
+                projectionCacheRef.current.key = null;
                 projectionCacheRef.current.cache.clear();
+                cameraRevisionRef.current += 1;
                 setProjectionTick((value) => value + 1);
             }, 100);
         };
@@ -2034,6 +2047,7 @@ const VolumeViewer3D = ({
 
         let cancelled = false;
         let previewAbortController = null;
+        let resizeHandler = null;
 
         const isCached = volumeCache.has(cacheKey);
         setVolumeWasCached(isCached);
@@ -2079,7 +2093,9 @@ const VolumeViewer3D = ({
             setAnnotationTool('arrow');
             setAnnotations([]);
             renderedAnnotationIdsRef.current.clear();
+            projectionCacheRef.current.key = null;
             projectionCacheRef.current.cache.clear();
+            cameraRevisionRef.current += 1;
             annotationHistoryRef.current = [];
             annotationRedoRef.current = [];
             measurementHistoryRef.current = [];
@@ -2347,7 +2363,8 @@ const VolumeViewer3D = ({
 
                 const fullScreenRenderer = vtkFullScreenRenderWindow.newInstance({
                     container: containerRef.current,
-                    background: BG_COLORS.bone
+                    background: BG_COLORS.bone,
+                    listenWindowResize: false
                 });
                 pendingVtkRef.current = fullScreenRenderer;
 
@@ -2357,7 +2374,7 @@ const VolumeViewer3D = ({
 
                 // Optimize render resolution on high-DPI/Retina screens for silky-smooth volume raycasting
                 if (typeof window !== 'undefined') {
-                    fullScreenRenderer.resize = () => {
+                    resizeHandler = () => {
                         if (!containerRef.current) return;
                         const dims = containerRef.current.getBoundingClientRect();
                         const effectiveDpr = Math.min(window.devicePixelRatio || 1, 1.25);
@@ -2367,7 +2384,8 @@ const VolumeViewer3D = ({
                         }
                         renderWindow?.render?.();
                     };
-                    fullScreenRenderer.resize();
+                    window.addEventListener('resize', resizeHandler);
+                    resizeHandler();
                 }
 
                 if (interactor?.setDesiredUpdateRate) {
@@ -2473,6 +2491,8 @@ const VolumeViewer3D = ({
                 interactorEventsBoundRef.current = true;
                 pendingVtkRef.current = null;
                 positionCameraForView(volumeContext, 'right', 1.25);
+                const geoValidation = validateVolumeGeometry(imageData, study?.metadata);
+                setGeometryReport(geoValidation);
                 onVolumeLoadedRef.current?.(imageData);
 
                 setLoadingProgress(100);
@@ -2483,7 +2503,11 @@ const VolumeViewer3D = ({
                     requestAnimationFrame(() => {
                         if (cancelled) return;
                         try {
-                            fullScreenRenderer.resize();
+                            if (resizeHandler) {
+                                resizeHandler();
+                            } else {
+                                fullScreenRenderer.resize();
+                            }
                             renderWindow.render();
                             console.log('[VolumeViewer3D] Post-overlay resize+render complete');
                         } catch (e) {
@@ -2533,6 +2557,9 @@ const VolumeViewer3D = ({
             overlayAbortRef.current = null;
             overlayBuildIdRef.current += 1;
             clearTimeout(timer);
+            if (resizeHandler && typeof window !== 'undefined') {
+                window.removeEventListener('resize', resizeHandler);
+            }
             const ctx = vtkContextRef.current;
             if (ctx) {
                 if (heatmapVolumeActorRef.current) {
@@ -2553,6 +2580,7 @@ const VolumeViewer3D = ({
                 try { pendingVtkRef.current.delete(); } catch (_) { }
                 pendingVtkRef.current = null;
             }
+            setGeometryReport(null);
             onVolumeLoadedRef.current?.(null);
         };
     }, [study, containerReady, cacheKey, studyKey, seriesUid, applyPreset, revokePreviewObjectUrl, updatePreviewImageUrl]);
@@ -3487,30 +3515,9 @@ const VolumeViewer3D = ({
     const projectWorldToViewport = useCallback((worldPoint) => {
         const ctx = vtkContextRef.current;
         const container = containerRef.current;
-        if (!ctx || !container || !worldPoint) return null;
-
-        try {
-            const view = ctx.renderWindow.getViews?.()?.[0] || ctx.interactor?.getView?.();
-            if (!view?.worldToDisplay) return null;
-            const display = view.worldToDisplay(worldPoint[0], worldPoint[1], worldPoint[2], ctx.renderer);
-            if (!display || display.length < 3) return null;
-            const displayX = Number(display[0]);
-            const displayY = Number(display[1]);
-            const displayZ = Number(display[2]);
-            if (!Number.isFinite(displayX) || !Number.isFinite(displayY) || !Number.isFinite(displayZ)) return null;
-            if (displayZ < 0 || displayZ > 1) return null;
-            const viewSize = view.getSize?.() || [container.clientWidth, container.clientHeight];
-            const rect = container.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0 || viewSize[0] === 0 || viewSize[1] === 0) {
-                return null;
-            }
-            return {
-                x: (displayX / Math.max(viewSize[0], 1)) * rect.width,
-                y: rect.height - ((displayY / Math.max(viewSize[1], 1)) * rect.height),
-            };
-        } catch (_) {
-            return null;
-        }
+        if (!ctx?.renderer || !ctx?.renderWindow || !container || !worldPoint) return null;
+        const rect = container.getBoundingClientRect();
+        return projectWorldToOverlay(worldPoint, ctx.renderer, ctx.renderWindow, rect);
     }, []);
 
 
@@ -3534,9 +3541,8 @@ const VolumeViewer3D = ({
     }, []);
 
     const getCameraProjectionKey = useCallback(() => {
-        const baseKey = getStableCameraProjectionKey();
-        return `${baseKey}_${projectionTick}`;
-    }, [getStableCameraProjectionKey, projectionTick]);
+        return `${getStableCameraProjectionKey()}_r${cameraRevisionRef.current}`;
+    }, [getStableCameraProjectionKey]);
 
     const projectWorldToViewportCached = useCallback((worldPoint) => {
         if (!isWorldPoint3D(worldPoint)) return null;
@@ -3687,16 +3693,9 @@ const VolumeViewer3D = ({
     const getPointerDisplayCoords = useCallback((event) => {
         const ctx = vtkContextRef.current;
         const container = containerRef.current;
-        if (!ctx || !container) return { x: 0, y: 0 };
+        if (!ctx?.renderWindow || !container || !event) return { x: 0, y: 0 };
         const rect = container.getBoundingClientRect();
-        const view = ctx.renderWindow?.getViews?.()?.[0] || ctx.interactor?.getView?.();
-        const viewSize = view?.getSize?.() || [rect.width, rect.height];
-        const scaleX = viewSize[0] / Math.max(rect.width, 1);
-        const scaleY = viewSize[1] / Math.max(rect.height, 1);
-        return {
-            x: (event.clientX - rect.left) * scaleX,
-            y: (rect.height - (event.clientY - rect.top)) * scaleY,
-        };
+        return pointerToVtkDisplayCoords(event, rect, ctx.renderWindow);
     }, []);
 
     const pickSurfaceWorldPointFromPointer = useCallback((event) => {
@@ -3788,18 +3787,40 @@ const VolumeViewer3D = ({
             // Volumes are not always pickable by vtkCellPicker; fall back below.
         }
 
+        // Ray-march into the 3D volume to find physical anatomical voxel surface
+        const view = ctx.renderWindow.getViews?.()?.[0] || ctx.interactor?.getView?.();
+        if (view && ctx.renderer && ctx.imageData) {
+            try {
+                const nearWorld = view.displayToWorld(x, y, 0.0, ctx.renderer);
+                const farWorld = view.displayToWorld(x, y, 1.0, ctx.renderer);
+                if (nearWorld && farWorld) {
+                    const dx = farWorld[0] - nearWorld[0];
+                    const dy = farWorld[1] - nearWorld[1];
+                    const dz = farWorld[2] - nearWorld[2];
+                    const len = Math.hypot(dx, dy, dz);
+                    if (len > 1e-6) {
+                        const rayDir = [dx / len, dy / len, dz / len];
+                        const rayHit = pickVolumeRaySurface(nearWorld, rayDir, ctx.imageData);
+                        if (rayHit) {
+                            return rayHit;
+                        }
+                    }
+                }
+            } catch (_) { }
+        }
+
         try {
-            const view = ctx.renderWindow.getViews?.()?.[0] || ctx.interactor?.getView?.();
+            const focalPoint = ctx.renderer?.getActiveCamera?.()?.getFocalPoint?.();
             const world = view?.displayToWorld?.(x, y, 0.5, ctx.renderer);
-            return world ? [world[0], world[1], world[2]] : null;
+            return world ? [world[0], world[1], world[2]] : (focalPoint ? [...focalPoint] : null);
         } catch (_) {
             return null;
         }
     }, [getPointerDisplayCoords]);
 
     const pickAnnotationWorldPointFromPointer = useCallback((event) => (
-        pickSurfaceWorldPointFromPointer(event)
-    ), [pickSurfaceWorldPointFromPointer]);
+        pickSurfaceWorldPointFromPointer(event) || pickWorldPointFromPointer(event)
+    ), [pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer]);
 
     const buildAnnotationSurfaceAnchor = useCallback((point, options = {}) => {
         if (!isWorldPoint3D(point)) return null;
@@ -4051,6 +4072,16 @@ const VolumeViewer3D = ({
         }
         return actors;
     }, []);
+
+    const createMeasurementActorsRef = useRef(createMeasurementActors);
+    useEffect(() => {
+        createMeasurementActorsRef.current = createMeasurementActors;
+    }, [createMeasurementActors]);
+
+    const createPolylineActorsRef = useRef(createPolylineActors);
+    useEffect(() => {
+        createPolylineActorsRef.current = createPolylineActors;
+    }, [createPolylineActors]);
 
     const createSurfaceRegionActors = useCallback((annotation) => {
         const path = annotation?.coordinates?.world_path;
@@ -5560,9 +5591,12 @@ const VolumeViewer3D = ({
                 : Boolean(previousPoint && arraysNearlyEqual(previousPoint, nextPoint, 1e-3));
             if (unchanged) return;
 
-            const syncedPoint = nextPoint ? [...nextPoint] : null;
-            lastSyncedMeasureHoverPointRef.current = syncedPoint;
-            setMeasureHoverPoint(syncedPoint);
+            setMeasureHoverPoint(() => {
+                const live = measureHoverPointRef.current;
+                const snapped = live ? [...live] : null;
+                lastSyncedMeasureHoverPointRef.current = snapped;
+                return snapped;
+            });
         };
 
         measureHoverSyncRafRef.current = requestAnimationFrame(syncMeasureHoverPoint);
@@ -5630,10 +5664,10 @@ const VolumeViewer3D = ({
 
         const pointToPointActors = measurements3D
             .filter((item) => Array.isArray(item.pointA) && Array.isArray(item.pointB))
-            .flatMap((item) => createMeasurementActors(item.pointA, item.pointB));
+            .flatMap((item) => createMeasurementActorsRef.current(item.pointA, item.pointB));
         const polylineActors = polylineMeasurements
             .filter((item) => Array.isArray(item.points) && item.points.length >= 2)
-            .flatMap((item) => createPolylineActors(item.points));
+            .flatMap((item) => createPolylineActorsRef.current(item.points));
         const actors = [...pointToPointActors, ...polylineActors];
 
         actors.forEach((actor) => ctx.renderer.addActor(actor));
@@ -5641,7 +5675,7 @@ const VolumeViewer3D = ({
         ctx.overlayActors = [...(ctx.overlayActors || []), ...actors];
         ctx.renderWindow.render();
         setMeasurementRevision((value) => value + 1);
-    }, [cacheKey, createMeasurementActors, createPolylineActors, error, loading, measurements3D, polylineMeasurements]);
+    }, [cacheKey, error, loading, measurements3D, polylineMeasurements]);
 
     useEffect(() => {
         const ctx = vtkContextRef.current;
@@ -5656,12 +5690,12 @@ const VolumeViewer3D = ({
             return;
         }
 
-        const draftActors = createPolylineActors(polylineDraft);
+        const draftActors = createPolylineActorsRef.current(polylineDraft);
         draftActors.forEach((actor) => ctx.renderer.addActor(actor));
         ctx.draftMeasurementActors = draftActors;
         ctx.overlayActors = [...(ctx.overlayActors || []), ...draftActors];
         ctx.renderWindow.render();
-    }, [polylineDraft, createPolylineActors, error, loading]);
+    }, [polylineDraft, error, loading]);
 
     useEffect(() => {
         const ctx = vtkContextRef.current;
@@ -5768,12 +5802,34 @@ const VolumeViewer3D = ({
             return severity >= 1 && severity <= 4 && (isWorldBrushAnnotation(annotation) || isWorldPathAnnotation(annotation));
         });
 
-        const heatmapSignature = JSON.stringify(heatmapAnnotations.map(a => ({
-            id: a.id,
-            s: a.metadata.severity,
-            r: a.coordinates?.world_brush?.radius_mm,
-            pts: a.coordinates?.world_brush?.centers?.length || a.coordinates?.world_path?.length
-        })));
+        const heatmapSignature = JSON.stringify(heatmapAnnotations.map((a) => {
+            const centers = a.coordinates?.world_brush?.centers;
+            let brushBbox = null;
+            if (Array.isArray(centers) && centers.length > 0) {
+                let minX = Infinity;
+                let maxX = -Infinity;
+                let minY = Infinity;
+                let maxY = -Infinity;
+                let minZ = Infinity;
+                let maxZ = -Infinity;
+                for (const p of centers) {
+                    if (p[0] < minX) minX = p[0];
+                    if (p[0] > maxX) maxX = p[0];
+                    if (p[1] < minY) minY = p[1];
+                    if (p[1] > maxY) maxY = p[1];
+                    if (p[2] < minZ) minZ = p[2];
+                    if (p[2] > maxZ) maxZ = p[2];
+                }
+                brushBbox = `${minX.toFixed(1)},${maxX.toFixed(1)},${minY.toFixed(1)},${maxY.toFixed(1)},${minZ.toFixed(1)},${maxZ.toFixed(1)}`;
+            }
+            return {
+                id: a.id,
+                s: a.metadata?.severity,
+                r: a.coordinates?.world_brush?.radius_mm,
+                brushBbox,
+                pathLen: a.coordinates?.world_path?.length || 0,
+            };
+        }));
 
         if (heatmapVolumeActorRef.current && heatmapVolumeActorRef.current._lastSignature === heatmapSignature) {
             heatmapVolumeActorRef.current.getProperty().setScalarOpacity(0, buildHeatmapOpacityFunction(heatmapOpacity));
@@ -5937,10 +5993,10 @@ const VolumeViewer3D = ({
 
     useEffect(() => {
         const annotateNeedsSurfacePick = annotateMode && annotationTool !== 'select';
-        if ((measureMode3D || implantPlaceMode || linkedMode || annotateNeedsSurfacePick) && !loading && !error) {
+        if ((measureMode3D || polylineMeasureMode || implantPlaceMode || linkedMode || annotateNeedsSurfacePick) && !loading && !error) {
             ensureSurfacePickActor();
         }
-    }, [annotateMode, annotationTool, ensureSurfacePickActor, error, implantPlaceMode, linkedMode, loading, measureMode3D]);
+    }, [annotateMode, annotationTool, ensureSurfacePickActor, error, implantPlaceMode, linkedMode, loading, measureMode3D, polylineMeasureMode]);
 
     useEffect(() => {
         const ctx = vtkContextRef.current;
@@ -6299,13 +6355,15 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             const screenPoint = getViewportPointerPoint(event);
             beginAnnotationInteractionQuality();
             event.currentTarget?.setPointerCapture?.(event.pointerId);
-            setWorldOverlayDraft({
+            const nextDraft = {
                 type: annotationTool,
                 startWorld: point,
                 startScreen: screenPoint,
                 hoverScreen: screenPoint,
                 pointerId: event.pointerId,
-            });
+            };
+            worldOverlayDraftRef.current = nextDraft;
+            setWorldOverlayDraft(nextDraft);
             setManualSegmentationError(null);
             return;
         }
@@ -6470,12 +6528,17 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
     const processWorldOverlayDraftPointerMove = useCallback((screenPointSample = null) => {
         const screenPoint = screenPointSample || overlayDraftPointerRef.current;
         if (!screenPoint) return;
+        const now = performance.now();
+        if (now - overlayDraftLastSetRef.current < 33) return; // 30fps gate
+        overlayDraftLastSetRef.current = now;
         setWorldOverlayDraft((current) => {
             if (!current?.startWorld) return current;
             if (current.hoverScreen && Math.hypot(current.hoverScreen.x - screenPoint.x, current.hoverScreen.y - screenPoint.y) < 1.5) {
                 return current;
             }
-            return { ...current, hoverScreen: screenPoint };
+            const updated = { ...current, hoverScreen: screenPoint };
+            worldOverlayDraftRef.current = updated;
+            return updated;
         });
     }, []);
 
@@ -6742,7 +6805,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             setTextDraft3D({
                 worldPoint: point,
                 screenPoint,
-                value: '',
+                text: '',
             });
             return;
         }
@@ -6765,7 +6828,8 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             return;
         }
 
-        const trimmed = String(value || '').trim();
+        const rawText = typeof value === 'string' ? value : (textDraft3D.text ?? textDraft3D.value ?? '');
+        const trimmed = String(rawText || '').trim();
         if (trimmed) {
             const nextAnnotation = buildWorldOverlayAnnotation({
                 type: 'text',
@@ -7135,7 +7199,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
     }, [activeAnnotationColor, annotateMode, annotationTool, projectWorldToViewportCached, projectionTick, worldOverlayDraft]);
     const textDraftScreenPoint = useMemo(() => {
         if (!textDraft3D?.worldPoint) return null;
-        return projectWorldToViewportCached(textDraft3D.worldPoint) || textDraft3D.screenPoint || null;
+        return projectWorldToViewportCached(textDraft3D.worldPoint) || null;
     }, [projectWorldToViewportCached, textDraft3D, projectionTick]);
 
     const isComparison = comparisonPaneId !== null;
@@ -7163,11 +7227,30 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                             <h2 className="truncate text-white font-semibold text-base leading-tight">
                                 3D Volume Rendering
                             </h2>
-                            <p className="truncate text-gray-500 text-xs">
-                                {volumeInfo
-                                    ? volumeInfo.dimensions[0] + '\u00D7' + volumeInfo.dimensions[1] + '\u00D7' + volumeInfo.dimensions[2] + ' \u2022 ' + (volumeInfo.voxels / 1e6).toFixed(1) + 'M voxels'
-                                    : 'Initializing...'}
-                            </p>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                                <p className="truncate text-gray-500 text-xs">
+                                    {volumeInfo
+                                        ? volumeInfo.dimensions[0] + '×' + volumeInfo.dimensions[1] + '×' + volumeInfo.dimensions[2] + ' • ' + (volumeInfo.voxels / 1e6).toFixed(1) + 'M voxels'
+                                        : 'Initializing...'}
+                                </p>
+                                {geometryReport && (
+                                    <span
+                                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                                            geometryReport.status === 'VERIFIED'
+                                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                                                : geometryReport.status === 'WARNING'
+                                                ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                                                : 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+                                        }`}
+                                        title={geometryReport.warnings.length ? geometryReport.warnings.join(' • ') : `Isotropic resolution ${geometryReport.voxelResolutionMm}mm • FOV ${geometryReport.fovMm.join('×')}mm`}
+                                    >
+                                        <span className={`h-1.5 w-1.5 rounded-full ${
+                                            geometryReport.status === 'VERIFIED' ? 'bg-emerald-400' : geometryReport.status === 'WARNING' ? 'bg-amber-400' : 'bg-rose-400'
+                                        }`} />
+                                        {geometryReport.status === 'VERIFIED' ? 'Isotropic' : `Anisotropy ${geometryReport.maxAnisotropyPct}%`}
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     </div>
 
@@ -8236,6 +8319,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                         visible={showMetadataPanel}
                         onClose={() => setShowMetadataPanel(false)}
                         metadata={metadata}
+                        geometryReport={geometryReport}
                         loading={metadataLoading}
                         error={metadataError}
                         study={study}
