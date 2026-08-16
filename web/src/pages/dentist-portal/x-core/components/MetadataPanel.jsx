@@ -26,9 +26,9 @@ function formatValue(value) {
   return String(value);
 }
 
-function buildSections(metadata) {
+function buildSections(metadata, geometryReport = null) {
   if (!metadata) {
-    return [
+    const defaultSections = [
       {
         title: 'Patient',
         rows: [
@@ -72,6 +72,31 @@ function buildSections(metadata) {
         ],
       },
     ];
+
+    if (geometryReport) {
+      defaultSections[3].rows.push(
+        ['Spatial Geometry', geometryReport.status === 'VERIFIED' ? 'Verified Isotropic' : `Anisotropic (${geometryReport.maxAnisotropyPct}% dev)`],
+        ['FOV Dimensions', `${geometryReport.fovMm.join(' × ')} mm`],
+      );
+    }
+    return defaultSections;
+  }
+
+  const volumeRows = [
+    ['Slices', metadata.num_slices],
+    ['Dimensions', metadata.dimensions],
+    ['Pixel Spacing', metadata.pixel_spacing != null ? `${metadata.pixel_spacing} mm` : null],
+    ['Slice Thickness', metadata.slice_thickness != null ? `${metadata.slice_thickness} mm` : null],
+    ['Voxel Size', metadata.voxel_size != null ? `${formatValue(metadata.voxel_size)} mm` : null],
+    ['Window Center', metadata.window_center],
+    ['Window Width', metadata.window_width],
+  ];
+
+  if (geometryReport) {
+    volumeRows.push(
+      ['Spatial Geometry', geometryReport.status === 'VERIFIED' ? 'Verified Isotropic' : `Anisotropic (${geometryReport.maxAnisotropyPct}% dev)`],
+      ['FOV Dimensions', `${geometryReport.fovMm.join(' × ')} mm`],
+    );
   }
 
   return [
@@ -107,15 +132,7 @@ function buildSections(metadata) {
     },
     {
       title: 'Volume',
-      rows: [
-        ['Slices', metadata.num_slices],
-        ['Dimensions', metadata.dimensions],
-        ['Pixel Spacing', metadata.pixel_spacing != null ? `${metadata.pixel_spacing} mm` : null],
-        ['Slice Thickness', metadata.slice_thickness != null ? `${metadata.slice_thickness} mm` : null],
-        ['Voxel Size', metadata.voxel_size != null ? `${formatValue(metadata.voxel_size)} mm` : null],
-        ['Window Center', metadata.window_center],
-        ['Window Width', metadata.window_width],
-      ],
+      rows: volumeRows,
     },
   ];
 }
@@ -139,12 +156,23 @@ function parseTagGroup(tag) {
 function isPrivateTag(tag) {
   const group = parseTagGroup(tag);
   if (group === 'UNKN') return false;
-  return Number.parseInt(group, 16) % 2 === 1;
+  const firstByte = parseInt(group.slice(0, 2), 16);
+  return Number.isFinite(firstByte) && (firstByte % 2 !== 0);
 }
 
 function groupLabel(group) {
-  if (group === 'UNKN') return 'Unknown Group';
-  return `${group} — ${GROUP_LABELS[group] || (Number.parseInt(group, 16) % 2 === 1 ? 'Private Group' : 'DICOM Group')}`;
+  switch (group) {
+    case '0008': return '(0008,xxxx) — Identification';
+    case '0010': return '(0010,xxxx) — Patient Info';
+    case '0018': return '(0018,xxxx) — Acquisition';
+    case '0020': return '(0020,xxxx) — Relationship / Orientation';
+    case '0028': return '(0028,xxxx) — Image Presentation';
+    case '7FE0': return '(7FE0,xxxx) — Pixel Data';
+    default:
+      return isPrivateTag(`(${group},0000)`)
+        ? `(${group},xxxx) — Private / Vendor Tags`
+        : `(${group},xxxx) — General Group`;
+  }
 }
 
 function buildRawTagsCopyText(tags) {
@@ -157,6 +185,7 @@ const MetadataPanel = ({
   visible,
   onClose,
   metadata,
+  geometryReport = null,
   loading,
   error,
   title = 'DICOM Info',
@@ -173,7 +202,7 @@ const MetadataPanel = ({
   const [rawTagsError, setRawTagsError] = useState(null);
   const [rawTagsLoaded, setRawTagsLoaded] = useState(false);
 
-  const sections = useMemo(() => buildSections(metadata), [metadata]);
+  const sections = useMemo(() => buildSections(metadata, geometryReport), [metadata, geometryReport]);
   const copyText = useMemo(() => buildCopyText(sections), [sections]);
   const studyKey = explicitStudyKey || study?.folderName || study?.id || '';
   const seriesUid = explicitSeriesUid || study?.selectedSeriesUid || '';
