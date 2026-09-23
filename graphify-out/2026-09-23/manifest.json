@@ -3042,9 +3042,9 @@
     "semantic_hash": "f891ef795a74c66d6b4476ef0d23bf4d"
   },
   "mobile/src/navigation/TabNavigator.jsx": {
-    "mtime": 1790179146.4103556,
-    "seen": 1790179274.416522,
-    "ast_hash": "98bdd978a87a0cad978543d91c3b27e2",
+    "mtime": 1790181189.4517593,
+    "seen": 1790181451.4385579,
+    "ast_hash": "1fcfed7cf0092767df316e00d10a584a",
     "semantic_hash": ""
   },
   "mobile/src/services/aiAnalysisSyncService.js": {
@@ -7055,18 +7055,6 @@
     "ast_hash": "deac06c381a0dc7093055838150a2af0",
     "semantic_hash": ""
   },
-  "mobile/src/features/dentist/screens/DentistHomeScreen.jsx": {
-    "mtime": 1790179111.0873744,
-    "seen": 1790179274.415797,
-    "ast_hash": "6e0273a59d7d59c2f9c8669f78a42765",
-    "semantic_hash": ""
-  },
-  "mobile/src/features/dentist/screens/DentistScan3DScreen.jsx": {
-    "mtime": 1790180824.7307894,
-    "seen": 1790180924.346148,
-    "ast_hash": "242825f7718c71dc266607f307d82cf7",
-    "semantic_hash": ""
-  },
   "mobile/src/utils/authUtils.js": {
     "mtime": 1790179069.133426,
     "seen": 1790179274.416896,
@@ -8568,15 +8556,27 @@
     "semantic_hash": ""
   },
   "mobile/__tests__/mobile-dentist-scan.test.js": {
-    "mtime": 1790180882.0954802,
-    "seen": 1790180924.344598,
-    "ast_hash": "60d97f1e51349b2f54870789f7eb65fd",
+    "mtime": 1790181404.6780744,
+    "seen": 1790181451.4362109,
+    "ast_hash": "c862335ebff706182b57de8c922d4259",
     "semantic_hash": ""
   },
   "mobile/src/services/scan3DService.js": {
     "mtime": 1790180635.9660404,
     "seen": 1790180924.3470871,
     "ast_hash": "a08bf15603187df561a8ce2b4afc93f0",
+    "semantic_hash": ""
+  },
+  "mobile/src/features/dentist/screens/3D/DentistScan3DScreen.jsx": {
+    "mtime": 1790181343.2044103,
+    "seen": 1790181451.437758,
+    "ast_hash": "72774b5769c8e10fad9f46499e93ea07",
+    "semantic_hash": ""
+  },
+  "mobile/src/features/dentist/screens/DentistHome/DentistHomeScreen.jsx": {
+    "mtime": 1790181266.5421922,
+    "seen": 1790181451.437759,
+    "ast_hash": "7e77e5b2b465e8683b49ca0ab7bb4e8c",
     "semantic_hash": ""
   }
 }

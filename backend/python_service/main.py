@@ -33,6 +33,8 @@ from services.vti_converter import (
     log_python_event,
     notify_backend_callback,
 )
+from services.reconstruction_service import process_3d_scan_reconstruction
+from services.lidra_service import analyze_video_acquisition
 
 
 @asynccontextmanager
@@ -195,7 +197,7 @@ def _share_validation_url(token: str) -> str:
     return f"{base}/x-core/share/{quoted_token}/validate"
 
 
-def _parse_expires_at(value: str) -> float | None:
+def _parse_expires_at(value: str | None) -> float | None:
     if not value:
         return None
     try:
@@ -208,7 +210,7 @@ def _parse_expires_at(value: str) -> float | None:
         return None
 
 
-def _prune_share_validation_cache_locked(now_ts: float = None) -> None:
+def _prune_share_validation_cache_locked(now_ts: float | None = None) -> None:
     now_ts = now_ts if now_ts is not None else time.time()
     expired_tokens = [
         token for token, entry in _share_validation_cache.items()
@@ -380,13 +382,13 @@ def _stream_vti_file(request: Request, file_path: str, filename: str, head_only:
     )
 
 
-def _authorize_study_access(study_id: str, share_token: str = None) -> dict | None:
+def _authorize_study_access(study_id: str, share_token: str | None = None) -> dict | None:
     if not share_token:
         return None
     return _validate_share_token(study_id, share_token)
 
 
-def _morita_volume_metadata(study_path: str, selected_series_uid: str = None) -> dict | None:
+def _morita_volume_metadata(study_path: str, selected_series_uid: str | None = None) -> dict | None:
     """Build viewer metadata for a study containing a J. Morita raw volume."""
     series_groups = scan_dicom_series(study_path)
     if not any(info.get("source_format") == "jm_volume" for info in series_groups.values()):
@@ -447,9 +449,9 @@ def _ensure_vti_conversion_singleflight(
     wait: bool = True,
     segment: bool = False,
     quality: str = "standard",
-    run_id: str = None,
-    case_id: str = None,
-    iteration: str = None,
+    run_id: str | None = None,
+    case_id: str | None = None,
+    iteration: str | None = None,
 ) -> bool:
     """
     Ensure at most one conversion runs per study.
@@ -704,7 +706,7 @@ def _build_gallery_from_scan(study_path: str, study_id: str, is_converting: bool
 
 
 @app.get("/gallery/{study_id}")
-def get_study_gallery(study_id: str, background_tasks: BackgroundTasks, share_token: str = None):
+def get_study_gallery(study_id: str, background_tasks: BackgroundTasks, share_token: str | None = None):
     _authorize_study_access(study_id, share_token)
     study_path = os.path.join(UPLOAD_DIR, study_id)
 
@@ -742,7 +744,7 @@ def get_study_gallery(study_id: str, background_tasks: BackgroundTasks, share_to
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/status/{study_id}")
-def get_study_status(study_id: str, share_token: str = None):
+def get_study_status(study_id: str, share_token: str | None = None):
     """
     Returns current conversion status for a study.
     Used by frontend to poll until conversion completes.
@@ -772,7 +774,7 @@ def get_study_status(study_id: str, share_token: str = None):
     }
 
 @app.get("/thumbnail/{study_id}/{series_uid}")
-def get_series_thumbnail(study_id: str, series_uid: str, share_token: str = None):
+def get_series_thumbnail(study_id: str, series_uid: str, share_token: str | None = None):
     """
     Generate thumbnail for series card (middle slice for 3D, first slice for 2D)
     
@@ -792,10 +794,9 @@ def get_series_thumbnail(study_id: str, series_uid: str, share_token: str = None
         except Exception:
             handler = MoritaHandler(study_path)
             
-        metadata = handler.get_metadata()
-        
-        # Get middle slice as thumbnail
-        middle_index = metadata['num_slices'] // 2
+        metadata = handler.get_metadata() or {}
+        num_slices = int(metadata.get('num_slices', 1) or 1)
+        middle_index = max(0, num_slices // 2)
         image_bytes, headers = handler.get_slice('axial', middle_index)
         
         return Response(content=image_bytes, media_type="image/jpeg", headers=headers)
@@ -803,7 +804,7 @@ def get_series_thumbnail(study_id: str, series_uid: str, share_token: str = None
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def _resolve_or_create_volume_path(study_id: str, series_uid: str = None, create_if_missing: bool = True) -> tuple[str, str]:
+def _resolve_or_create_volume_path(study_id: str, series_uid: str | None = None, create_if_missing: bool = True) -> tuple[str, str]:
     study_path = os.path.join(UPLOAD_DIR, study_id)
 
     if not os.path.exists(study_path):
@@ -838,7 +839,7 @@ def _resolve_or_create_volume_path(study_id: str, series_uid: str = None, create
     return study_path, vti_path
 
 
-def _compute_density_histogram(values, bins=None, spacing=(1.0, 1.0, 1.0), study_vti: str = None) -> dict:
+def _compute_density_histogram(values, bins=None, spacing=(1.0, 1.0, 1.0), study_vti: str | None = None) -> dict:
     scalar_values = np.asarray(values, dtype=np.float32).ravel()
     scalar_values = scalar_values[np.isfinite(scalar_values)]
     if bins is None:
@@ -1007,9 +1008,9 @@ def _read_vti_scalar_values(vti_path: str) -> np.ndarray:
 
 def _compute_density_histogram_for_vti(
     vti_path: str,
-    cache_path: str = None,
-    study_id: str = None,
-    series_uid: str = None,
+    cache_path: str | None = None,
+    study_id: str | None = None,
+    series_uid: str | None = None,
     force_refresh: bool = False,
     check_stale: bool = False,
 ) -> dict:
@@ -1129,7 +1130,7 @@ def _render_middle_axial_preview_png(vti_path: str, size: int = 256) -> bytes:
 
 
 @app.get("/quality/{study_id}")
-def get_cbct_quality_assessment(study_id: str, series_uid: str = None, share_token: str = None):
+def get_cbct_quality_assessment(study_id: str, series_uid: str | None = None, share_token: str | None = None):
     """
     Automated CBCT quality assessment for clinical review:
     - SNR (signal-to-noise ratio) in dB
@@ -1188,14 +1189,14 @@ def get_cbct_quality_assessment(study_id: str, series_uid: str = None, share_tok
 
 
 @app.head("/volume/{study_id}")
-def head_volume_vti(request: Request, study_id: str, series_uid: str = None, share_token: str = None):
+def head_volume_vti(request: Request, study_id: str, series_uid: str | None = None, share_token: str | None = None):
     _authorize_study_access(study_id, share_token)
     _, vti_path = _resolve_or_create_volume_path(study_id, series_uid, create_if_missing=False)
     return _stream_vti_file(request, vti_path, f"volume_{study_id}.vti", head_only=True)
 
 
 @app.get("/volume/{study_id}")
-def get_volume_vti(request: Request, study_id: str, series_uid: str = None, share_token: str = None):
+def get_volume_vti(request: Request, study_id: str, series_uid: str | None = None, share_token: str | None = None):
     """
     Serve pre-computed .vti file for instant 3D rendering.
 
@@ -1214,7 +1215,7 @@ def get_volume_vti(request: Request, study_id: str, series_uid: str = None, shar
 
 
 @app.get("/preview/{study_id}")
-def get_volume_preview(study_id: str, series_uid: str = None, share_token: str = None):
+def get_volume_preview(study_id: str, series_uid: str | None = None, share_token: str | None = None):
     _authorize_study_access(study_id, share_token)
     _, vti_path = _resolve_or_create_volume_path(study_id, series_uid, create_if_missing=True)
     png_bytes = _render_middle_axial_preview_png(vti_path)
@@ -1226,7 +1227,7 @@ def get_volume_preview(study_id: str, series_uid: str = None, share_token: str =
 
 
 @app.get("/segmentation-progress/{study_id}")
-async def stream_segmentation_progress(study_id: str, request: Request, share_token: str = None):
+async def stream_segmentation_progress(study_id: str, request: Request, share_token: str | None = None):
     _authorize_study_access(study_id, share_token)
 
     async def event_generator():
@@ -1256,7 +1257,7 @@ async def stream_segmentation_progress(study_id: str, request: Request, share_to
 
 
 @app.get("/density-histogram/{study_id}")
-def get_bone_density_histogram(study_id: str, series_uid: str = None, share_token: str = None, refresh: bool = False, check_stale: bool = False):
+def get_bone_density_histogram(study_id: str, series_uid: str | None = None, share_token: str | None = None, refresh: bool = False, check_stale: bool = False):
     """
     Return cached Misch D1-D4 bone-density counts, percentages, and volumes.
     """
@@ -1280,7 +1281,7 @@ def get_bone_density_histogram(study_id: str, series_uid: str = None, share_toke
 
 
 @app.get("/nerve-canal/{study_id}")
-def get_nerve_canal(study_id: str, series_uid: str = None, share_token: str = None):
+def get_nerve_canal(study_id: str, series_uid: str | None = None, share_token: str | None = None):
     """
     Return a heuristic mandibular canal centerline if one can be detected.
     """
@@ -1308,7 +1309,7 @@ def get_nerve_canal(study_id: str, series_uid: str = None, share_token: str = No
 
 
 @app.get("/ai-findings/{study_id}")
-def get_ai_findings(study_id: str, series_uid: str = None, share_token: str = None):
+def get_ai_findings(study_id: str, series_uid: str | None = None, share_token: str | None = None):
     """
     Aggregate lightweight structured CBCT analysis outputs for an LLM prompt.
     """
@@ -1356,7 +1357,7 @@ def get_ai_findings(study_id: str, series_uid: str = None, share_token: str = No
 
 
 @app.get("/labels/{study_id}")
-def get_volume_labels(study_id: str, series_uid: str = None, share_token: str = None):
+def get_volume_labels(study_id: str, series_uid: str | None = None, share_token: str | None = None):
     """
     Serve an optional coarse tooth label-map VTI aligned with the MONAI volume.
     """
@@ -1401,7 +1402,7 @@ def get_volume_labels(study_id: str, series_uid: str = None, share_token: str = 
 
 
 @app.get("/labels-manifest/{study_id}")
-def get_volume_labels_manifest(study_id: str, series_uid: str = None, share_token: str = None):
+def get_volume_labels_manifest(study_id: str, series_uid: str | None = None, share_token: str | None = None):
     """
     Serve the lightweight tooth-label sidecar manifest used to gate lazy overlays.
     """
@@ -1425,7 +1426,7 @@ def get_volume_labels_manifest(study_id: str, series_uid: str = None, share_toke
 
 
 @app.get("/image/{study_id}/{series_uid}")
-def get_2d_image(study_id: str, series_uid: str, share_token: str = None):
+def get_2d_image(study_id: str, series_uid: str, share_token: str | None = None):
     """
     Serve a pre-generated 2D DICOM image (Panoramic, Cephalometric, etc.) as JPEG.
     If not pre-generated, generates on-demand — but ONLY for native 2D series.
@@ -1487,7 +1488,7 @@ def get_2d_image(study_id: str, series_uid: str, share_token: str = None):
 
 
 @app.get("/thumb/{study_id}/{series_uid}")
-def get_series_thumb(study_id: str, series_uid: str, share_token: str = None):
+def get_series_thumb(study_id: str, series_uid: str, share_token: str | None = None):
     """
     Serve pre-generated thumbnail (fast, 256x256 JPEG).
     Falls back to on-demand thumbnail generation via DicomHandler.
@@ -1526,8 +1527,9 @@ def get_series_thumb(study_id: str, series_uid: str, share_token: str = None):
         except Exception:
             handler = MoritaHandler(study_path)
             
-        metadata = handler.get_metadata()
-        middle_index = metadata['num_slices'] // 2
+        metadata = handler.get_metadata() or {}
+        num_slices = int(metadata.get('num_slices', 1) or 1)
+        middle_index = max(0, num_slices // 2)
         image_bytes, headers = handler.get_slice('axial', middle_index)
         return Response(content=image_bytes, media_type="image/jpeg", headers=headers)
     except Exception as e:
@@ -1535,7 +1537,7 @@ def get_series_thumb(study_id: str, series_uid: str, share_token: str = None):
 
 
 @app.get("/volume-status/{study_id}")
-def get_volume_status(study_id: str, share_token: str = None):
+def get_volume_status(study_id: str, share_token: str | None = None):
     """Check if pre-computed .vti file exists for a study."""
     _authorize_study_access(study_id, share_token)
     study_path = os.path.join(UPLOAD_DIR, study_id)
@@ -1611,7 +1613,7 @@ def trigger_vti_conversion(
 
 
 @app.get("/instances/{study_id}/{series_uid}")
-def get_series_instances(study_id: str, series_uid: str, share_token: str = None):
+def get_series_instances(study_id: str, series_uid: str, share_token: str | None = None):
     """
     Return per-instance metadata for a series, including real SOPInstanceUIDs.
     
@@ -1814,7 +1816,7 @@ def get_series_instances(study_id: str, series_uid: str, share_token: str = None
 
 
 @app.get("/series/{study_id}")
-def list_series(study_id: str, share_token: str = None):
+def list_series(study_id: str, share_token: str | None = None):
     """
     List all DICOM series found in the study folder (The Acteon Way)
     
@@ -1856,8 +1858,8 @@ def stream_slice(
     view: str,
     index: int,
     request: Request,
-    series_uid: str = None,
-    share_token: str = None
+    series_uid: str | None = None,
+    share_token: str | None = None
 ):
     """
     Stream a single slice with multi-series support
@@ -1924,7 +1926,7 @@ def stream_slice(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/metadata/{study_id}")
-def get_metadata(study_id: str, series_uid: str = None, share_token: str = None):
+def get_metadata(study_id: str, series_uid: str | None = None, share_token: str | None = None):
     """
     Get metadata with multi-series detection (The Acteon Way)
     
@@ -1985,7 +1987,7 @@ def _flatten_sr_nodes(nodes: list[dict]) -> tuple[list[dict], list[dict]]:
 
 
 @app.get("/sr/{study_id}")
-def get_structured_report(study_id: str, share_token: str = None):
+def get_structured_report(study_id: str, share_token: str | None = None):
     """
     Return DICOM Structured Report findings and measurements if present.
     """
@@ -2031,6 +2033,72 @@ def get_structured_report(study_id: str, share_token: str = None):
             "manufacturer": manufacturer or None,
         }
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/reconstruct/3d-scan")
+async def reconstruct_3d_scan(request: Request):
+    """
+    Receives request to reconstruct 3D surface mesh from continuous smartphone RGB scan video.
+    """
+    try:
+        body = await request.json()
+        folder_name = body.get("folderName")
+        scan_scope = body.get("scanScope", "full")
+        video_path = body.get("videoPath")
+
+        if not folder_name:
+            raise HTTPException(status_code=400, detail="folderName is required")
+
+        study_dir = os.path.join(UPLOAD_DIR, folder_name)
+        if not os.path.exists(study_dir):
+            os.makedirs(study_dir, exist_ok=True)
+
+        if not video_path:
+            video_path = os.path.join(study_dir, "raw_video.mp4")
+
+        result = process_3d_scan_reconstruction(
+            study_dir=study_dir,
+            scan_scope=scan_scope,
+            video_path=video_path if os.path.exists(video_path) else None,
+        )
+        return result
+    except Exception as e:
+        print(f"[3D Reconstruct] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/lidra/analyze")
+async def lidra_analyze(request: Request):
+    """
+    LIDRA: Dental-Aware Acquisition Intelligence Layer.
+    Analyzes raw video for motion blur, exposure/brightness, redundancy filtering,
+    arch coverage tracking, and useful keyframe selection.
+    """
+    try:
+        body = await request.json()
+        folder_name = body.get("folderName")
+        scan_scope = body.get("scanScope", "full")
+        video_path = body.get("videoPath")
+
+        if not folder_name:
+            raise HTTPException(status_code=400, detail="folderName is required")
+
+        study_dir = os.path.join(UPLOAD_DIR, folder_name)
+        if not os.path.exists(study_dir):
+            os.makedirs(study_dir, exist_ok=True)
+
+        if not video_path:
+            video_path = os.path.join(study_dir, "raw_video.mp4")
+
+        result = analyze_video_acquisition(
+            video_path=video_path if os.path.exists(video_path) else None,
+            study_dir=study_dir,
+            scan_scope=scan_scope,
+        )
+        return result
+    except Exception as e:
+        print(f"[LIDRA Analyze] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

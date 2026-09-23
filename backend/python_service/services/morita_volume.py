@@ -154,5 +154,6 @@ def load_jm_volume_for_viewer(header: dict, requested_spacing: tuple[float, floa
     normalized[reduced == JM_VOLUME_BACKGROUND] = 0.0
 
     volume_xyz = np.ascontiguousarray(normalized)
-    effective_spacing = tuple(value * stride for value in spacing)
-    return volume_xyz, effective_spacing, tuple(header["origin"])
+    effective_spacing = (float(spacing[0] * stride), float(spacing[1] * stride), float(spacing[2] * stride))
+    origin = (float(header["origin"][0]), float(header["origin"][1]), float(header["origin"][2]))
+    return volume_xyz, effective_spacing, origin

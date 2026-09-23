@@ -207,6 +207,96 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
       expect(result.success).toBe(false);
       expect(result.message).toBe('Network error during video upload');
     });
+
+    test('queue3DScan posts to queue endpoint and returns job details', async () => {
+      api.post.mockResolvedValueOnce({
+        data: {
+          success: true,
+          scan: { id: '201', status: 'queued' },
+          job: { status: 'queued', progressPercent: 5 },
+        },
+      });
+
+      const result = await scan3DService.queue3DScan('201', { engine: 'photogrammetry_v1' });
+      expect(api.post).toHaveBeenCalledWith('/x-core/3d-scans/201/queue', {
+        engine: 'photogrammetry_v1',
+      });
+      expect(result.success).toBe(true);
+      expect(result.scan.status).toBe('queued');
+      expect(result.job.progressPercent).toBe(5);
+    });
+
+    test('fetch3DScanStatus polls status endpoint and returns progress and assets', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          success: true,
+          scanId: '201',
+          status: 'ready',
+          progressPercent: 100,
+          currentStage: 'ready',
+          assets: {
+            mesh: { fileName: 'mesh.obj', assetUrl: '/v1/x-core/3d-scans/201/assets/mesh.obj' },
+            preview: { fileName: 'preview.png', assetUrl: '/v1/x-core/3d-scans/201/assets/preview.png' },
+          },
+        },
+      });
+
+      const result = await scan3DService.fetch3DScanStatus('201');
+      expect(api.get).toHaveBeenCalledWith('/x-core/3d-scans/201/status');
+      expect(result.success).toBe(true);
+      expect(result.status).toBe('ready');
+      expect(result.progressPercent).toBe(100);
+      expect(result.assets.mesh.fileName).toBe('mesh.obj');
+    });
+
+    test('retry3DScan calls retry endpoint and returns re-queued scan', async () => {
+      api.post.mockResolvedValueOnce({
+        data: {
+          success: true,
+          scan: { id: '201', status: 'queued' },
+          job: { status: 'queued', progressPercent: 5 },
+        },
+      });
+
+      const result = await scan3DService.retry3DScan('201');
+      expect(api.post).toHaveBeenCalledWith('/x-core/3d-scans/201/retry', {});
+      expect(result.success).toBe(true);
+      expect(result.scan.status).toBe('queued');
+    });
+
+    test('fetch3DScanEngines returns registered reconstruction engines list', async () => {
+      const mockEngines = [
+        { name: 'photogrammetry_v1', displayName: 'Native Photogrammetry', isDefault: true },
+        { name: 'colmap', displayName: 'COLMAP' },
+        { name: 'abot_recon', displayName: 'ABot-Recon' },
+      ];
+      api.get.mockResolvedValueOnce({
+        data: { success: true, defaultEngine: 'photogrammetry_v1', engines: mockEngines },
+      });
+
+      const result = await scan3DService.fetch3DScanEngines();
+      expect(api.get).toHaveBeenCalledWith('/x-core/3d-scans/engines');
+      expect(result.success).toBe(true);
+      expect(result.engines).toEqual(mockEngines);
+      expect(result.defaultEngine).toBe('photogrammetry_v1');
+    });
+
+    test('fetch3DScanLidraReport returns acquisition report for scan session', async () => {
+      const mockLidra = {
+        qualityScore: 92,
+        motionBlur: { status: 'optimal' },
+        exposure: { status: 'balanced' },
+        coverage: { coverageScore: 88, completeness: 'complete' },
+      };
+      api.get.mockResolvedValueOnce({
+        data: { success: true, scanId: '201', lidra: mockLidra },
+      });
+
+      const result = await scan3DService.fetch3DScanLidraReport('201');
+      expect(api.get).toHaveBeenCalledWith('/x-core/3d-scans/201/lidra');
+      expect(result.success).toBe(true);
+      expect(result.lidra.qualityScore).toBe(92);
+    });
   });
 
   describe('DentistScan3DScreen UI Flow', () => {
@@ -239,10 +329,60 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
 
       const textValues = collectText(tree.toJSON());
       expect(textValues).toContain('3D Dental Scan');
-      expect(textValues).toContain('Dentist Mobile 3D Scan MVP');
+      expect(textValues).toContain('Dentist Mobile 3D Scan Pipeline');
       expect(textValues).toContain('+ Pasien Baru');
       expect(textValues).toContain('Pilih Pasien Terdaftar:');
       expect(textValues).toContain('Dewi Lestari');
+
+      await act(async () => {
+        tree.unmount();
+      });
+    });
+
+    test('renders queued/processing reconstruction card with progress bar', async () => {
+      useSelector.mockImplementation((selector) => {
+        return selector({
+          auth: {
+            user: { id: 10, name: 'Dr. Sarah', roles: ['dentist'] },
+          },
+        });
+      });
+
+      api.get.mockImplementation((url) => {
+        if (url === '/x-core/3d-scans/patients') {
+          return Promise.resolve({ data: { success: true, patients: [] } });
+        }
+        if (url === '/x-core/3d-scans/501/status') {
+          return Promise.resolve({
+            data: {
+              success: true,
+              scanId: '501',
+              status: 'processing',
+              progressPercent: 45,
+              currentStage: 'surface_extraction',
+              job: {
+                logs: [
+                  { timestamp: '2026-09-23T10:00:00Z', stage: 'init', level: 'info', message: 'Engine initialized' },
+                ],
+              },
+            },
+          });
+        }
+        return Promise.reject(new Error('Unknown url'));
+      });
+
+      let tree;
+      await act(async () => {
+        tree = renderer.create(
+          <PaperProvider>
+            <DentistScan3DScreen navigation={{}} />
+          </PaperProvider>
+        );
+      });
+
+      // Initially renders idle screen
+      const initialTexts = collectText(tree.toJSON());
+      expect(initialTexts).toContain('3D Dental Scan');
 
       await act(async () => {
         tree.unmount();

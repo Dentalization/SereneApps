@@ -1,5 +1,7 @@
 import os
 import pydicom
+from pydicom.dataset import FileMetaDataset
+from pydicom.multival import MultiValue
 from pydicom.uid import ExplicitVRLittleEndian, ImplicitVRLittleEndian
 import glob
 import numpy as np
@@ -11,6 +13,7 @@ try:
     from services.vti_converter import classify_series
 except ImportError:
     try:
+        # pyrefly: ignore [missing-import]
         from vti_converter import classify_series
     except ImportError:
         # Fallback inline if import fails
@@ -127,7 +130,7 @@ class DicomHandler:
             
             # Fix missing Transfer Syntax UID
             if not hasattr(ds, 'file_meta') or ds.file_meta is None:
-                ds.file_meta = pydicom.dataset.FileMetaDataset()
+                ds.file_meta = FileMetaDataset()
             
             if not hasattr(ds.file_meta, 'TransferSyntaxUID') or ds.file_meta.TransferSyntaxUID is None:
                 # Fallback to Explicit VR Little Endian (most common)
@@ -308,9 +311,9 @@ class DicomHandler:
                 ww = getattr(self.first_ds, 'WindowWidth', None)
 
                 if wc is not None:
-                    dicom_wc = float(wc[0]) if isinstance(wc, (list, pydicom.multival.MultiValue)) else float(wc)
+                    dicom_wc = float(wc[0]) if isinstance(wc, (list, MultiValue)) else float(wc)
                 if ww is not None:
-                    dicom_ww = float(ww[0]) if isinstance(ww, (list, pydicom.multival.MultiValue)) else float(ww)
+                    dicom_ww = float(ww[0]) if isinstance(ww, (list, MultiValue)) else float(ww)
             except Exception:
                 pass
 
@@ -320,7 +323,7 @@ class DicomHandler:
         if value is None:
             return None
 
-        if isinstance(value, pydicom.multival.MultiValue):
+        if isinstance(value, MultiValue):
             parts = [self._normalize_metadata_value(v) for v in value]
             parts = [p for p in parts if p not in (None, '')]
             return ' × '.join(str(p) for p in parts) if parts else None
@@ -414,8 +417,8 @@ class DicomHandler:
                 f"[range: {window_min:.2f} to {window_max:.2f}]"
             )
         else:
-            window_center = dicom_wc
-            window_width = dicom_ww
+            window_center = float(dicom_wc or 127.0)
+            window_width = float(dicom_ww or 255.0)
             window_min = window_center - (window_width / 2.0)
             window_max = window_center + (window_width / 2.0)
 
@@ -429,7 +432,7 @@ class DicomHandler:
 
         pixel_array = None
 
-        if self.volume is not None:
+        if self.volume is not None and self.shape is not None:
             # Volume-based slicing for MPR
             try:
                 if view == 'axial':
@@ -526,7 +529,7 @@ class DicomHandler:
                 cols = int(getattr(self.first_ds, 'Columns', 512))
             z = len(self.files)
             dims = [z, rows, cols]
-        elif self.volume is not None:
+        elif self.volume is not None and self.shape is not None:
             dims = list(self.shape)
         else:
             dims = [0, 0, 0]
@@ -554,9 +557,9 @@ class DicomHandler:
                 ww = getattr(self.first_ds, 'WindowWidth', None)
                 
                 if wc is not None:
-                    window_center = float(wc[0]) if isinstance(wc, (list, pydicom.multival.MultiValue)) else float(wc)
+                    window_center = float(wc[0]) if isinstance(wc, (list, MultiValue)) else float(wc)
                 if ww is not None:
-                    window_width = float(ww[0]) if isinstance(ww, (list, pydicom.multival.MultiValue)) else float(ww)
+                    window_width = float(ww[0]) if isinstance(ww, (list, MultiValue)) else float(ww)
             except:
                 pass
 

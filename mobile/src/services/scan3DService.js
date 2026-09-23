@@ -148,3 +148,120 @@ export const upload3DScanVideo = async (scanId, videoUri, metadata = {}) => {
   }
 };
 
+/**
+ * Put an uploaded 3D scan into the asynchronous reconstruction queue.
+ * @param {string|number} scanId
+ * @param {Object} [options={}]
+ * @returns {Promise<{success: boolean, scan?: Object, job?: Object, message?: string}>}
+ */
+export const queue3DScan = async (scanId, options = {}) => {
+  try {
+    const response = await api.post(`/x-core/3d-scans/${scanId}/queue`, options);
+    return {
+      success: true,
+      scan: response.data?.scan,
+      job: response.data?.job,
+      message: response.data?.message,
+    };
+  } catch (error) {
+    console.error('[scan3DService] queue3DScan error:', error);
+    const errData = error.response?.data;
+    return {
+      success: false,
+      message: errData?.error || error.message || 'Gagal memulai antrean rekonstruksi',
+    };
+  }
+};
+
+/**
+ * Poll the processing status of a 3D scan session.
+ * @param {string|number} scanId
+ * @returns {Promise<{success: boolean, status?: string, progressPercent?: number, currentStage?: string, job?: Object, assets?: Object, message?: string}>}
+ */
+export const fetch3DScanStatus = async (scanId) => {
+  try {
+    const response = await api.get(`/x-core/3d-scans/${scanId}/status`);
+    return {
+      success: true,
+      ...response.data,
+    };
+  } catch (error) {
+    console.error('[scan3DService] fetch3DScanStatus error:', error);
+    const errData = error.response?.data;
+    return {
+      success: false,
+      message: errData?.error || error.message || 'Gagal memuat status rekonstruksi',
+    };
+  }
+};
+
+/**
+ * Retry a failed 3D scan session.
+ * @param {string|number} scanId
+ * @param {Object} [options={}]
+ * @returns {Promise<{success: boolean, scan?: Object, job?: Object, message?: string}>}
+ */
+export const retry3DScan = async (scanId, options = {}) => {
+  try {
+    const response = await api.post(`/x-core/3d-scans/${scanId}/retry`, options);
+    return {
+      success: true,
+      scan: response.data?.scan,
+      job: response.data?.job,
+      message: response.data?.message,
+    };
+  } catch (error) {
+    console.error('[scan3DService] retry3DScan error:', error);
+    const errData = error.response?.data;
+    return {
+      success: false,
+      message: errData?.error || error.message || 'Gagal menjadwalkan ulang rekonstruksi',
+    };
+  }
+};
+
+/**
+ * Fetch available 3D reconstruction engines and capabilities.
+ * @returns {Promise<{success: boolean, engines: Array, defaultEngine?: string, message?: string}>}
+ */
+export const fetch3DScanEngines = async () => {
+  try {
+    const response = await api.get('/x-core/3d-scans/engines');
+    return {
+      success: true,
+      engines: response.data?.engines || [],
+      defaultEngine: response.data?.defaultEngine,
+    };
+  } catch (error) {
+    console.error('[scan3DService] fetch3DScanEngines error:', error);
+    const errData = error.response?.data;
+    return {
+      success: false,
+      engines: [],
+      message: errData?.error || error.message || 'Gagal memuat daftar engine rekonstruksi',
+    };
+  }
+};
+
+/**
+ * Fetch LIDRA acquisition intelligence report for a 3D scan.
+ * @param {string|number} scanId
+ * @returns {Promise<{success: boolean, lidra?: Object, message?: string}>}
+ */
+export const fetch3DScanLidraReport = async (scanId) => {
+  try {
+    const response = await api.get(`/x-core/3d-scans/${scanId}/lidra`);
+    return {
+      success: true,
+      lidra: response.data?.lidra,
+    };
+  } catch (error) {
+    console.error('[scan3DService] fetch3DScanLidraReport error:', error);
+    const errData = error.response?.data;
+    return {
+      success: false,
+      message: errData?.error || error.message || 'Gagal memuat laporan akuisisi LIDRA',
+    };
+  }
+};
+

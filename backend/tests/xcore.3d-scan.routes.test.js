@@ -12,7 +12,15 @@ const {
   create3DScan,
   get3DScanDetails,
   upload3DScanVideo,
+  enqueue3DScan,
+  get3DScanStatus,
+  retry3DScan,
+  get3DScanAsset,
+  get3DScanEngines,
+  get3DScanLidraReport,
 } = await import('../src/controllers/xCoreScanController.js');
+
+const { processScanNow } = await import('../src/services/scan3D/scan3DWorker.js');
 
 let authUser = null;
 
@@ -38,9 +46,15 @@ function createApp() {
 
   app.get('/v1/x-core/3d-scans/patients', authMiddlewareMock, requireDentistMock, getScanPatients);
   app.post('/v1/x-core/3d-scans/patients', authMiddlewareMock, requireDentistMock, createScanPatient);
+  app.get('/v1/x-core/3d-scans/engines', authMiddlewareMock, requireDentistMock, get3DScanEngines);
   app.post('/v1/x-core/3d-scans', authMiddlewareMock, requireDentistMock, create3DScan);
   app.get('/v1/x-core/3d-scans/:id', authMiddlewareMock, requireDentistMock, get3DScanDetails);
+  app.get('/v1/x-core/3d-scans/:id/lidra', authMiddlewareMock, requireDentistMock, get3DScanLidraReport);
   app.post('/v1/x-core/3d-scans/:id/video', authMiddlewareMock, requireDentistMock, upload.single('video'), upload3DScanVideo);
+  app.post('/v1/x-core/3d-scans/:id/queue', authMiddlewareMock, requireDentistMock, enqueue3DScan);
+  app.get('/v1/x-core/3d-scans/:id/status', authMiddlewareMock, requireDentistMock, get3DScanStatus);
+  app.post('/v1/x-core/3d-scans/:id/retry', authMiddlewareMock, requireDentistMock, retry3DScan);
+  app.get('/v1/x-core/3d-scans/:id/assets/:fileName', authMiddlewareMock, requireDentistMock, get3DScanAsset);
 
   return app;
 }
@@ -203,7 +217,7 @@ test('3D Scan Workflow: Dentist can create patient specifically for 3D scan and 
     assert(scan);
     assert(scan.id);
     assert(scan.scanIdentifier.startsWith('SCAN-3D-'));
-    assert.equal(scan.status, 'pending_capture');
+    assert.equal(scan.status, 'created');
     assert.equal(scan.scanScope, 'upper');
     assert.equal(scan.patientId, newPatientId);
     assert.equal(scan.dentistId, dentist.id.toString());
@@ -214,10 +228,10 @@ test('3D Scan Workflow: Dentist can create patient specifically for 3D scan and 
     const getScanRes = await httpJson(baseUrl, `/v1/x-core/3d-scans/${scan.id}`);
     assert.equal(getScanRes.status, 200);
     assert.equal(getScanRes.json.scan.scanIdentifier, scan.scanIdentifier);
-    assert.equal(getScanRes.json.scan.status, 'pending_capture');
+    assert.equal(getScanRes.json.scan.status, 'created');
     assert.equal(getScanRes.json.scan.patient.name, 'Ahmad Baru');
 
-    // 6. Test POST /v1/x-core/3d-scans/:id/video (Upload Raw Continuous Video)
+    // 6. Test POST /v1/x-core/3d-scans/:id/video (Upload Raw Continuous Video - Non-blocking)
     const formData = new FormData();
     const fakeVideoBlob = new Blob(['mp4-continuous-rgb-video-payload-simulated-bytes'], {
       type: 'video/mp4',
@@ -234,12 +248,115 @@ test('3D Scan Workflow: Dentist can create patient specifically for 3D scan and 
     const uploadJson = await uploadRes.json();
     assert.equal(uploadRes.status, 200);
     assert.equal(uploadJson.success, true);
-    assert.equal(uploadJson.scan.status, 'captured');
+    assert.equal(uploadJson.scan.status, 'uploaded');
     assert.equal(uploadJson.scan.video.fileName, 'raw_video.mp4');
     assert.equal(uploadJson.scan.video.durationMs, 32500);
     assert.equal(uploadJson.scan.video.resolution, '1080p');
     assert.equal(uploadJson.scan.video.fps, 30);
     assert(uploadJson.scan.video.sizeInBytes > 0);
+    assert(uploadJson.scan.video.checksum);
+
+    // 7. Test POST /v1/x-core/3d-scans/:id/queue (Asynchronous Queueing)
+    const queueRes = await httpJson(baseUrl, `/v1/x-core/3d-scans/${scan.id}/queue`, {
+      method: 'POST',
+      body: JSON.stringify({ engine: 'photogrammetry_v1' }),
+    });
+    assert.equal(queueRes.status, 200);
+    assert.equal(queueRes.json.success, true);
+    assert.equal(queueRes.json.scan.status, 'queued');
+    assert.equal(queueRes.json.job.status, 'queued');
+
+    // 8. Test GET /v1/x-core/3d-scans/:id/status (Polling Queued State)
+    const queuedStatusRes = await httpJson(baseUrl, `/v1/x-core/3d-scans/${scan.id}/status`);
+    assert.equal(queuedStatusRes.status, 200);
+    assert.equal(queuedStatusRes.json.status, 'queued');
+    assert.equal(queuedStatusRes.json.progressPercent, 5);
+
+    // 9. Execute Worker Processing
+    const workerResult = await processScanNow(scan.id);
+    assert.equal(workerResult.success, true);
+    assert.equal(workerResult.status, 'ready');
+
+    // 10. Test GET /v1/x-core/3d-scans/:id/status (Polling Ready State)
+    const readyStatusRes = await httpJson(baseUrl, `/v1/x-core/3d-scans/${scan.id}/status`);
+    assert.equal(readyStatusRes.status, 200);
+    assert.equal(readyStatusRes.json.status, 'ready');
+    assert.equal(readyStatusRes.json.progressPercent, 100);
+    assert(readyStatusRes.json.assets);
+    assert(readyStatusRes.json.assets.mesh);
+    assert.equal(readyStatusRes.json.assets.mesh.fileName, 'mesh.obj');
+    assert(readyStatusRes.json.assets.preview);
+    assert.equal(readyStatusRes.json.assets.preview.fileName, 'preview.png');
+    assert(readyStatusRes.json.lidra);
+    assert(readyStatusRes.json.lidra.qualityScore > 0);
+    assert(readyStatusRes.json.confidence >= 0.5);
+    assert(Array.isArray(readyStatusRes.json.cameraTrajectory));
+
+    // 11. Test Phase 6: GET /v1/x-core/3d-scans/:id/lidra (LIDRA Report)
+    const lidraRes = await httpJson(baseUrl, `/v1/x-core/3d-scans/${scan.id}/lidra`);
+    assert.equal(lidraRes.status, 200);
+    assert.equal(lidraRes.json.success, true);
+    assert(lidraRes.json.lidra);
+    assert(lidraRes.json.lidra.qualityScore > 0);
+    assert(lidraRes.json.lidra.motionBlur);
+    assert(lidraRes.json.lidra.coverage);
+
+    // 12. Test Phase 7: GET /v1/x-core/3d-scans/engines (Reconstruction Engines List)
+    const enginesRes = await httpJson(baseUrl, '/v1/x-core/3d-scans/engines');
+    assert.equal(enginesRes.status, 200);
+    assert.equal(enginesRes.json.success, true);
+    assert.equal(enginesRes.json.defaultEngine, 'photogrammetry_v1');
+    assert(Array.isArray(enginesRes.json.engines));
+    const engineNames = enginesRes.json.engines.map((e) => e.name);
+    assert(engineNames.includes('photogrammetry_v1'));
+    assert(engineNames.includes('colmap'));
+    assert(engineNames.includes('dust3r'));
+    assert(engineNames.includes('mast3r'));
+    assert(engineNames.includes('neuralangelo'));
+    assert(engineNames.includes('abot_recon'));
+
+    // 13. Test GET /v1/x-core/3d-scans/:id/assets/:fileName (Download Generated Assets)
+    const meshRes = await fetch(`${baseUrl}/v1/x-core/3d-scans/${scan.id}/assets/mesh.obj`);
+    assert.equal(meshRes.status, 200);
+    assert(meshRes.headers.get('content-type').includes('model/obj'));
+    const meshContent = await meshRes.text();
+    assert(meshContent.includes('v '));
+    assert(meshContent.includes('f '));
+
+    const previewRes = await fetch(`${baseUrl}/v1/x-core/3d-scans/${scan.id}/assets/preview.png`);
+    assert.equal(previewRes.status, 200);
+    assert(previewRes.headers.get('content-type').includes('image/png'));
+
+    // 12. Test Security: Reject unauthorized/disallowed file access
+    const badExtRes = await fetch(`${baseUrl}/v1/x-core/3d-scans/${scan.id}/assets/exploit.exe`);
+    assert.equal(badExtRes.status, 400);
+
+    // 13. Test POST /v1/x-core/3d-scans/:id/retry (Retry Workflow)
+    // First simulate failure
+    await prisma.imagingStudy.update({
+      where: { id: BigInt(scan.id) },
+      data: {
+        status: 'failed',
+        metadata: {
+          failureReason: 'Simulated pipeline failure for testing retry',
+          processingJob: {
+            status: 'failed',
+            attempts: 1,
+            maxAttempts: 3,
+            currentStage: 'failed',
+          },
+        },
+      },
+    });
+
+    const retryRes = await httpJson(baseUrl, `/v1/x-core/3d-scans/${scan.id}/retry`, {
+      method: 'POST',
+      body: JSON.stringify({ engine: 'photogrammetry_v1' }),
+    });
+    assert.equal(retryRes.status, 200);
+    assert.equal(retryRes.json.success, true);
+    assert.equal(retryRes.json.scan.status, 'queued');
+    assert.equal(retryRes.json.job.status, 'queued');
   });
 
   // Clean up fixture appointment

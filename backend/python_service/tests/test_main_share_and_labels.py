@@ -73,11 +73,15 @@ class ShareValidationCacheTests(unittest.TestCase):
             return FakeResponse()
 
         try:
+            # pyrefly: ignore [bad-assignment]
             main.urllib_request.urlopen = fake_urlopen
 
             first = main._authorize_study_access('study-a', 'raw-share-token')
             second = main._authorize_study_access('study-a', 'raw-share-token')
 
+            self.assertIsNotNone(first)
+            self.assertIsNotNone(second)
+            assert first is not None and second is not None
             self.assertEqual(first['folderName'], 'study-a')
             self.assertEqual(second['folderName'], 'study-a')
             self.assertEqual(len(calls), 1)
