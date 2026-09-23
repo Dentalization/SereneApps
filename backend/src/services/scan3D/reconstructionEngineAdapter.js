@@ -105,6 +105,7 @@ export async function runReconstruction(study, options = {}) {
     assets: {
       mesh: engineResult.mesh,
       ply: engineResult.pointCloud,
+      stl: engineResult.stl,
       preview: engineResult.preview,
     },
     lidra: {

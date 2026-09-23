@@ -111,6 +111,35 @@ function normalizeStudySeriesState(study) {
 }
 
 async function fetchStudySeries(study) {
+    if (study?.modality === '3D_SCAN') {
+        const isReady = study.status === 'ready';
+        const isProcessing = study.status === 'processing' || study.status === 'queued' || study.status === 'created' || study.status === 'uploaded';
+        const isFailed = study.status === 'failed';
+        const series = [{
+            series_uid: `3d-mesh-${study.id}`,
+            series_description: study.metadata?.scanScope ? `3D Dental Scan (${study.metadata.scanScope.toUpperCase()})` : '3D Dental Scan Mesh',
+            title: study.metadata?.scanScope ? `3D Dental Scan (${study.metadata.scanScope.toUpperCase()})` : '3D Dental Scan Mesh',
+            modality: '3D_SCAN',
+            type: '3D Mesh',
+            num_slices: 1,
+            instances_count: study.metadata?.metrics?.vertexCount || 1,
+            thumbnail_url: `/v1/x-core/3d-scans/${study.id}/assets/preview.png`,
+            status: isReady ? 'ready' : (isFailed ? 'failed' : 'converting'),
+            conversionStage: isProcessing ? (study.metadata?.processingJob?.currentStage || 'reconstructing') : null,
+            conversionProgress: isProcessing ? (study.metadata?.processingJob?.progressPercent || 45) : null,
+            confidence: study.metadata?.confidence,
+            engine: study.metadata?.metrics?.engine || study.metadata?.reconstructionEngine,
+        }];
+        return normalizeStudySeriesState({
+            ...study,
+            series,
+            totalSeries: 1,
+            scanning: isProcessing,
+            seriesLoadState: SERIES_LOAD_STATE.READY,
+            seriesLoadError: isFailed ? (study.metadata?.failureReason || 'Reconstruction failed') : null,
+        });
+    }
+
     const studyKey = getStudyKey(study);
 
     console.log('[Gallery] Fetching series for study:', {
@@ -352,8 +381,9 @@ const Gallery = ({
                                 ? (study.metadata?.PatientID || `P-${study.patientId}`)
                                 : 'Not linked to patient',
                             originalName: study.originalName || study.folderName || 'Unknown',
-                            dateDisplay: study.studyDate ? new Date(study.studyDate).toISOString().split('T')[0] : 'N/A',
-                            statusDisplay: (study.status || 'Unknown').charAt(0).toUpperCase() + (study.status || 'unknown').slice(1)
+                            statusDisplay: study.modality === '3D_SCAN'
+                                ? (study.status === 'ready' ? '3D Ready' : (study.status === 'failed' ? 'Failed' : 'Processing'))
+                                : ((study.status || 'Unknown').charAt(0).toUpperCase() + (study.status || 'unknown').slice(1))
                         };
                     });
                     setStudies(formattedStudies);
@@ -560,6 +590,11 @@ const Gallery = ({
     const seriesCards = healthyStudies.flatMap(study =>
         (study.series || []).map(series => {
             const thumbnailPath = series.thumbnail_url || `/thumbnail/${study.folderName || study.id}/${series.series_uid}`;
+            const is3DScan = study.modality === '3D_SCAN' || series.modality === '3D_SCAN';
+            const thumbnailUrl = is3DScan
+                ? (series.thumbnail_url || `/v1/x-core/3d-scans/${study.id}/assets/preview.png`)
+                : buildImagingUrl(thumbnailPath, buildStudyAssetParams(study));
+
             return {
                 ...series,
                 study: study,
@@ -569,7 +604,7 @@ const Gallery = ({
                 patientIdDisplay: study.patientIdDisplay,
                 dateDisplay: study.dateDisplay,
                 statusDisplay: study.statusDisplay,
-                thumbnailUrl: buildImagingUrl(thumbnailPath, buildStudyAssetParams(study))
+                thumbnailUrl
             };
         })
     );
@@ -583,6 +618,9 @@ const Gallery = ({
     };
 
     const getStudyThumbnail = (study) => {
+        if (study.modality === '3D_SCAN') {
+            return `/v1/x-core/3d-scans/${study.id}/assets/preview.png`;
+        }
         const seriesList = study.series || [];
         const panSeries = seriesList.find(s => s.classification === '2D');
         const targetSeries = panSeries || seriesList[0];
@@ -622,6 +660,7 @@ const Gallery = ({
     };
 
     const getModalityBadgeClass = (mod) => {
+        if (mod === '3D_SCAN' || mod === '3D Scan') return 'bg-gradient-to-r from-cyan-600 to-indigo-600 border border-cyan-400/40 text-white shadow-sm';
         if (mod.includes('3D') || mod === 'CBCT') return 'bg-indigo-600/85 border border-indigo-500/30';
         if (mod.includes('Panoramik') || mod === 'Panoramic') return 'bg-emerald-600/85 border border-emerald-500/30';
         if (mod.includes('Sefalometri') || mod === 'Cephalometric') return 'bg-cyan-600/85 border border-cyan-500/30';
@@ -1011,18 +1050,23 @@ const Gallery = ({
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {(selectedStudy.series || []).map((series) => {
+                                const is3DScan = series.modality === '3D_SCAN' || selectedStudy.modality === '3D_SCAN';
                                 const isReady = series.status === 'ready';
                                 const isConverting = series.status === 'converting' || series.status === 'pending';
+                                const isFailed = series.status === 'failed';
+                                const canOpen = isReady || is3DScan;
                                 const thumbnailPath = series.thumbnail_url || `/thumbnail/${selectedStudy.folderName || selectedStudy.id}/${series.series_uid}`;
-                                const thumbnailUrl = buildImagingUrl(thumbnailPath, buildStudyAssetParams(selectedStudy));
-                                const is3D = series.type === '3D Volume' || series.classification === '3D';
+                                const thumbnailUrl = is3DScan
+                                    ? (series.thumbnail_url || `/v1/x-core/3d-scans/${selectedStudy.id}/assets/preview.png`)
+                                    : buildImagingUrl(thumbnailPath, buildStudyAssetParams(selectedStudy));
+                                const is3D = series.type === '3D Volume' || series.classification === '3D' || is3DScan;
 
                                 return (
                                     <div
                                         key={series.series_uid}
-                                        className={`group relative bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden flex flex-col justify-between transition hover:shadow-theme-lg hover:border-primary/20 ${isReady ? 'cursor-pointer' : ''}`}
+                                        className={`group relative bg-surface-elevated rounded-2xl border border-primary/10 overflow-hidden flex flex-col justify-between transition hover:shadow-theme-lg hover:border-primary/20 ${canOpen ? 'cursor-pointer' : ''}`}
                                         onClick={() => {
-                                            if (isReady) {
+                                            if (canOpen) {
                                                 onSelectStudy(buildStudyFromCard({ study: selectedStudy, ...series }));
                                             }
                                         }}
@@ -1030,11 +1074,14 @@ const Gallery = ({
                                         <div className="space-y-4">
                                             {/* Thumbnail / Scan cover */}
                                             <div className="aspect-video bg-gray-900 flex items-center justify-center relative overflow-hidden">
-                                                {isReady ? (
+                                                {isReady || is3DScan ? (
                                                     <img
                                                         src={thumbnailUrl}
                                                         alt={series.title}
                                                         className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-102"
+                                                        onError={(e) => {
+                                                            e.target.style.display = 'none';
+                                                        }}
                                                     />
                                                 ) : (
                                                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
@@ -1045,12 +1092,12 @@ const Gallery = ({
                                                 {/* Modality Tag */}
                                                 <span className={`absolute top-3 left-3 px-2.5 py-1 text-white text-[10px] font-bold uppercase rounded-md backdrop-blur-md flex items-center gap-1 ${getModalityBadgeClass(series.modality)}`}>
                                                     <AppIcon name={is3D ? 'Box' : 'Image'} size={12} />
-                                                    {series.modality === 'CBCT' ? '3D CBCT' : series.modality === 'Panoramic' ? 'Panoramik' : series.modality === 'Cephalometric' ? 'Sefalometri' : series.modality}
+                                                    {series.modality === 'CBCT' ? '3D CBCT' : series.modality === '3D_SCAN' ? '3D Scan Mesh' : series.modality === 'Panoramic' ? 'Panoramik' : series.modality === 'Cephalometric' ? 'Sefalometri' : series.modality}
                                                 </span>
 
                                                 {/* Modality raw description */}
                                                 <span className="absolute top-3 right-3 px-2 py-0.5 bg-black/55 text-white text-[10px] rounded-md backdrop-blur-md font-medium">
-                                                    {series.modality}
+                                                    {series.modality === '3D_SCAN' ? 'STL/OBJ' : series.modality}
                                                 </span>
 
                                                 {/* Inherited Series-level Access Badge */}
@@ -1068,12 +1115,11 @@ const Gallery = ({
                                             {/* Series description */}
                                             <div className="px-5 pb-3 space-y-1.5">
                                                 <h4 className="font-bold text-primary text-sm line-clamp-1 group-hover:text-accent transition-colors">
-                                                    {series.title || (is3D ? 'Volume 3D CBCT' : `Scan 2D ${series.modality}`)}
+                                                    {series.title || (is3DScan ? 'Dental 3D Surface Mesh' : is3D ? 'Volume 3D CBCT' : `Scan 2D ${series.modality}`)}
                                                 </h4>
                                                 <p className="text-xs text-secondary leading-relaxed">
-                                                    {is3D ? '3D CBCT Volumetric Scan' : `2D ${series.modality} Scan`}
+                                                    {is3DScan ? 'Rekonstruksi Permukaan Gigi 3D' : is3D ? '3D CBCT Volumetric Scan' : `2D ${series.modality} Scan`}
                                                 </p>
-
 
                                                 {/* Series Metadata row */}
                                                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-secondary font-medium pt-1 border-t border-primary/5">
@@ -1081,7 +1127,15 @@ const Gallery = ({
                                                         <AppIcon name="Fingerprint" size={10} className="text-muted" />
                                                         <span>UID: {series.series_uid.substring(0, 8)}...</span>
                                                     </span>
-                                                    {series.num_slices > 0 && (
+                                                    {is3DScan && series.confidence && (
+                                                        <>
+                                                            <span className="text-muted">•</span>
+                                                            <span className="text-emerald-500 font-bold">
+                                                                Conf: {Math.round(series.confidence * 100)}%
+                                                            </span>
+                                                        </>
+                                                    )}
+                                                    {series.num_slices > 0 && !is3DScan && (
                                                         <>
                                                             <span className="text-muted">•</span>
                                                             <span className="flex items-center gap-1">
@@ -1092,11 +1146,10 @@ const Gallery = ({
                                                     )}
                                                 </div>
 
-
                                                 {isConverting && (
                                                     <div className="pt-3 space-y-1.5">
                                                         <div className="flex justify-between text-[10px] text-accent font-semibold uppercase tracking-wider">
-                                                            <span>{series.conversionStage?.replace('_', ' ') || 'Memproses'}</span>
+                                                            <span>{series.conversionStage?.replace('_', ' ') || 'Memproses Rekonstruksi'}</span>
                                                             {series.conversionProgress > 0 && <span>{series.conversionProgress}%</span>}
                                                         </div>
                                                         <div className="h-1.5 w-full bg-primary/10 rounded-full overflow-hidden">
@@ -1112,7 +1165,7 @@ const Gallery = ({
 
                                         {/* Action button */}
                                         <div className="p-5 pt-0">
-                                            {isReady ? (
+                                            {canOpen ? (
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
@@ -1121,7 +1174,7 @@ const Gallery = ({
                                                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-hover text-white rounded-xl text-xs font-semibold transition shadow-sm hover:shadow-accent/20"
                                                 >
                                                     <AppIcon name="ExternalLink" size={14} />
-                                                    <span>Buka Viewer</span>
+                                                    <span>{is3DScan ? 'Buka Viewer 3D Scan' : 'Buka Viewer'}</span>
                                                 </button>
                                             ) : (
                                                 <div className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary/5 border border-primary/10 text-muted rounded-xl text-xs font-semibold italic cursor-not-allowed">

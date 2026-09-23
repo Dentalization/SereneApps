@@ -50,6 +50,8 @@ import {
     get3DScanAsset,
     get3DScanEngines,
     get3DScanLidraReport,
+    get3DScanToothInstances,
+    trigger3DScanSegmentation,
 } from '../controllers/xCoreScanController.js';
 
 import { authMiddleware, requireRoles } from '../middleware/clinicAuth.js';
@@ -100,6 +102,9 @@ router.post('/3d-scans/:id/queue', requireRoles(['dentist']), express.json(), en
 router.get('/3d-scans/:id/status', requireRoles(['dentist']), get3DScanStatus);
 router.post('/3d-scans/:id/retry', requireRoles(['dentist']), express.json(), retry3DScan);
 router.get('/3d-scans/:id/assets/:fileName', requireRoles(['dentist']), get3DScanAsset);
+// Phase 12 — Tooth Segmentation & FDI
+router.get('/3d-scans/:id/tooth-instances', requireRoles(['dentist']), get3DScanToothInstances);
+router.post('/3d-scans/:id/tooth-instances/segment', requireRoles(['dentist']), express.json(), trigger3DScanSegmentation);
 
 router.post('/upload', requireRoles(['dentist']), upload.array('files'), uploadStudy);
 router.get('/studies', getStudies);
