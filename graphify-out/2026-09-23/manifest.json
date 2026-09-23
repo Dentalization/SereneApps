@@ -1170,10 +1170,10 @@
     "semantic_hash": "be06d3835878470c9252ebaf27ff69ba"
   },
   "backend/src/routes/xCoreRoutes.js": {
-    "mtime": 1786818382.8592048,
-    "seen": 1790178528.32055,
-    "ast_hash": "8981633f4394dd908541e55d56f2ceb0",
-    "semantic_hash": "8981633f4394dd908541e55d56f2ceb0"
+    "mtime": 1790180547.2627528,
+    "seen": 1790180924.342027,
+    "ast_hash": "d7cb335053d6be612355e04005a1752a",
+    "semantic_hash": ""
   },
   "backend/src/schemas/auth.schema.js": {
     "mtime": 1785748462.3479202,
@@ -2364,10 +2364,10 @@
     "semantic_hash": "15ff0b9e396e448453a3401293a1ee14"
   },
   "mobile/jest.setup.js": {
-    "mtime": 1785748462.4236023,
-    "seen": 1790178528.320668,
-    "ast_hash": "53860adc5e578aa34a42219985f39783",
-    "semantic_hash": "53860adc5e578aa34a42219985f39783"
+    "mtime": 1790180674.9568565,
+    "seen": 1790180924.344928,
+    "ast_hash": "6743db3d4824c6b5c621d6ba72b03576",
+    "semantic_hash": ""
   },
   "mobile/metro.config.js": {
     "mtime": 1785748462.4238675,
@@ -2856,10 +2856,10 @@
     "semantic_hash": "95457f9a9ed3819fd08ec535d8a1ea16"
   },
   "mobile/src/features/settings/screens/LoginScreen.jsx": {
-    "mtime": 1785748462.4390047,
-    "seen": 1790178528.3207161,
-    "ast_hash": "32730797f2823e9e19aadd09c794a663",
-    "semantic_hash": "32730797f2823e9e19aadd09c794a663"
+    "mtime": 1790179171.34042,
+    "seen": 1790179274.41603,
+    "ast_hash": "c66204b3c96f5594bfd5ea634b449e59",
+    "semantic_hash": ""
   },
   "mobile/src/features/settings/screens/OTPScreen.jsx": {
     "mtime": 1785748462.4391086,
@@ -3042,10 +3042,10 @@
     "semantic_hash": "f891ef795a74c66d6b4476ef0d23bf4d"
   },
   "mobile/src/navigation/TabNavigator.jsx": {
-    "mtime": 1785748462.4429777,
-    "seen": 1790178528.320734,
-    "ast_hash": "7282e9f29d304f2300d8a4684356af61",
-    "semantic_hash": "7282e9f29d304f2300d8a4684356af61"
+    "mtime": 1790179146.4103556,
+    "seen": 1790179274.416522,
+    "ast_hash": "98bdd978a87a0cad978543d91c3b27e2",
+    "semantic_hash": ""
   },
   "mobile/src/services/aiAnalysisSyncService.js": {
     "mtime": 1785748462.4430897,
@@ -7042,5 +7042,1541 @@
     "seen": 1790178554.55954,
     "ast_hash": "bd8e0778b9e5a4338b3295c2f1412328",
     "semantic_hash": "bd8e0778b9e5a4338b3295c2f1412328"
+  },
+  "mobile/__tests__/mobile-dentist-role.test.js": {
+    "mtime": 1790179231.9667442,
+    "seen": 1790179274.414109,
+    "ast_hash": "6d21c4911876fa43eebe8d826e9d8d34",
+    "semantic_hash": ""
+  },
+  "mobile/src/features/dentist/components/DentistRoleGuard.jsx": {
+    "mtime": 1790179096.6967838,
+    "seen": 1790179274.415796,
+    "ast_hash": "deac06c381a0dc7093055838150a2af0",
+    "semantic_hash": ""
+  },
+  "mobile/src/features/dentist/screens/DentistHomeScreen.jsx": {
+    "mtime": 1790179111.0873744,
+    "seen": 1790179274.415797,
+    "ast_hash": "6e0273a59d7d59c2f9c8669f78a42765",
+    "semantic_hash": ""
+  },
+  "mobile/src/features/dentist/screens/DentistScan3DScreen.jsx": {
+    "mtime": 1790180824.7307894,
+    "seen": 1790180924.346148,
+    "ast_hash": "242825f7718c71dc266607f307d82cf7",
+    "semantic_hash": ""
+  },
+  "mobile/src/utils/authUtils.js": {
+    "mtime": 1790179069.133426,
+    "seen": 1790179274.416896,
+    "ast_hash": "5489ab8e2c7e6323bc7362c75edc0903",
+    "semantic_hash": ""
+  },
+  ".agents/rules/graphify.md": {
+    "mtime": 1790178493.9649282,
+    "seen": 1790179274.427039,
+    "ast_hash": "f1e53ecc9194573d3c28fc116c743a2e",
+    "semantic_hash": ""
+  },
+  ".agents/workflows/graphify.md": {
+    "mtime": 1790178493.9651,
+    "seen": 1790179274.42704,
+    "ast_hash": "6d73634a678cf1e1c71930adf80bd1f0",
+    "semantic_hash": ""
+  },
+  ".github/workflows/sonarqube-maintainability.yml": {
+    "mtime": 1785748462.259289,
+    "seen": 1790179274.42704,
+    "ast_hash": "5661c06a6ac2f63c31ba6b5706daa8a3",
+    "semantic_hash": ""
+  },
+  "ENGINEERING.md": {
+    "mtime": 1785748462.259888,
+    "seen": 1790179274.427041,
+    "ast_hash": "3d54497819c870ea48ffae2eb69fb96d",
+    "semantic_hash": ""
+  },
+  "Pengujian Latency, Tetability, dan Maintability/latency/api_inti/README.md": {
+    "mtime": 1786032215.8524835,
+    "seen": 1790179274.427042,
+    "ast_hash": "65b770a7db13f3b1f3795ab469ce7dfe",
+    "semantic_hash": ""
+  },
+  "Pengujian Latency, Tetability, dan Maintability/latency/api_inti/reports/table-4-4-core-api-latency.md": {
+    "mtime": 1785748462.2601674,
+    "seen": 1790179274.427043,
+    "ast_hash": "c0e375c0d1c0b60bb4a388f4ab357c0f",
+    "semantic_hash": ""
+  },
+  "Pengujian Latency, Tetability, dan Maintability/latency/api_inti/summary/summary_report.md": {
+    "mtime": 1786032215.853477,
+    "seen": 1790179274.427043,
+    "ast_hash": "51edaf665333586770710ec150f65c6d",
+    "semantic_hash": ""
+  },
+  "Pengujian Latency, Tetability, dan Maintability/latency/beban_pengguna/reports/table-4-5-load-by-vu.md": {
+    "mtime": 1785748462.2616138,
+    "seen": 1790179274.4270442,
+    "ast_hash": "417e85ea1130459d8561230bdbf2178a",
+    "semantic_hash": ""
+  },
+  "Pengujian Latency, Tetability, dan Maintability/latency/cdss_async/reports/table-4-6-cdss-async-latency.md": {
+    "mtime": 1785748462.262315,
+    "seen": 1790179274.427045,
+    "ast_hash": "b2277f193c6f34cba83fd51936bef02a",
+    "semantic_hash": ""
+  },
+  "Pengujian Latency, Tetability, dan Maintability/latency/load-testing/README.md": {
+    "mtime": 1786032215.8550677,
+    "seen": 1790179274.4270458,
+    "ast_hash": "1e2614a0e7fd5260057f05a93c3f922b",
+    "semantic_hash": ""
+  },
+  "Pengujian Latency, Tetability, dan Maintability/latency/load-testing/results/run_log.txt": {
+    "mtime": 1786032217.5753124,
+    "seen": 1790179274.427047,
+    "ast_hash": "bd6dba83c2071ce9e63501c07315fc1d",
+    "semantic_hash": ""
+  },
+  "Pengujian Latency, Tetability, dan Maintability/latency/load-testing/summary/summary_report.md": {
+    "mtime": 1786032217.5782876,
+    "seen": 1790179274.427047,
+    "ast_hash": "85145221cd6f751da5a6bf3b55acfb34",
+    "semantic_hash": ""
+  },
+  "Pengujian Latency, Tetability, dan Maintability/testability/reports/table-4-7-testability.md": {
+    "mtime": 1785748462.3149855,
+    "seen": 1790179274.427048,
+    "ast_hash": "ddf1d4c74640b54b1fc8b019168b8ad6",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1763560335.4543943,
+    "seen": 1790179274.427049,
+    "ast_hash": "bf77da346a1dd4d184de29126df47159",
+    "semantic_hash": ""
+  },
+  "backend/README.md": {
+    "mtime": 1756711571.4597878,
+    "seen": 1790179274.4270499,
+    "ast_hash": "f1c0dff57e341090021ca7979b10537d",
+    "semantic_hash": ""
+  },
+  "backend/docker-compose.yml": {
+    "mtime": 1756710265.6569672,
+    "seen": 1790179274.4270499,
+    "ast_hash": "ca01b641a7e146f604c4d40d5c294345",
+    "semantic_hash": ""
+  },
+  "backend/observability/README.md": {
+    "mtime": 1785748462.3215916,
+    "seen": 1790179274.427051,
+    "ast_hash": "11fa0edcfd5d18515e690d961465b996",
+    "semantic_hash": ""
+  },
+  "backend/observability/otp-alerts.loki.yaml": {
+    "mtime": 1785748462.321662,
+    "seen": 1790179274.427052,
+    "ast_hash": "38f197a68b31dd0e26be31ddbd8ebb36",
+    "semantic_hash": ""
+  },
+  "backend/python_service/requirements.txt": {
+    "mtime": 1785748462.3288362,
+    "seen": 1790179274.427053,
+    "ast_hash": "4100c0153290394c0926c373417aee97",
+    "semantic_hash": ""
+  },
+  "docs/APPOINTMENT_FLOW_COMPLETE.md": {
+    "mtime": 1763412047.6860669,
+    "seen": 1790179274.4270542,
+    "ast_hash": "ba8266178a4584ecc442afef18935cd5",
+    "semantic_hash": ""
+  },
+  "docs/BACKEND_PATIENT_PROFILE_API.md": {
+    "mtime": 1763539971.9473562,
+    "seen": 1790179274.4270542,
+    "ast_hash": "c5ba8a3d9aa896afd9e6ef18f58e8e24",
+    "semantic_hash": ""
+  },
+  "docs/BACKEND_PROFILE_AUTO_CREATE.md": {
+    "mtime": 1763554619.2944531,
+    "seen": 1790179274.4270551,
+    "ast_hash": "4ad672a92a61ab671c8aec254c71a48d",
+    "semantic_hash": ""
+  },
+  "docs/BACKEND_TESTING.md": {
+    "mtime": 1763555224.6934185,
+    "seen": 1790179274.427056,
+    "ast_hash": "6097d993329e2d2c96a983358fea5fc7",
+    "semantic_hash": ""
+  },
+  "docs/CLINIC_DETAIL_SCREEN.md": {
+    "mtime": 1763412048.8116417,
+    "seen": 1790179274.427056,
+    "ast_hash": "0b0be7a66c2f4296bb46ce5e9aecda99",
+    "semantic_hash": ""
+  },
+  "docs/DATABASE_PATIENT_PROFILE.md": {
+    "mtime": 1763128658.1605186,
+    "seen": 1790179274.4270568,
+    "ast_hash": "2f109f767bd708b990bc2d41791ee7dd",
+    "semantic_hash": ""
+  },
+  "docs/DENTIST_DETAIL_DATA.md": {
+    "mtime": 1763123113.9524233,
+    "seen": 1790179274.427058,
+    "ast_hash": "5f3fc3f56c2c5867de3f65026364f2ea",
+    "semantic_hash": ""
+  },
+  "docs/DESIGN_GUIDELINE.md": {
+    "mtime": 1763128658.153932,
+    "seen": 1790179274.427058,
+    "ast_hash": "07d933373c40e8f562f92c07a0d50e9b",
+    "semantic_hash": ""
+  },
+  "docs/EMAIL_DUPLICATE_SECURITY.md": {
+    "mtime": 1763696956.4412246,
+    "seen": 1790179274.427059,
+    "ast_hash": "74fd56aa11137627e45122b930608d50",
+    "semantic_hash": ""
+  },
+  "docs/FINANCIAL_OWNERSHIP_AUDIT.md": {
+    "mtime": 1785748462.3682754,
+    "seen": 1790179274.42706,
+    "ast_hash": "8b673bc96a71109a64b847223516162f",
+    "semantic_hash": ""
+  },
+  "docs/GEOLOCATION_IMPLEMENTATION.md": {
+    "mtime": 1763657731.616495,
+    "seen": 1790179274.427061,
+    "ast_hash": "ca68e06dd9e67988fc089af377edd8b3",
+    "semantic_hash": ""
+  },
+  "docs/HEALTHTECH_PLATFORM_BLUEPRINT_FINAL.md": {
+    "mtime": 1785748462.3685188,
+    "seen": 1790179274.427061,
+    "ast_hash": "100e9c9be3e7222b874c1c0ef11f50b6",
+    "semantic_hash": ""
+  },
+  "docs/INDEPENDENT_DENTIST_GEOLOCATION.md": {
+    "mtime": 1763658687.2438905,
+    "seen": 1790179274.427062,
+    "ast_hash": "94d41f7d46f59a48ee4b8f4ba5dd9053",
+    "semantic_hash": ""
+  },
+  "docs/INTERNAL_RELEASE_CHANGELOG_2026-04-07_OTP_SMS_ONLY.md": {
+    "mtime": 1785748462.3685837,
+    "seen": 1790179274.427063,
+    "ast_hash": "c04441741da67c320a70949ecde9763e",
+    "semantic_hash": ""
+  },
+  "docs/LOGIN_PROFILE_FIX.md": {
+    "mtime": 1763554248.408027,
+    "seen": 1790179274.4270642,
+    "ast_hash": "78f6ab28702c112a800f4344e3ac202a",
+    "semantic_hash": ""
+  },
+  "docs/MAINTAINABILITY_TESTING.md": {
+    "mtime": 1785748462.3686514,
+    "seen": 1790179274.4270642,
+    "ast_hash": "75349efdef1dbabbe5e7b7d470b7b19f",
+    "semantic_hash": ""
+  },
+  "docs/MOBILE_APP_SETUP_PROMPT.md": {
+    "mtime": 1763128658.1605246,
+    "seen": 1790179274.4270651,
+    "ast_hash": "bb0171ef919cee99e1ffb4d0c1f1060e",
+    "semantic_hash": ""
+  },
+  "docs/NOTIFICATION.md": {
+    "mtime": 1763021426.6755767,
+    "seen": 1790179274.427066,
+    "ast_hash": "5a57c050b7e760beacc33afa088f4fd8",
+    "semantic_hash": ""
+  },
+  "docs/PANDUAN_PENGUJIAN_SKRIPSI.md": {
+    "mtime": 1785748462.368854,
+    "seen": 1790179274.4270668,
+    "ast_hash": "55f7afdb42a8182ff7689273009321c9",
+    "semantic_hash": ""
+  },
+  "docs/PATIENT_DATA_CONTINUITY_IMPLEMENTATION_NOTE.md": {
+    "mtime": 1785748462.3689253,
+    "seen": 1790179274.4270668,
+    "ast_hash": "0eb9ef22b6f2942ea7f4ec6ec112caee",
+    "semantic_hash": ""
+  },
+  "docs/Register&Login/PATIENT_API.md": {
+    "mtime": 1763554172.1459239,
+    "seen": 1790179274.427068,
+    "ast_hash": "9ad765c2c45476626b221ea48a7a1f5e",
+    "semantic_hash": ""
+  },
+  "docs/Register&Login/PATIENT_REGISTRATION.md": {
+    "mtime": 1763555224.7018352,
+    "seen": 1790179274.427069,
+    "ast_hash": "649f054c72edf947dd025c7f4ba9afa8",
+    "semantic_hash": ""
+  },
+  "docs/Register&Login/PATIENT_REGISTRATION_INDEX.md": {
+    "mtime": 1763555224.7017508,
+    "seen": 1790179274.427069,
+    "ast_hash": "44f76264cd025b11b7d38b9fdf0d68a8",
+    "semantic_hash": ""
+  },
+  "docs/Register&Login/QUICK_START_PATIENT_REGISTRATION.md": {
+    "mtime": 1763555224.6934328,
+    "seen": 1790179274.42707,
+    "ast_hash": "c4d2b7e3044b6d93cad9849f51f77921",
+    "semantic_hash": ""
+  },
+  "docs/SERVICES_IMPLEMENTATION.md": {
+    "mtime": 1763704920.5470517,
+    "seen": 1790179274.427071,
+    "ast_hash": "490ceb1e57a4b4a96f1f94cffe10e782",
+    "semantic_hash": ""
+  },
+  "docs/STATUS_PROFILE_LOADING.md": {
+    "mtime": 1763554621.215999,
+    "seen": 1790179274.427072,
+    "ast_hash": "fcd09b675e1c99ac05b409b83cf56ed3",
+    "semantic_hash": ""
+  },
+  "docs/TELEDENTISTRY_PR104_RELEASE_NOTES.md": {
+    "mtime": 1785748462.3689883,
+    "seen": 1790179274.427072,
+    "ast_hash": "969d4d830508f30af36948df4cdb7618",
+    "semantic_hash": ""
+  },
+  "docs/USER_MESSAGES_STYLE_GUIDE.md": {
+    "mtime": 1763546564.8106349,
+    "seen": 1790179274.427073,
+    "ast_hash": "2687d3c3baccd9e7ddfdcf268bebfe63",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-05-07-deepdental-hardening.md": {
+    "mtime": 1785748462.369715,
+    "seen": 1790179274.427074,
+    "ast_hash": "db0ec733459a5729e3034ae964679dcf",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-05-07-verified-case-workspace.md": {
+    "mtime": 1785748462.3698983,
+    "seen": 1790179274.427074,
+    "ast_hash": "3c75456fc16ac9819c3beae2d0b2b032",
+    "semantic_hash": ""
+  },
+  "docs/xcore-analysis-cases.md": {
+    "mtime": 1786818382.8634624,
+    "seen": 1790179274.4270751,
+    "ast_hash": "9d43c3c8bb169cde7bda9291f784790e",
+    "semantic_hash": ""
+  },
+  "docs/xcore_ieee_figure_capture_manifest.md": {
+    "mtime": 1786818382.864454,
+    "seen": 1790179274.427076,
+    "ast_hash": "63da5508f8732dc92ba651658bba6be5",
+    "semantic_hash": ""
+  },
+  "mobile/AI_DIAGNOSIS_FIXES.md": {
+    "mtime": 1764581507.121185,
+    "seen": 1790179274.427076,
+    "ast_hash": "d067fd6160731be2de6f534b14cc18dd",
+    "semantic_hash": ""
+  },
+  "mobile/BUILD_SUMMARY.md": {
+    "mtime": 1762935669.4042213,
+    "seen": 1790179274.427077,
+    "ast_hash": "8849e71c76a2238afd65f0c5599e173a",
+    "semantic_hash": ""
+  },
+  "mobile/README.md": {
+    "mtime": 1762935669.3232543,
+    "seen": 1790179274.4270778,
+    "ast_hash": "29c367395f06a883d72f1f1db8f34a18",
+    "semantic_hash": ""
+  },
+  "mobile/src/features/ai-diagnosis/screens/README_DETAIL_HISTORY.md": {
+    "mtime": 1764664777.841243,
+    "seen": 1790179274.427079,
+    "ast_hash": "d4af6bd059ec38be24a06600d1aacd46",
+    "semantic_hash": ""
+  },
+  "paper-evidence/00_repository_audit.md": {
+    "mtime": 1785748462.4487326,
+    "seen": 1790179274.42708,
+    "ast_hash": "6f402a4c66742b6af4a337f4970a6dc3",
+    "semantic_hash": ""
+  },
+  "paper-evidence/FINAL_REPORT.md": {
+    "mtime": 1785748462.4487991,
+    "seen": 1790179274.4270809,
+    "ast_hash": "88828edb9fca3ec9da64a918c0c73944",
+    "semantic_hash": ""
+  },
+  "paper-evidence/cdss_baseline/sync_baseline_not_possible.md": {
+    "mtime": 1785748462.4488788,
+    "seen": 1790179274.4270809,
+    "ast_hash": "6833c9989c5ce3b3a52b6d7fb997894d",
+    "semantic_hash": ""
+  },
+  "paper-evidence/cdss_concurrent/cdss_concurrent_summary.md": {
+    "mtime": 1785748462.449057,
+    "seen": 1790179274.427082,
+    "ast_hash": "9f159b390fc4dfa11cb41430e319b736",
+    "semantic_hash": ""
+  },
+  "paper-evidence/cdss_description.md": {
+    "mtime": 1785748462.4491143,
+    "seen": 1790179274.427083,
+    "ast_hash": "70c45447491af1b909141dd23481fddd",
+    "semantic_hash": ""
+  },
+  "paper-evidence/cdss_latency/cdss_latency_summary.md": {
+    "mtime": 1785748462.4493022,
+    "seen": 1790179274.427083,
+    "ast_hash": "1426ea11cee44af887356b0d749f8aa0",
+    "semantic_hash": ""
+  },
+  "paper-evidence/error-rate-0/00_audit.md": {
+    "mtime": 1785748462.4493837,
+    "seen": 1790179274.427084,
+    "ast_hash": "bee0bbe02e83046323e38120c0798ed9",
+    "semantic_hash": ""
+  },
+  "paper-evidence/error-rate-0/FINAL_ERROR_RATE_REPORT.md": {
+    "mtime": 1785748462.4494443,
+    "seen": 1790179274.4270852,
+    "ast_hash": "14ae763ae597db5ba45b4d6d141c7537",
+    "semantic_hash": ""
+  },
+  "paper-evidence/error-rate-0/backend_stability_fix_summary.md": {
+    "mtime": 1785748462.449496,
+    "seen": 1790179274.4270852,
+    "ast_hash": "e1abdfa2546b56d036c641a4adf48577",
+    "semantic_hash": ""
+  },
+  "paper-evidence/error-rate-0/before_after_comparison.md": {
+    "mtime": 1785748462.4495492,
+    "seen": 1790179274.427086,
+    "ast_hash": "557f1bac816d953ed67465d4d930e2f5",
+    "semantic_hash": ""
+  },
+  "paper-evidence/error-rate-0/external_dependency_summary.md": {
+    "mtime": 1785748462.4495993,
+    "seen": 1790179274.427087,
+    "ast_hash": "042fb7d9a7e348b1db62b97c32ec57d3",
+    "semantic_hash": ""
+  },
+  "paper-evidence/error-rate-0/failure_breakdown_summary.md": {
+    "mtime": 1785748462.451007,
+    "seen": 1790179274.427087,
+    "ast_hash": "0d97a435e7bfe0b42e4b2d5929b57835",
+    "semantic_hash": ""
+  },
+  "paper-evidence/error-rate-0/k6_script_fix_summary.md": {
+    "mtime": 1785748462.4510608,
+    "seen": 1790179274.4270878,
+    "ast_hash": "bffed268a0e69a880b099f52322d419a",
+    "semantic_hash": ""
+  },
+  "paper-evidence/error-rate-0/load_test_after_summary.md": {
+    "mtime": 1785748462.4512484,
+    "seen": 1790179274.427089,
+    "ast_hash": "ec51cb594a0b648c1c4c6abe81e8091f",
+    "semantic_hash": ""
+  },
+  "paper-evidence/error-rate-0/seed_data_summary.md": {
+    "mtime": 1785748462.4513025,
+    "seen": 1790179274.427089,
+    "ast_hash": "ef3a74c3be324d01ec0c147325febca0",
+    "semantic_hash": ""
+  },
+  "paper-evidence/load_tests/load_test_summary.md": {
+    "mtime": 1785748462.479001,
+    "seen": 1790179274.42709,
+    "ast_hash": "6fd81837bd0d4b4b9ea6312df74068a3",
+    "semantic_hash": ""
+  },
+  "paper-evidence/maintainability/cdss_complexity_refactor_plan.md": {
+    "mtime": 1785748462.4790914,
+    "seen": 1790179274.427091,
+    "ast_hash": "1987c7da762d9eca21d01babffd69e4f",
+    "semantic_hash": ""
+  },
+  "paper-evidence/maintainability/eslint_fix_summary.md": {
+    "mtime": 1785748462.4791548,
+    "seen": 1790179274.427091,
+    "ast_hash": "22e761eb1a6fdaeb46ae3ec996aca573",
+    "semantic_hash": ""
+  },
+  "paper-evidence/paper_ready_tables.md": {
+    "mtime": 1785748462.4792216,
+    "seen": 1790179274.427092,
+    "ast_hash": "f37e33f93df8ceae59d385ee5b003ffc",
+    "semantic_hash": ""
+  },
+  "paper-evidence/testability/backend_chat_node_test_output.txt": {
+    "mtime": 1785748462.4799612,
+    "seen": 1790179274.427093,
+    "ast_hash": "c4756e667bea128e369d279b7528d2fc",
+    "semantic_hash": ""
+  },
+  "paper-evidence/testability/chat_testability_summary.md": {
+    "mtime": 1785748462.4801064,
+    "seen": 1790179274.427093,
+    "ast_hash": "9d11aeb076cee620a9786645b1826497",
+    "semantic_hash": ""
+  },
+  "paper-evidence/testability/mobile_jest_output.txt": {
+    "mtime": 1785748462.480174,
+    "seen": 1790179274.427094,
+    "ast_hash": "b6dacbabb0d70b035e927ee1f5a926b5",
+    "semantic_hash": ""
+  },
+  "paper-evidence/testability/mobile_testability_summary.md": {
+    "mtime": 1785748462.4865239,
+    "seen": 1790179274.427095,
+    "ast_hash": "89e4404f050f6a7e13765638857249ae",
+    "semantic_hash": ""
+  },
+  "scripts/xcore-benchmark/results/benchmark-summary.md": {
+    "mtime": 1785748462.4928603,
+    "seen": 1790179274.427095,
+    "ast_hash": "7cc88c2f6e59e663ff8cda28ab59e3c2",
+    "semantic_hash": ""
+  },
+  "web/ADMIN_DASHBOARD_METRICS.md": {
+    "mtime": 1765178194.1324584,
+    "seen": 1790179274.4270961,
+    "ast_hash": "22091c49f8e930eb351b4159f9c23a15",
+    "semantic_hash": ""
+  },
+  "web/DATABASE_REDESIGN.md": {
+    "mtime": 1759379969.7000256,
+    "seen": 1790179274.427097,
+    "ast_hash": "01bfe40a1e5f0cb0a9f72229180503be",
+    "semantic_hash": ""
+  },
+  "web/MOBILE_API_IMPLEMENTATION_SUMMARY.md": {
+    "mtime": 1762834381.2556636,
+    "seen": 1790179274.427097,
+    "ast_hash": "32dc5f88e9d72776b43f9ca6a882a627",
+    "semantic_hash": ""
+  },
+  "web/MODAL_CENTERING_AUDIT.md": {
+    "mtime": 1762441324.0546944,
+    "seen": 1790179274.427098,
+    "ast_hash": "717a0aa898ffd98e3e4ef53bf31d1832",
+    "semantic_hash": ""
+  },
+  "web/README.md": {
+    "mtime": 1786816696.0459106,
+    "seen": 1790179274.427099,
+    "ast_hash": "8fa170106b92cfe73f7acf026772f02f",
+    "semantic_hash": ""
+  },
+  "web/SETUP_INSTRUCTIONS.md": {
+    "mtime": 1756882356.740173,
+    "seen": 1790179274.4271,
+    "ast_hash": "16f14abf466523f150c95ef10867d043",
+    "semantic_hash": ""
+  },
+  "web/TOAST_IMPLEMENTATION_SUMMARY.md": {
+    "mtime": 1763660227.6469824,
+    "seen": 1790179274.4271,
+    "ast_hash": "7a20d22021ae12e836109ec588f6f0b0",
+    "semantic_hash": ""
+  },
+  "web/colors.md": {
+    "mtime": 1757597913.3612924,
+    "seen": 1790179274.427101,
+    "ast_hash": "7ee989db678e395e12a2e00426e2c74e",
+    "semantic_hash": ""
+  },
+  "web/debug-auth.html": {
+    "mtime": 1760175358.2652805,
+    "seen": 1790179274.4271019,
+    "ast_hash": "2d1646db073d1ae7f32bc672855dcab2",
+    "semantic_hash": ""
+  },
+  "web/docs/API_CDSS_DENTIST.md": {
+    "mtime": 1785748462.5019214,
+    "seen": 1790179274.4271019,
+    "ast_hash": "4f3c100d4aa0e1259474855a72aade99",
+    "semantic_hash": ""
+  },
+  "web/docs/API_IMPLEMENTATION_PLAN.md": {
+    "mtime": 1762759050.1216922,
+    "seen": 1790179274.427103,
+    "ast_hash": "0090d0be9619bdde2d79733cc5ff8cf9",
+    "semantic_hash": ""
+  },
+  "web/docs/AUTH_TESTING_GUIDE.md": {
+    "mtime": 1785748462.5020185,
+    "seen": 1790179274.427104,
+    "ast_hash": "386347e23743d60652691c977ec1b9a9",
+    "semantic_hash": ""
+  },
+  "web/docs/BACKEND_TESTING_PLAN.md": {
+    "mtime": 1768585512.0448408,
+    "seen": 1790179274.427104,
+    "ast_hash": "88ddeac4ab3ddba9d441dec7f4858081",
+    "semantic_hash": ""
+  },
+  "web/docs/COMPLETE_DEPLOYMENT_GUIDE.md": {
+    "mtime": 1785748462.5021236,
+    "seen": 1790179274.427105,
+    "ast_hash": "e37d196095aed94a0125936b3b994f93",
+    "semantic_hash": ""
+  },
+  "web/docs/DEEPDENTAL_AI_HARDENING.md": {
+    "mtime": 1785748462.502197,
+    "seen": 1790179274.4271061,
+    "ast_hash": "32bc3ca4a12cc56cbc8baa7bd8f7ce72",
+    "semantic_hash": ""
+  },
+  "web/docs/DEPLOYMENT_CHECKLIST.md": {
+    "mtime": 1785748462.502297,
+    "seen": 1790179274.4271061,
+    "ast_hash": "87ac18a551f5a36b2a79263244147eec",
+    "semantic_hash": ""
+  },
+  "web/docs/ERROR_CODE_REFERENCE.md": {
+    "mtime": 1762756486.323374,
+    "seen": 1790179274.427107,
+    "ast_hash": "98bfebc350eaf2b85256ba65309f427b",
+    "semantic_hash": ""
+  },
+  "web/docs/INFRASTRUCTURE_PROGRESS.md": {
+    "mtime": 1785748462.5024025,
+    "seen": 1790179274.427108,
+    "ast_hash": "47f789671867c220376623b2ac42b5b0",
+    "semantic_hash": ""
+  },
+  "web/docs/MOBILE_DEVELOPMENT_ROADMAP.md": {
+    "mtime": 1768585512.057501,
+    "seen": 1790179274.427109,
+    "ast_hash": "ffc47a908d24acaa4507758d60b03818",
+    "semantic_hash": ""
+  },
+  "web/docs/MOBILE_READINESS_CHECKLIST.md": {
+    "mtime": 1768585512.0358872,
+    "seen": 1790179274.427109,
+    "ast_hash": "46cffcd1a4150fd9e1633ff85a665669",
+    "semantic_hash": ""
+  },
+  "web/docs/MOBILE_READINESS_EXECUTIVE_SUMMARY.md": {
+    "mtime": 1768585512.0404131,
+    "seen": 1790179274.42711,
+    "ast_hash": "75c13d795f5cde23787e44b47d924d44",
+    "semantic_hash": ""
+  },
+  "web/docs/MOBILE_READINESS_INDEX.md": {
+    "mtime": 1762747953.08799,
+    "seen": 1790179274.427111,
+    "ast_hash": "aeaf837ba6fc3717526e482e3ded9dda",
+    "semantic_hash": ""
+  },
+  "web/docs/MOBILE_TEAM_HANDOFF.md": {
+    "mtime": 1785748462.5028746,
+    "seen": 1790179274.427111,
+    "ast_hash": "f3c0e4ce025cc23df724d3dbed469c06",
+    "semantic_hash": ""
+  },
+  "web/docs/MODAL_CENTERING_FIX.md": {
+    "mtime": 1762478197.2921505,
+    "seen": 1790179274.4271119,
+    "ast_hash": "e1c7963f4bb96f7e9a5c50be004a9c65",
+    "semantic_hash": ""
+  },
+  "web/docs/PATIENT-MOBILE/BACKEND_TESTING_REPORT.md": {
+    "mtime": 1763526612.1901646,
+    "seen": 1790179274.427113,
+    "ast_hash": "6097d993329e2d2c96a983358fea5fc7",
+    "semantic_hash": ""
+  },
+  "web/docs/PATIENT-MOBILE/COLOR_GUIDELINES.md": {
+    "mtime": 1762917924.6101854,
+    "seen": 1790179274.427114,
+    "ast_hash": "195fb4569f7761688c5567e2dbad191a",
+    "semantic_hash": ""
+  },
+  "web/docs/PATIENT-MOBILE/DATABASE_PATIENT_PROFILE.md": {
+    "mtime": 1762876090.0767753,
+    "seen": 1790179274.427114,
+    "ast_hash": "2f109f767bd708b990bc2d41791ee7dd",
+    "semantic_hash": ""
+  },
+  "web/docs/PATIENT-MOBILE/DENTIST_DETAIL_DATA.md": {
+    "mtime": 1763198910.079784,
+    "seen": 1790179274.427115,
+    "ast_hash": "5f3fc3f56c2c5867de3f65026364f2ea",
+    "semantic_hash": ""
+  },
+  "web/docs/PATIENT-MOBILE/MOBILE_APP_SETUP_PROMPT.md": {
+    "mtime": 1762917924.2904625,
+    "seen": 1790179274.427115,
+    "ast_hash": "564001ea9c676f83ad2579aed2c36d10",
+    "semantic_hash": ""
+  },
+  "web/docs/PATIENT-MOBILE/PATIENT_API.md": {
+    "mtime": 1763555219.009987,
+    "seen": 1790179274.427116,
+    "ast_hash": "0b74989bc341f496430a13de3ec544fe",
+    "semantic_hash": ""
+  },
+  "web/docs/PATIENT-MOBILE/PATIENT_ENDPOINTS_SUMMARY.md": {
+    "mtime": 1763544257.32629,
+    "seen": 1790179274.427117,
+    "ast_hash": "3dc888a6806c8b747ccdf4caafefdbeb",
+    "semantic_hash": ""
+  },
+  "web/docs/PATIENT-MOBILE/PATIENT_NOTIFICATIONS.md": {
+    "mtime": 1763020417.8288853,
+    "seen": 1790179274.427118,
+    "ast_hash": "5a57c050b7e760beacc33afa088f4fd8",
+    "semantic_hash": ""
+  },
+  "web/docs/PATIENT-MOBILE/PATIENT_PROFILE_API.md": {
+    "mtime": 1763541492.719147,
+    "seen": 1790179274.427119,
+    "ast_hash": "6f9b016bf3eafb248bd672e896b110d5",
+    "semantic_hash": ""
+  },
+  "web/docs/PATIENT-MOBILE/PATIENT_REGISTRATION_GUIDE.md": {
+    "mtime": 1763526577.0721185,
+    "seen": 1790179274.427119,
+    "ast_hash": "649f054c72edf947dd025c7f4ba9afa8",
+    "semantic_hash": ""
+  },
+  "web/docs/PATIENT-MOBILE/PATIENT_REGISTRATION_INDEX.md": {
+    "mtime": 1763526612.2371902,
+    "seen": 1790179274.4271202,
+    "ast_hash": "44f76264cd025b11b7d38b9fdf0d68a8",
+    "semantic_hash": ""
+  },
+  "web/docs/PATIENT-MOBILE/QUICK_START_PATIENT_REGISTRATION.md": {
+    "mtime": 1763526612.2138834,
+    "seen": 1790179274.427121,
+    "ast_hash": "c4d2b7e3044b6d93cad9849f51f77921",
+    "semantic_hash": ""
+  },
+  "web/docs/PHASE_1_AUTHENTICATION_IMPLEMENTATION.md": {
+    "mtime": 1785748462.503031,
+    "seen": 1790179274.4271219,
+    "ast_hash": "ebe7f5c61d3153181f086e8c7511efb4",
+    "semantic_hash": ""
+  },
+  "web/docs/QUICK_ACTION_CHECKLIST.md": {
+    "mtime": 1785748462.5032024,
+    "seen": 1790179274.4271219,
+    "ast_hash": "060a2eb23939c25929b3aa19204b525d",
+    "semantic_hash": ""
+  },
+  "web/docs/QUICK_REFERENCE.md": {
+    "mtime": 1785748462.503305,
+    "seen": 1790179274.4271228,
+    "ast_hash": "14562b3664eb32fa009f3c08cba8beb1",
+    "semantic_hash": ""
+  },
+  "web/docs/RAILWAY_DEPLOYMENT.md": {
+    "mtime": 1768585512.044805,
+    "seen": 1790179274.427124,
+    "ast_hash": "62227195e72cdb5154d0aac86e4264f0",
+    "semantic_hash": ""
+  },
+  "web/docs/SESSION_COMPLETION_REPORT.md": {
+    "mtime": 1762758159.864994,
+    "seen": 1790179274.427125,
+    "ast_hash": "678905772d2fda94a46d8e50656de9c3",
+    "semantic_hash": ""
+  },
+  "web/docs/SESSION_SUMMARY_FINAL.md": {
+    "mtime": 1768585512.0448217,
+    "seen": 1790179274.427126,
+    "ast_hash": "717b778cd2e5fe94e746e3f520748abb",
+    "semantic_hash": ""
+  },
+  "web/docs/TOAST_NOTIFICATION_SYSTEM.md": {
+    "mtime": 1763660227.499132,
+    "seen": 1790179274.427126,
+    "ast_hash": "c114ca6630064cf327896591d4e5d9f6",
+    "semantic_hash": ""
+  },
+  "web/docs/UserRequirmentDiagram.md": {
+    "mtime": 1760090715.2451768,
+    "seen": 1790179274.4271271,
+    "ast_hash": "d74642a2af9ae0ea0983e9efb9db1c50",
+    "semantic_hash": ""
+  },
+  "web/docs/auth-api.md": {
+    "mtime": 1760942615.8173678,
+    "seen": 1790179274.427128,
+    "ast_hash": "bf8ac36e4e8ca80e70a51c1136b90afa",
+    "semantic_hash": ""
+  },
+  "web/docs/fullarchitecture.md": {
+    "mtime": 1760789246.4371352,
+    "seen": 1790179274.427129,
+    "ast_hash": "db4c43e7469daec8c3e4bd4d084e8dc3",
+    "semantic_hash": ""
+  },
+  "web/docs/mobile-api-contract.md": {
+    "mtime": 1761122036.4029903,
+    "seen": 1790179274.4271302,
+    "ast_hash": "6a1ce942e7849712acaec6fbdff28425",
+    "semantic_hash": ""
+  },
+  "web/docs/mobile-readiness-roadmap.md": {
+    "mtime": 1768585512.0448315,
+    "seen": 1790179274.4271302,
+    "ast_hash": "5b8a3a477291149a1b55e9b687fcec1f",
+    "semantic_hash": ""
+  },
+  "web/index.html": {
+    "mtime": 1761639738.719407,
+    "seen": 1790179274.427131,
+    "ast_hash": "04bd08ff5e9a07213a0795676f5237a0",
+    "semantic_hash": ""
+  },
+  "web/mobile-translations/README.md": {
+    "mtime": 1762757801.918637,
+    "seen": 1790179274.427132,
+    "ast_hash": "ba390eaa84e2dc3ba88979e7c6adfdcc",
+    "semantic_hash": ""
+  },
+  "web/public/robots.txt": {
+    "mtime": 1755927494.0,
+    "seen": 1790179274.4271328,
+    "ast_hash": "fa1ded1ed7c11438a9b0385b1e112850",
+    "semantic_hash": ""
+  },
+  "web/sereneai.md": {
+    "mtime": 1756409623.831054,
+    "seen": 1790179274.427134,
+    "ast_hash": "75bc098c75b9b306a1bd1957f58736b3",
+    "semantic_hash": ""
+  },
+  "web/src/pages/clinic-portal/schedule/README.md": {
+    "mtime": 1785748462.9097707,
+    "seen": 1790179274.427134,
+    "ast_hash": "0b860f507662b99b00c3dfa6da1b6e18",
+    "semantic_hash": ""
+  },
+  "web/src/pages/dentist-portal/patient-emr/odontogram.md": {
+    "mtime": 1764348199.8515232,
+    "seen": 1790179274.427135,
+    "ast_hash": "d25b16f441d8281bce7faecc97a29e81",
+    "semantic_hash": ""
+  },
+  "web/test-patient-endpoints.html": {
+    "mtime": 1763541487.2778497,
+    "seen": 1790179274.427136,
+    "ast_hash": "b47165bf411791fe96548b1c9b4ff81b",
+    "semantic_hash": ""
+  },
+  "web/test-staff-endpoint.html": {
+    "mtime": 1759406029.6454573,
+    "seen": 1790179274.4271371,
+    "ast_hash": "7863b331b3d7c9a748903887b50750ed",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-two-pa-one-pano.pdf": {
+    "mtime": 1786818382.839642,
+    "seen": 1790179274.427138,
+    "ast_hash": "af36b653e4e285f9f97602e2515ee86b",
+    "semantic_hash": ""
+  },
+  "Pengujian Latency, Tetability, dan Maintability/latency/api_inti/fixtures/sample-dental.jpg": {
+    "mtime": 1785748462.2600174,
+    "seen": 1790179274.427138,
+    "ast_hash": "588868e09b3ba6d7239955430f4e7e33",
+    "semantic_hash": ""
+  },
+  "Pengujian Latency, Tetability, dan Maintability/latency/api_inti/scripts/fixtures/sample-dental.jpg": {
+    "mtime": 1785748462.2600174,
+    "seen": 1790179274.427139,
+    "ast_hash": "588868e09b3ba6d7239955430f4e7e33",
+    "semantic_hash": ""
+  },
+  "Pengujian Latency, Tetability, dan Maintability/latency/beban_pengguna/fixtures/sample-dental.jpg": {
+    "mtime": 1785748462.2614145,
+    "seen": 1790179274.42714,
+    "ast_hash": "588868e09b3ba6d7239955430f4e7e33",
+    "semantic_hash": ""
+  },
+  "Pengujian Latency, Tetability, dan Maintability/latency/fixtures/sample-dental.jpg": {
+    "mtime": 1785748462.2624936,
+    "seen": 1790179274.4271412,
+    "ast_hash": "588868e09b3ba6d7239955430f4e7e33",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-final-pages/page-1.png": {
+    "mtime": 1786818382.6138582,
+    "seen": 1790179274.427142,
+    "ast_hash": "71820630bfcdfe9ca42b7573866e10bb",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-final-pages/page-2.png": {
+    "mtime": 1786818382.6253974,
+    "seen": 1790179274.4271429,
+    "ast_hash": "5c53bff61ecb3322daded3b0eafb1de9",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-final-pages/page-3.png": {
+    "mtime": 1786818382.6341617,
+    "seen": 1790179274.4271512,
+    "ast_hash": "1091da900c35c505598f7296e934dc9c",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-final-pages/page-4.png": {
+    "mtime": 1786818382.6511064,
+    "seen": 1790179274.4271538,
+    "ast_hash": "38e9be86d51e1898966c9342fafc01df",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-final-pages/page-5.png": {
+    "mtime": 1786818382.6536882,
+    "seen": 1790179274.427155,
+    "ast_hash": "9e9bde61bc7be763f1f4f06b78a8f8e3",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-final-v2-pages/page-1.png": {
+    "mtime": 1786818382.6562474,
+    "seen": 1790179274.427155,
+    "ast_hash": "71820630bfcdfe9ca42b7573866e10bb",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-final-v2-pages/page-2.png": {
+    "mtime": 1786818382.6617198,
+    "seen": 1790179274.427156,
+    "ast_hash": "5c53bff61ecb3322daded3b0eafb1de9",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-final-v2-pages/page-3.png": {
+    "mtime": 1786818382.6629078,
+    "seen": 1790179274.427157,
+    "ast_hash": "1091da900c35c505598f7296e934dc9c",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-final-v2-pages/page-4.png": {
+    "mtime": 1786818382.664555,
+    "seen": 1790179274.427158,
+    "ast_hash": "38e9be86d51e1898966c9342fafc01df",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-final-v2-pages/page-5.png": {
+    "mtime": 1786818382.6649008,
+    "seen": 1790179274.427158,
+    "ast_hash": "9e9bde61bc7be763f1f4f06b78a8f8e3",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-v2-pages/page-1.png": {
+    "mtime": 1786818382.6653507,
+    "seen": 1790179274.427159,
+    "ast_hash": "71820630bfcdfe9ca42b7573866e10bb",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-v2-pages/page-2.png": {
+    "mtime": 1786818382.6817334,
+    "seen": 1790179274.42716,
+    "ast_hash": "ee127a5a0a9b9443fec314a0b295f9e4",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-v2-pages/page-3.png": {
+    "mtime": 1786818382.6961656,
+    "seen": 1790179274.427161,
+    "ast_hash": "36a4c09ed095218b5af4b3a7b8867a62",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-v2-pages/page-4.png": {
+    "mtime": 1786818382.699142,
+    "seen": 1790179274.427161,
+    "ast_hash": "38e9be86d51e1898966c9342fafc01df",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-v2-pages/page-5.png": {
+    "mtime": 1786818382.6997802,
+    "seen": 1790179274.4271622,
+    "ast_hash": "9e9bde61bc7be763f1f4f06b78a8f8e3",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-v2b-pages/page-1.png": {
+    "mtime": 1786818382.7021813,
+    "seen": 1790179274.4271622,
+    "ast_hash": "caed2a03f74aaff6e1bd69c917f08466",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-v2b-pages/page-2.png": {
+    "mtime": 1786818382.7100313,
+    "seen": 1790179274.427163,
+    "ast_hash": "3522e0b3f1473cfe04e9687423971781",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-v2b-pages/page-3.png": {
+    "mtime": 1786818382.7149403,
+    "seen": 1790179274.4271638,
+    "ast_hash": "0d680ff0806901f2a2dc41102f9eec46",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-v2b-pages/page-4.png": {
+    "mtime": 1786818382.7408752,
+    "seen": 1790179274.4271638,
+    "ast_hash": "46db92345f2d872679d929ab3d96cbf3",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-report-v2b-pages/page-5.png": {
+    "mtime": 1786818382.7459261,
+    "seen": 1790179274.427165,
+    "ast_hash": "7a2ae78c2c7cd59518b61a911db3d082",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-two-pa-one-pano-pages/page-01.png": {
+    "mtime": 1786818382.764969,
+    "seen": 1790179274.427166,
+    "ast_hash": "0514fe978bf1ba15aaf2955e8e3779e8",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-two-pa-one-pano-pages/page-02.png": {
+    "mtime": 1786818382.7713835,
+    "seen": 1790179274.427166,
+    "ast_hash": "f9f95ad5005db3a2231160dad7453c63",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-two-pa-one-pano-pages/page-03.png": {
+    "mtime": 1786818382.7866507,
+    "seen": 1790179274.427167,
+    "ast_hash": "8fff1f72dd27c90d428dad3f732eb8cc",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-two-pa-one-pano-pages/page-04.png": {
+    "mtime": 1786818382.799318,
+    "seen": 1790179274.427167,
+    "ast_hash": "c2075381266441c6b54ab18be8f1fb57",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-two-pa-one-pano-pages/page-05.png": {
+    "mtime": 1786818382.799642,
+    "seen": 1790179274.427168,
+    "ast_hash": "81294bc63f0f1658bda757ab9c9ba9dd",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-two-pa-one-pano-pages/page-06.png": {
+    "mtime": 1786818382.8028831,
+    "seen": 1790179274.427169,
+    "ast_hash": "4be92564c961c7faafe56b003a06c993",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-two-pa-one-pano-pages/page-07.png": {
+    "mtime": 1786818382.803079,
+    "seen": 1790179274.427169,
+    "ast_hash": "14bb7a8550b98ac0c4ead7dd9b2042e6",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-two-pa-one-pano-pages/page-08.png": {
+    "mtime": 1786818382.8032446,
+    "seen": 1790179274.42717,
+    "ast_hash": "e0857a96d26c6f751a64ceb8dc6555a2",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-two-pa-one-pano-pages/page-09.png": {
+    "mtime": 1786818382.8034184,
+    "seen": 1790179274.427171,
+    "ast_hash": "a4c96a54ef728bed9eb95f70bd9e9a39",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-two-pa-one-pano-pages/page-10.png": {
+    "mtime": 1786818382.8035996,
+    "seen": 1790179274.427171,
+    "ast_hash": "2aacbe2e684209e2b305ae7c8274ecd8",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-two-pa-one-pano-pages/page-11.png": {
+    "mtime": 1786818382.8042302,
+    "seen": 1790179274.4271722,
+    "ast_hash": "f537b0448999635ee05c156a4fc096e1",
+    "semantic_hash": ""
+  },
+  "backend/artifacts/xcore-analysis-two-pa-one-pano-pages/page-12.png": {
+    "mtime": 1786818382.8043866,
+    "seen": 1790179274.4271731,
+    "ast_hash": "ece429936f10e7165fd6fa098fe87b49",
+    "semantic_hash": ""
+  },
+  "mobile/android/app/src/main/res/drawable-hdpi/splashscreen_logo.png": {
+    "mtime": 1785748462.4013379,
+    "seen": 1790179274.4271731,
+    "ast_hash": "d836fce6ab3d33905ef23d45650d46d6",
+    "semantic_hash": ""
+  },
+  "mobile/android/app/src/main/res/drawable-mdpi/splashscreen_logo.png": {
+    "mtime": 1785748462.4015005,
+    "seen": 1790179274.4271739,
+    "ast_hash": "c5558bd17cb18492d28e791fe5862d44",
+    "semantic_hash": ""
+  },
+  "mobile/android/app/src/main/res/drawable-xhdpi/splashscreen_logo.png": {
+    "mtime": 1785748462.402767,
+    "seen": 1790179274.4271748,
+    "ast_hash": "dd3b8406fb4a525b3056ed05a65d7160",
+    "semantic_hash": ""
+  },
+  "mobile/android/app/src/main/res/drawable-xxhdpi/splashscreen_logo.png": {
+    "mtime": 1785748462.4061477,
+    "seen": 1790179274.4271748,
+    "ast_hash": "57d98d3d1d58266d547fe5c4f09ebaa2",
+    "semantic_hash": ""
+  },
+  "mobile/android/app/src/main/res/drawable-xxxhdpi/splashscreen_logo.png": {
+    "mtime": 1785748462.41073,
+    "seen": 1790179274.427176,
+    "ast_hash": "278d7e354f6aa8c6aecc77f8820e8896",
+    "semantic_hash": ""
+  },
+  "mobile/android/app/src/main/res/mipmap-hdpi/ic_launcher.webp": {
+    "mtime": 1785748462.4110134,
+    "seen": 1790179274.427177,
+    "ast_hash": "39370f3d8346edf24af4d811c7d6f70e",
+    "semantic_hash": ""
+  },
+  "mobile/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.webp": {
+    "mtime": 1785748462.411071,
+    "seen": 1790179274.427177,
+    "ast_hash": "20ccd3ed0e1f2ad24bb23bbe446bb3c4",
+    "semantic_hash": ""
+  },
+  "mobile/android/app/src/main/res/mipmap-mdpi/ic_launcher.webp": {
+    "mtime": 1785748462.4111474,
+    "seen": 1790179274.427178,
+    "ast_hash": "3f9aaf70b3e144d576b065f053d99962",
+    "semantic_hash": ""
+  },
+  "mobile/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.webp": {
+    "mtime": 1785748462.412256,
+    "seen": 1790179274.427179,
+    "ast_hash": "5a4b3e0b53eae065fff672aa4826aa85",
+    "semantic_hash": ""
+  },
+  "mobile/android/app/src/main/res/mipmap-xhdpi/ic_launcher.webp": {
+    "mtime": 1785748462.4123437,
+    "seen": 1790179274.427179,
+    "ast_hash": "f5b91ea2d6be8be772010065f9dc1c8f",
+    "semantic_hash": ""
+  },
+  "mobile/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.webp": {
+    "mtime": 1785748462.4135664,
+    "seen": 1790179274.42718,
+    "ast_hash": "4cfea330328c6d01709e4ebc2424858a",
+    "semantic_hash": ""
+  },
+  "mobile/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.webp": {
+    "mtime": 1785748462.4136798,
+    "seen": 1790179274.427181,
+    "ast_hash": "7c297b3cf4de675ebeb2b65e031188be",
+    "semantic_hash": ""
+  },
+  "mobile/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.webp": {
+    "mtime": 1785748462.4137404,
+    "seen": 1790179274.427181,
+    "ast_hash": "3b83d51d2253266ab4b1ace9af265e6e",
+    "semantic_hash": ""
+  },
+  "mobile/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp": {
+    "mtime": 1785748462.4138467,
+    "seen": 1790179274.4271822,
+    "ast_hash": "529bfacc3678dee05f8b0eb0ca0a0f96",
+    "semantic_hash": ""
+  },
+  "mobile/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.webp": {
+    "mtime": 1785748462.4139962,
+    "seen": 1790179274.4271832,
+    "ast_hash": "250b231d6a4989ba507ae9b02db6b0dd",
+    "semantic_hash": ""
+  },
+  "mobile/assets/icon.png": {
+    "mtime": 1762940061.4476252,
+    "seen": 1790179274.42719,
+    "ast_hash": "f43eb79838cc6cbce793b6408942361d",
+    "semantic_hash": ""
+  },
+  "mobile/ios/SereneDentalPatient/Images.xcassets/AppIcon.appiconset/App-Icon-1024x1024@1x.png": {
+    "mtime": 1785748462.4174032,
+    "seen": 1790179274.427191,
+    "ast_hash": "35a635a6c61497e3e5c08c0d66a2816f",
+    "semantic_hash": ""
+  },
+  "mobile/ios/SereneDentalPatient/Images.xcassets/SplashScreenLegacy.imageset/image.png": {
+    "mtime": 1785748462.4209213,
+    "seen": 1790179274.427192,
+    "ast_hash": "11b9218caa40d05baebf12678b1a4d54",
+    "semantic_hash": ""
+  },
+  "mobile/ios/SereneDentalPatient/Images.xcassets/SplashScreenLegacy.imageset/image@2x.png": {
+    "mtime": 1785748462.4220364,
+    "seen": 1790179274.427192,
+    "ast_hash": "11b9218caa40d05baebf12678b1a4d54",
+    "semantic_hash": ""
+  },
+  "mobile/ios/SereneDentalPatient/Images.xcassets/SplashScreenLegacy.imageset/image@3x.png": {
+    "mtime": 1785748462.4231188,
+    "seen": 1790179274.4271932,
+    "ast_hash": "11b9218caa40d05baebf12678b1a4d54",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_001.png": {
+    "mtime": 1785748462.4518378,
+    "seen": 1790179274.427194,
+    "ast_hash": "bb98ee540f3dea4d20dfd78615c115fc",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_002.png": {
+    "mtime": 1785748462.4524717,
+    "seen": 1790179274.427194,
+    "ast_hash": "d074114360c90b1b0ca6c1790305d261",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_003.png": {
+    "mtime": 1785748462.4529963,
+    "seen": 1790179274.4271948,
+    "ast_hash": "3f03097229fc83929439648c1864deff",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_004.png": {
+    "mtime": 1785748462.4533913,
+    "seen": 1790179274.4271958,
+    "ast_hash": "bd0a8bd86d7bda70347ec323b1bb5678",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_005.png": {
+    "mtime": 1785748462.454467,
+    "seen": 1790179274.4271958,
+    "ast_hash": "f72ce12be2ec3a5c7f9073d949a4dd5f",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_006.png": {
+    "mtime": 1785748462.455417,
+    "seen": 1790179274.427197,
+    "ast_hash": "8ceed0b1504fe7df721d84b541a2cd6e",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_007.png": {
+    "mtime": 1785748462.4559944,
+    "seen": 1790179274.427197,
+    "ast_hash": "092ac79228f962bc7cac8621246fe746",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_008.png": {
+    "mtime": 1785748462.4566073,
+    "seen": 1790179274.427198,
+    "ast_hash": "fbaa1919265ddfd46596909224fae3f9",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_009.png": {
+    "mtime": 1785748462.4572613,
+    "seen": 1790179274.427199,
+    "ast_hash": "02cb38e6686e2626fef70ec177316a2b",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_010.png": {
+    "mtime": 1785748462.457769,
+    "seen": 1790179274.427199,
+    "ast_hash": "33bd45e2514a45ea0cae7d10ae6dbc48",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_011.png": {
+    "mtime": 1785748462.4593954,
+    "seen": 1790179274.4272,
+    "ast_hash": "59b6a59a2131db64d9b2788ff877c27c",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_012.png": {
+    "mtime": 1785748462.4609084,
+    "seen": 1790179274.4272,
+    "ast_hash": "da245d49b3baaf433b9cda9fedcdc3f5",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_013.png": {
+    "mtime": 1785748462.4626856,
+    "seen": 1790179274.427201,
+    "ast_hash": "441f321bfc110c09f2965e5fe28a3df2",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_014.png": {
+    "mtime": 1785748462.4632363,
+    "seen": 1790179274.427202,
+    "ast_hash": "ee7303ef437a99707679e08d6c14ca1f",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_015.png": {
+    "mtime": 1785748462.463702,
+    "seen": 1790179274.427202,
+    "ast_hash": "b748808d0f08d9bb53c9fa6214942cc7",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_016.png": {
+    "mtime": 1785748462.46416,
+    "seen": 1790179274.4272032,
+    "ast_hash": "684113e57c391715ad2cd7f368c625e2",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_017.png": {
+    "mtime": 1785748462.4647324,
+    "seen": 1790179274.4272041,
+    "ast_hash": "e3c51436790e64cebaa239264b8e0181",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_018.png": {
+    "mtime": 1785748462.4658165,
+    "seen": 1790179274.4272041,
+    "ast_hash": "46ab1720eeb7430115c365ba8a6eedd9",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_019.png": {
+    "mtime": 1785748462.4664292,
+    "seen": 1790179274.427205,
+    "ast_hash": "4a2808971b97a07d43e66199db2e7abc",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_020.png": {
+    "mtime": 1785748462.4682386,
+    "seen": 1790179274.427205,
+    "ast_hash": "74c4db9fa5f5950e05efce7bc9ee2dd5",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_021.png": {
+    "mtime": 1785748462.4686966,
+    "seen": 1790179274.4272058,
+    "ast_hash": "9a781cdc32f39db475de8120f19a60ad",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_022.png": {
+    "mtime": 1785748462.4699585,
+    "seen": 1790179274.427207,
+    "ast_hash": "c727957453e0d7470b5c31894a439d58",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_023.png": {
+    "mtime": 1785748462.4704556,
+    "seen": 1790179274.427208,
+    "ast_hash": "8012fcefcd5d1e57f988545ee9790693",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_024.png": {
+    "mtime": 1785748462.4710395,
+    "seen": 1790179274.427208,
+    "ast_hash": "dc1058ecfa32c135052f12f5f009d178",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_025.png": {
+    "mtime": 1785748462.4716215,
+    "seen": 1790179274.427209,
+    "ast_hash": "ce15d7e58176a838fd5b9d6bc458982c",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_026.png": {
+    "mtime": 1785748462.4722104,
+    "seen": 1790179274.42721,
+    "ast_hash": "75c9271df0ec77c1a32a859c817dda2f",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_027.png": {
+    "mtime": 1785748462.4742746,
+    "seen": 1790179274.42721,
+    "ast_hash": "7eae21792f6890da56c9ec0572c1e5a5",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_028.png": {
+    "mtime": 1785748462.4759765,
+    "seen": 1790179274.427211,
+    "ast_hash": "4021af28073d7b0d6ab81b84f35d9a0e",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_029.png": {
+    "mtime": 1785748462.4764926,
+    "seen": 1790179274.427211,
+    "ast_hash": "dd0ea7ec8fa882e16c9901b411041ec7",
+    "semantic_hash": ""
+  },
+  "paper-evidence/fixtures/synthetic_dental_images/synthetic_opg_030.png": {
+    "mtime": 1785748462.478629,
+    "seen": 1790179274.427212,
+    "ast_hash": "49cca80105b6508c32fec0a4ee6e3bca",
+    "semantic_hash": ""
+  },
+  "web/icon.png": {
+    "mtime": 1761317277.6348553,
+    "seen": 1790179274.427213,
+    "ast_hash": "f43eb79838cc6cbce793b6408942361d",
+    "semantic_hash": ""
+  },
+  "web/public/assets/images/backgroundgambar.png": {
+    "mtime": 1785748462.8403618,
+    "seen": 1790179274.4272141,
+    "ast_hash": "1526d2f0b2a3b2eac588a06c5f25f450",
+    "semantic_hash": ""
+  },
+  "web/public/assets/images/idflag.jpg": {
+    "mtime": 1759318837.3229718,
+    "seen": 1790179274.427215,
+    "ast_hash": "2bc94646ac5896b58837e3f972c5dfdf",
+    "semantic_hash": ""
+  },
+  "web/public/assets/images/no_image.png": {
+    "mtime": 1755927494.0,
+    "seen": 1790179274.427215,
+    "ast_hash": "1a5d2f8e2ae237e2dd853bd7b3fa7287",
+    "semantic_hash": ""
+  },
+  "web/public/assets/images/ukflag.png": {
+    "mtime": 1759318837.3099363,
+    "seen": 1790179274.4272158,
+    "ast_hash": "dc9918a8aa182f2b7de223e74436eab1",
+    "semantic_hash": ""
+  },
+  "web/public/assets/imagesTesting/test1.png": {
+    "mtime": 1769882364.2830641,
+    "seen": 1790179274.427217,
+    "ast_hash": "70d7699ce1e094f5f16ed969bcb77c34",
+    "semantic_hash": ""
+  },
+  "web/public/assets/imagesTesting/test2.png": {
+    "mtime": 1769882375.828052,
+    "seen": 1790179274.427217,
+    "ast_hash": "fce5d1494dc95439a5d2877373004ad6",
+    "semantic_hash": ""
+  },
+  "web/public/assets/imagesTesting/test3.png": {
+    "mtime": 1769882368.3715968,
+    "seen": 1790179274.427218,
+    "ast_hash": "ffda6f2fb2f0d716a78a50136820d6b1",
+    "semantic_hash": ""
+  },
+  "web/public/assets/imagesTesting/test4.png": {
+    "mtime": 1769882366.3020434,
+    "seen": 1790179274.427219,
+    "ast_hash": "b9724b36f6130110aca83377a12524b4",
+    "semantic_hash": ""
+  },
+  "web/public/icon-16-solid.png": {
+    "mtime": 1761638909.671425,
+    "seen": 1790179274.4272199,
+    "ast_hash": "705b5d96be3a471f33b55ae1507a50d2",
+    "semantic_hash": ""
+  },
+  "web/public/icon-16.png": {
+    "mtime": 1761639417.8229454,
+    "seen": 1790179274.4272199,
+    "ast_hash": "1ce2fb9345ff41b44edddaef012bd6ef",
+    "semantic_hash": ""
+  },
+  "web/public/icon-180.png": {
+    "mtime": 1761639417.8000267,
+    "seen": 1790179274.427221,
+    "ast_hash": "40fd379983c799fcd9ec7196553ffe65",
+    "semantic_hash": ""
+  },
+  "web/public/icon-192.png": {
+    "mtime": 1761639417.7858746,
+    "seen": 1790179274.427222,
+    "ast_hash": "3beb1480b3b1470048a989a7f49aee42",
+    "semantic_hash": ""
+  },
+  "web/public/icon-32-solid.png": {
+    "mtime": 1761638909.666215,
+    "seen": 1790179274.427222,
+    "ast_hash": "48bab86f725cf28b69dbf0692e71d27f",
+    "semantic_hash": ""
+  },
+  "web/public/icon-32.png": {
+    "mtime": 1761639417.8178666,
+    "seen": 1790179274.427223,
+    "ast_hash": "b8f1e83a4148afaab2f7efea2655c1a6",
+    "semantic_hash": ""
+  },
+  "web/public/icon-48.png": {
+    "mtime": 1761639417.8124912,
+    "seen": 1790179274.4272242,
+    "ast_hash": "5746f9e935b1eb5eb53aa94543130011",
+    "semantic_hash": ""
+  },
+  "web/public/icon-512.png": {
+    "mtime": 1761639417.7697628,
+    "seen": 1790179274.4272242,
+    "ast_hash": "88cde4b02311e93383d7dd7ec130f5c1",
+    "semantic_hash": ""
+  },
+  "web/public/icon-64.png": {
+    "mtime": 1761639417.8063042,
+    "seen": 1790179274.427225,
+    "ast_hash": "cb290e4844d809e5458742cf2c7dc8ca",
+    "semantic_hash": ""
+  },
+  "web/public/icon.png": {
+    "mtime": 1769858408.1534238,
+    "seen": 1790179274.427226,
+    "ast_hash": "f43eb79838cc6cbce793b6408942361d",
+    "semantic_hash": ""
+  },
+  "web/public/logo-rsgmusakti.png": {
+    "mtime": 1769883601.1407843,
+    "seen": 1790179274.4272268,
+    "ast_hash": "cfe12056ddb378b72e56f56120c2d009",
+    "semantic_hash": ""
+  },
+  "web/public/logo-universitastrisakti.png": {
+    "mtime": 1769883778.127228,
+    "seen": 1790179274.4272268,
+    "ast_hash": "1d9021575c844d447e5c580541451894",
+    "semantic_hash": ""
+  },
+  "web/public/safari-pinned-tab.svg": {
+    "mtime": 1761317180.5028968,
+    "seen": 1790179274.427228,
+    "ast_hash": "385033d6f1fe258295baca9c91ef45b9",
+    "semantic_hash": ""
+  },
+  "web/public/tooth.png": {
+    "mtime": 1769797860.8102264,
+    "seen": 1790179274.427229,
+    "ast_hash": "6dc9108ce6ce80172a216e0e9b128be0",
+    "semantic_hash": ""
+  },
+  "web/src/components/textanimation/idflag.jpg": {
+    "mtime": 1758370551.1325145,
+    "seen": 1790179274.427229,
+    "ast_hash": "2bc94646ac5896b58837e3f972c5dfdf",
+    "semantic_hash": ""
+  },
+  "web/src/components/textanimation/ukflag.png": {
+    "mtime": 1758370551.1256838,
+    "seen": 1790179274.42723,
+    "ast_hash": "dc9918a8aa182f2b7de223e74436eab1",
+    "semantic_hash": ""
+  },
+  "backend/src/controllers/xCoreScanController.js": {
+    "mtime": 1790180570.6257303,
+    "seen": 1790180924.341203,
+    "ast_hash": "2e85c85836f37ee819406741fe65a4a0",
+    "semantic_hash": ""
+  },
+  "backend/tests/xcore.3d-scan.routes.test.js": {
+    "mtime": 1790180595.3921661,
+    "seen": 1790180924.344362,
+    "ast_hash": "bb83dd4ed9cf852f9dbd9087c090d1cb",
+    "semantic_hash": ""
+  },
+  "mobile/__tests__/mobile-dentist-scan.test.js": {
+    "mtime": 1790180882.0954802,
+    "seen": 1790180924.344598,
+    "ast_hash": "60d97f1e51349b2f54870789f7eb65fd",
+    "semantic_hash": ""
+  },
+  "mobile/src/services/scan3DService.js": {
+    "mtime": 1790180635.9660404,
+    "seen": 1790180924.3470871,
+    "ast_hash": "a08bf15603187df561a8ce2b4afc93f0",
+    "semantic_hash": ""
   }
 }

@@ -38,6 +38,13 @@ import {
     saveCaseRender,
     updateCase,
 } from '../controllers/xCoreAnalysisCaseController.js';
+import {
+    getScanPatients,
+    createScanPatient,
+    create3DScan,
+    get3DScanDetails,
+    upload3DScanVideo,
+} from '../controllers/xCoreScanController.js';
 
 import { authMiddleware, requireRoles } from '../middleware/clinicAuth.js';
 
@@ -74,6 +81,13 @@ if (benchmarkModeEnabled) {
 
 // Routes - Protected by Auth
 router.use(authMiddleware);
+
+// 3D Scan Workflow endpoints
+router.get('/3d-scans/patients', requireRoles(['dentist']), getScanPatients);
+router.post('/3d-scans/patients', requireRoles(['dentist']), express.json(), createScanPatient);
+router.post('/3d-scans', requireRoles(['dentist']), express.json(), create3DScan);
+router.get('/3d-scans/:id', requireRoles(['dentist']), get3DScanDetails);
+router.post('/3d-scans/:id/video', requireRoles(['dentist']), upload.single('video'), upload3DScanVideo);
 
 router.post('/upload', requireRoles(['dentist']), upload.array('files'), uploadStudy);
 router.get('/studies', getStudies);

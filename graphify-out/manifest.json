@@ -1170,10 +1170,10 @@
     "semantic_hash": "be06d3835878470c9252ebaf27ff69ba"
   },
   "backend/src/routes/xCoreRoutes.js": {
-    "mtime": 1786818382.8592048,
-    "seen": 1790178528.32055,
-    "ast_hash": "8981633f4394dd908541e55d56f2ceb0",
-    "semantic_hash": "8981633f4394dd908541e55d56f2ceb0"
+    "mtime": 1790180547.2627528,
+    "seen": 1790180924.342027,
+    "ast_hash": "d7cb335053d6be612355e04005a1752a",
+    "semantic_hash": ""
   },
   "backend/src/schemas/auth.schema.js": {
     "mtime": 1785748462.3479202,
@@ -2364,10 +2364,10 @@
     "semantic_hash": "15ff0b9e396e448453a3401293a1ee14"
   },
   "mobile/jest.setup.js": {
-    "mtime": 1785748462.4236023,
-    "seen": 1790178528.320668,
-    "ast_hash": "53860adc5e578aa34a42219985f39783",
-    "semantic_hash": "53860adc5e578aa34a42219985f39783"
+    "mtime": 1790180674.9568565,
+    "seen": 1790180924.344928,
+    "ast_hash": "6743db3d4824c6b5c621d6ba72b03576",
+    "semantic_hash": ""
   },
   "mobile/metro.config.js": {
     "mtime": 1785748462.4238675,
@@ -3042,9 +3042,9 @@
     "semantic_hash": "f891ef795a74c66d6b4476ef0d23bf4d"
   },
   "mobile/src/navigation/TabNavigator.jsx": {
-    "mtime": 1790179146.4103556,
-    "seen": 1790179274.416522,
-    "ast_hash": "98bdd978a87a0cad978543d91c3b27e2",
+    "mtime": 1790181189.4517593,
+    "seen": 1790181451.4385579,
+    "ast_hash": "1fcfed7cf0092767df316e00d10a584a",
     "semantic_hash": ""
   },
   "mobile/src/services/aiAnalysisSyncService.js": {
@@ -7055,18 +7055,6 @@
     "ast_hash": "deac06c381a0dc7093055838150a2af0",
     "semantic_hash": ""
   },
-  "mobile/src/features/dentist/screens/DentistHomeScreen.jsx": {
-    "mtime": 1790179111.0873744,
-    "seen": 1790179274.415797,
-    "ast_hash": "6e0273a59d7d59c2f9c8669f78a42765",
-    "semantic_hash": ""
-  },
-  "mobile/src/features/dentist/screens/DentistScan3DScreen.jsx": {
-    "mtime": 1790179125.6231105,
-    "seen": 1790179274.415798,
-    "ast_hash": "3734c891802ea4d45686e77457274e68",
-    "semantic_hash": ""
-  },
   "mobile/src/utils/authUtils.js": {
     "mtime": 1790179069.133426,
     "seen": 1790179274.416896,
@@ -8553,6 +8541,42 @@
     "mtime": 1758370551.1256838,
     "seen": 1790179274.42723,
     "ast_hash": "dc9918a8aa182f2b7de223e74436eab1",
+    "semantic_hash": ""
+  },
+  "backend/src/controllers/xCoreScanController.js": {
+    "mtime": 1790180570.6257303,
+    "seen": 1790180924.341203,
+    "ast_hash": "2e85c85836f37ee819406741fe65a4a0",
+    "semantic_hash": ""
+  },
+  "backend/tests/xcore.3d-scan.routes.test.js": {
+    "mtime": 1790180595.3921661,
+    "seen": 1790180924.344362,
+    "ast_hash": "bb83dd4ed9cf852f9dbd9087c090d1cb",
+    "semantic_hash": ""
+  },
+  "mobile/__tests__/mobile-dentist-scan.test.js": {
+    "mtime": 1790181404.6780744,
+    "seen": 1790181451.4362109,
+    "ast_hash": "c862335ebff706182b57de8c922d4259",
+    "semantic_hash": ""
+  },
+  "mobile/src/services/scan3DService.js": {
+    "mtime": 1790180635.9660404,
+    "seen": 1790180924.3470871,
+    "ast_hash": "a08bf15603187df561a8ce2b4afc93f0",
+    "semantic_hash": ""
+  },
+  "mobile/src/features/dentist/screens/3D/DentistScan3DScreen.jsx": {
+    "mtime": 1790181343.2044103,
+    "seen": 1790181451.437758,
+    "ast_hash": "72774b5769c8e10fad9f46499e93ea07",
+    "semantic_hash": ""
+  },
+  "mobile/src/features/dentist/screens/DentistHome/DentistHomeScreen.jsx": {
+    "mtime": 1790181266.5421922,
+    "seen": 1790181451.437759,
+    "ast_hash": "7e77e5b2b465e8683b49ca0ab7bb4e8c",
     "semantic_hash": ""
   }
 }
