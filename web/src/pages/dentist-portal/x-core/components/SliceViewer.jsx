@@ -3294,7 +3294,7 @@ const SliceViewer = ({
                     <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/95 p-8 text-center">
                         <AppIcon name="AlertTriangle" size={48} className="mb-4 text-red-400" />
                         <h3 className="mb-2 text-lg font-bold text-red-400">Failed to Load MPR</h3>
-                        <p className="mb-4 max-w-md text-sm text-slate-400">{error}</p>
+                        <p className="mb-4 max-w-md text-sm text-slate-400">{typeof error === 'string' ? error : (error?.message || error?.error || 'Failed to load MPR')}</p>
                         <button onClick={() => window.location.reload()} className="rounded-lg bg-slate-800 px-4 py-2 text-sm text-white hover:bg-slate-700">
                             Retry
                         </button>

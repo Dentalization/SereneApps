@@ -235,6 +235,25 @@ const ProjectedAnnotationsGroup = memo(function ProjectedAnnotationsGroup({
               />
             );
           }
+          if (annotation.type === 'region' && Array.isArray(annotation.screenPath) && annotation.screenPath.length >= 3) {
+            const pathData = annotation.screenPath.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ') + ' Z';
+            return (
+              <path
+                key={annotation.id}
+                d={pathData}
+                style={{ pointerEvents: 'visiblePainted' }}
+                fill={annotation.fillColor || `${annotation.color}24`}
+                stroke={annotation.color}
+                strokeWidth={strokeWidth}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                opacity={annotation.opacity ?? 0.9}
+                onMouseEnter={(event) => hoverHandlers.onEnter?.(annotation, event)}
+                onMouseMove={(event) => hoverHandlers.onMove?.(event)}
+                onMouseLeave={hoverHandlers.onLeave}
+              />
+            );
+          }
           return null;
         })}
       </svg>
@@ -319,7 +338,7 @@ const WorldOverlayPreviewLayer = memo(function WorldOverlayPreviewLayer({
     <div data-xcore-ui="true" className="pointer-events-none absolute inset-0 z-[16]">
       <svg className="absolute inset-0 h-full w-full">
         {preview.type === 'arrow' && (
-          <g opacity="0.9">
+          <g opacity="0.95">
             <line
               x1={preview.startScreen.x}
               y1={preview.startScreen.y}
@@ -327,8 +346,12 @@ const WorldOverlayPreviewLayer = memo(function WorldOverlayPreviewLayer({
               y2={preview.endScreen.y}
               stroke={preview.color}
               strokeWidth="2"
-              strokeDasharray="6 5"
+              strokeDasharray="6 4"
               strokeLinecap="round"
+            />
+            <polygon
+              points={arrowHeadPoints(preview.startScreen, preview.endScreen)}
+              fill={preview.color}
             />
           </g>
         )}

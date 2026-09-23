@@ -87,7 +87,7 @@ const AssignStudyPatientModal = ({
 
                     {error && (
                         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                            {error}
+                            {typeof error === 'string' ? error : (error?.message || error?.error || 'An error occurred')}
                         </div>
                     )}
 

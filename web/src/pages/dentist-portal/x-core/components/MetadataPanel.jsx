@@ -351,7 +351,7 @@ const MetadataPanel = ({
 
         {activeTab === 'clinical' && !loading && error && (
           <div className="rounded-xl border border-red-500/20 bg-red-950/40 px-3 py-3 text-xs text-red-300">
-            {error}
+            {typeof error === 'string' ? error : (error?.message || error?.error || 'Failed to load metadata')}
           </div>
         )}
 
