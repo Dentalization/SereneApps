@@ -62,6 +62,7 @@ import { startReminderWorker } from './services/appointments/reminderService.js'
 import { startCommunicationsRetentionWorker } from './services/communications/retentionService.js';
 import { validateAttachmentStorageConfiguration } from './services/communications/attachmentStorageService.js';
 import { startWebhookWorker } from './services/webhooks/webhookQueue.js';
+import { startScan3DWorker } from './services/scan3D/scan3DWorker.js';
 import { startReconcileScheduler } from './services/payments/reconcileJob.js';
 import { errorHandler } from './utils/error-codes.js';
 import swaggerUi from 'swagger-ui-express';
@@ -135,6 +136,7 @@ startOutboxWorker();
 startReminderWorker();
 startCommunicationsRetentionWorker();
 startWebhookWorker();
+startScan3DWorker();
 startReconcileScheduler();
 
 app.use(cors(corsOptions));

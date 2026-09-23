@@ -492,10 +492,10 @@
     "semantic_hash": "342a8932c43daa4785d1c1f440428aac"
   },
   "backend/python_service/main.py": {
-    "mtime": 1786818386.9964597,
-    "seen": 1790178528.320483,
-    "ast_hash": "73de0f37c393d8c7ec078e57c2f927ae",
-    "semantic_hash": "73de0f37c393d8c7ec078e57c2f927ae"
+    "mtime": 1790181935.8081217,
+    "seen": 1790182219.7317262,
+    "ast_hash": "dcf35a489978d57cce06163af37494d6",
+    "semantic_hash": ""
   },
   "backend/python_service/pyrightconfig.json": {
     "mtime": 1786818382.8510458,
@@ -1170,9 +1170,9 @@
     "semantic_hash": "be06d3835878470c9252ebaf27ff69ba"
   },
   "backend/src/routes/xCoreRoutes.js": {
-    "mtime": 1790180547.2627528,
-    "seen": 1790180924.342027,
-    "ast_hash": "d7cb335053d6be612355e04005a1752a",
+    "mtime": 1790181902.7511494,
+    "seen": 1790182219.7333388,
+    "ast_hash": "c1dd5b66f3963da8be8208b96f183637",
     "semantic_hash": ""
   },
   "backend/src/schemas/auth.schema.js": {
@@ -1200,10 +1200,10 @@
     "semantic_hash": "a139d86b2e78c50d7148d956ac64667c"
   },
   "backend/src/server.js": {
-    "mtime": 1785748462.348698,
-    "seen": 1790178528.320553,
-    "ast_hash": "c9a5f0999dd144c7187962a01cd9476e",
-    "semantic_hash": "c9a5f0999dd144c7187962a01cd9476e"
+    "mtime": 1790181838.454074,
+    "seen": 1790182219.7333949,
+    "ast_hash": "d814f281e6410e59d5424ff3142a00bc",
+    "semantic_hash": ""
   },
   "backend/src/services/appointments/audit.js": {
     "mtime": 1768476821.1023085,
@@ -5520,10 +5520,10 @@
     "semantic_hash": "41ee105a4cb5c10c57e5b7b11d6028b3"
   },
   "web/src/pages/dentist-portal/x-core/components/AnnotationCanvas.jsx": {
-    "mtime": 1789905408.4303997,
-    "seen": 1790178528.32098,
-    "ast_hash": "2167f046f8fa290d999c91494cd96d8c",
-    "semantic_hash": "2167f046f8fa290d999c91494cd96d8c"
+    "mtime": 1790181525.353492,
+    "seen": 1790182219.7450728,
+    "ast_hash": "a06c8ae63b941e1ab1b80323a78e6f10",
+    "semantic_hash": ""
   },
   "web/src/pages/dentist-portal/x-core/components/AnnotationHistoryPanel.jsx": {
     "mtime": 1785748462.943653,
@@ -7050,8 +7050,8 @@
     "semantic_hash": ""
   },
   "mobile/src/features/dentist/components/DentistRoleGuard.jsx": {
-    "mtime": 1790179096.6967838,
-    "seen": 1790179274.415796,
+    "mtime": 1790181595.5945494,
+    "seen": 1790182219.7373528,
     "ast_hash": "deac06c381a0dc7093055838150a2af0",
     "semantic_hash": ""
   },
@@ -8544,39 +8544,63 @@
     "semantic_hash": ""
   },
   "backend/src/controllers/xCoreScanController.js": {
-    "mtime": 1790180570.6257303,
-    "seen": 1790180924.341203,
-    "ast_hash": "2e85c85836f37ee819406741fe65a4a0",
+    "mtime": 1790181873.3472328,
+    "seen": 1790182219.732523,
+    "ast_hash": "968784c1dd2b1269d39339585bd72bb8",
     "semantic_hash": ""
   },
   "backend/tests/xcore.3d-scan.routes.test.js": {
-    "mtime": 1790180595.3921661,
-    "seen": 1790180924.344362,
-    "ast_hash": "bb83dd4ed9cf852f9dbd9087c090d1cb",
+    "mtime": 1790182144.6903267,
+    "seen": 1790182219.735638,
+    "ast_hash": "94edba9b90e5b90e11688ab3a5e328f9",
     "semantic_hash": ""
   },
   "mobile/__tests__/mobile-dentist-scan.test.js": {
-    "mtime": 1790181404.6780744,
-    "seen": 1790181451.4362109,
-    "ast_hash": "c862335ebff706182b57de8c922d4259",
+    "mtime": 1790182185.9854646,
+    "seen": 1790182219.735869,
+    "ast_hash": "61923ee22338b37de806dad6c50c9cc7",
     "semantic_hash": ""
   },
   "mobile/src/services/scan3DService.js": {
-    "mtime": 1790180635.9660404,
-    "seen": 1790180924.3470871,
-    "ast_hash": "a08bf15603187df561a8ce2b4afc93f0",
+    "mtime": 1790181948.993467,
+    "seen": 1790182219.7382898,
+    "ast_hash": "c43782ec3411c5d9d636117f39e80896",
     "semantic_hash": ""
   },
   "mobile/src/features/dentist/screens/3D/DentistScan3DScreen.jsx": {
-    "mtime": 1790181343.2044103,
-    "seen": 1790181451.437758,
-    "ast_hash": "72774b5769c8e10fad9f46499e93ea07",
+    "mtime": 1790182000.9658594,
+    "seen": 1790182219.737354,
+    "ast_hash": "28348fe1257cc1945a37c9541bbd9697",
     "semantic_hash": ""
   },
   "mobile/src/features/dentist/screens/DentistHome/DentistHomeScreen.jsx": {
     "mtime": 1790181266.5421922,
     "seen": 1790181451.437759,
     "ast_hash": "7e77e5b2b465e8683b49ca0ab7bb4e8c",
+    "semantic_hash": ""
+  },
+  "backend/python_service/services/reconstruction_service.py": {
+    "mtime": 1790181919.2992213,
+    "seen": 1790182219.731786,
+    "ast_hash": "b556689b7eb1288a1cd78756eb407b95",
+    "semantic_hash": ""
+  },
+  "backend/src/services/scan3D/reconstructionEngineAdapter.js": {
+    "mtime": 1790181789.477287,
+    "seen": 1790182219.73448,
+    "ast_hash": "4f4b01d7f175dfb284f12e9e958950f1",
+    "semantic_hash": ""
+  },
+  "backend/src/services/scan3D/scan3DQueueService.js": {
+    "mtime": 1790181800.835981,
+    "seen": 1790182219.7344809,
+    "ast_hash": "055f0650d947a666fb23f26f570fa8b4",
+    "semantic_hash": ""
+  },
+  "backend/src/services/scan3D/scan3DWorker.js": {
+    "mtime": 1790181810.9942164,
+    "seen": 1790182219.7344818,
+    "ast_hash": "a1b76dddf76f7cf9d4070a8e9cc386e9",
     "semantic_hash": ""
   }
 }

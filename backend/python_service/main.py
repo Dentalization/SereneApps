@@ -33,6 +33,7 @@ from services.vti_converter import (
     log_python_event,
     notify_backend_callback,
 )
+from services.reconstruction_service import process_3d_scan_reconstruction
 
 
 @asynccontextmanager
@@ -2031,6 +2032,38 @@ def get_structured_report(study_id: str, share_token: str = None):
             "manufacturer": manufacturer or None,
         }
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/reconstruct/3d-scan")
+async def reconstruct_3d_scan(request: Request):
+    """
+    Receives request to reconstruct 3D surface mesh from continuous smartphone RGB scan video.
+    """
+    try:
+        body = await request.json()
+        folder_name = body.get("folderName")
+        scan_scope = body.get("scanScope", "full")
+        video_path = body.get("videoPath")
+
+        if not folder_name:
+            raise HTTPException(status_code=400, detail="folderName is required")
+
+        study_dir = os.path.join(UPLOAD_DIR, folder_name)
+        if not os.path.exists(study_dir):
+            os.makedirs(study_dir, exist_ok=True)
+
+        if not video_path:
+            video_path = os.path.join(study_dir, "raw_video.mp4")
+
+        result = process_3d_scan_reconstruction(
+            study_dir=study_dir,
+            scan_scope=scan_scope,
+            video_path=video_path if os.path.exists(video_path) else None,
+        )
+        return result
+    except Exception as e:
+        print(f"[3D Reconstruct] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

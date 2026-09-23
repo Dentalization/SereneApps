@@ -44,6 +44,10 @@ import {
     create3DScan,
     get3DScanDetails,
     upload3DScanVideo,
+    enqueue3DScan,
+    get3DScanStatus,
+    retry3DScan,
+    get3DScanAsset,
 } from '../controllers/xCoreScanController.js';
 
 import { authMiddleware, requireRoles } from '../middleware/clinicAuth.js';
@@ -88,6 +92,10 @@ router.post('/3d-scans/patients', requireRoles(['dentist']), express.json(), cre
 router.post('/3d-scans', requireRoles(['dentist']), express.json(), create3DScan);
 router.get('/3d-scans/:id', requireRoles(['dentist']), get3DScanDetails);
 router.post('/3d-scans/:id/video', requireRoles(['dentist']), upload.single('video'), upload3DScanVideo);
+router.post('/3d-scans/:id/queue', requireRoles(['dentist']), express.json(), enqueue3DScan);
+router.get('/3d-scans/:id/status', requireRoles(['dentist']), get3DScanStatus);
+router.post('/3d-scans/:id/retry', requireRoles(['dentist']), express.json(), retry3DScan);
+router.get('/3d-scans/:id/assets/:fileName', requireRoles(['dentist']), get3DScanAsset);
 
 router.post('/upload', requireRoles(['dentist']), upload.array('files'), uploadStudy);
 router.get('/studies', getStudies);

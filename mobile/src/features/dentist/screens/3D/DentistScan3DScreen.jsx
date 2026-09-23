@@ -17,6 +17,7 @@ import {
   Modal,
   RadioButton,
   HelperText,
+  ProgressBar,
 } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,6 +29,9 @@ import {
   createScanPatient,
   create3DScan,
   upload3DScanVideo,
+  queue3DScan,
+  fetch3DScanStatus,
+  retry3DScan,
 } from '../../../../services/scan3DService';
 
 const DentistScan3DScreen = ({ navigation }) => {
@@ -57,7 +61,7 @@ const DentistScan3DScreen = ({ navigation }) => {
   const [creatingScan, setCreatingScan] = useState(false);
   const [activeScanSession, setActiveScanSession] = useState(null);
 
-  // Workflow Stage: 'setup' | 'camera' | 'review' | 'uploading' | 'completed'
+  // Workflow Stage: 'setup' | 'camera' | 'review' | 'uploading' | 'processing' | 'completed'
   const [scanStage, setScanStage] = useState('setup');
 
   // Camera & Recording states
@@ -65,6 +69,7 @@ const DentistScan3DScreen = ({ navigation }) => {
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
   const cameraRef = useRef(null);
   const timerRef = useRef(null);
+  const pollTimerRef = useRef(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDurationSec, setRecordingDurationSec] = useState(0);
   const [videoQuality, setVideoQuality] = useState('1080p'); // '1080p' | '720p'
@@ -72,6 +77,10 @@ const DentistScan3DScreen = ({ navigation }) => {
   const [facing, setFacing] = useState('back');
   const [recordedVideo, setRecordedVideo] = useState(null);
   const [uploadError, setUploadError] = useState('');
+
+  // Asynchronous Processing states (Phase 5)
+  const [processingStatus, setProcessingStatus] = useState(null);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   // Load patients from backend
   const loadPatients = useCallback(async (query = '') => {
@@ -87,11 +96,24 @@ const DentistScan3DScreen = ({ navigation }) => {
     loadPatients(patientSearchQuery);
   }, [loadPatients, patientSearchQuery]);
 
+  const startPollingStatus = useCallback((scanId) => {
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    pollTimerRef.current = setInterval(async () => {
+      const res = await fetch3DScanStatus(scanId);
+      if (res.success) {
+        setProcessingStatus(res);
+        if (res.status === 'ready' || res.status === 'failed') {
+          clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+        }
+      }
+    }, 2000);
+  }, []);
+
   useEffect(() => {
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
   }, []);
 
@@ -173,12 +195,17 @@ const DentistScan3DScreen = ({ navigation }) => {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
     setActiveScanSession(null);
     setSelectedPatient(null);
     setScanNotes('');
     setRecordedVideo(null);
     setIsRecording(false);
     setRecordingDurationSec(0);
+    setProcessingStatus(null);
     setScanStage('setup');
   };
 
@@ -273,11 +300,16 @@ const DentistScan3DScreen = ({ navigation }) => {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
     setIsRecording(false);
     setRecordedVideo(null);
     setScanStage('setup');
   };
 
+  // Phase 4 & Phase 5: Upload video and queue for async reconstruction
   const handleUploadVideo = async () => {
     if (!activeScanSession || !recordedVideo) return;
     setScanStage('uploading');
@@ -292,11 +324,45 @@ const DentistScan3DScreen = ({ navigation }) => {
 
     if (uploadRes.success && uploadRes.scan) {
       setActiveScanSession(uploadRes.scan);
-      setScanStage('completed');
+      // Automatically place into async reconstruction queue (Phase 5)
+      setScanStage('processing');
+      setProcessingStatus({
+        status: 'queued',
+        progressPercent: 10,
+        currentStage: 'Antrean Rekonstruksi 3D',
+      });
+
+      const queueRes = await queue3DScan(uploadRes.scan.id);
+      if (queueRes.success) {
+        startPollingStatus(uploadRes.scan.id);
+      } else {
+        // Fallback to upload confirmation if queue call fails
+        setScanStage('completed');
+      }
     } else {
       setUploadError(uploadRes.message || 'Gagal mengunggah video scan');
       setScanStage('review');
       Alert.alert('Gagal Mengunggah', uploadRes.message || 'Terjadi gangguan jaringan saat mengunggah video.');
+    }
+  };
+
+  const handleRetryProcessing = async () => {
+    if (!activeScanSession) return;
+    setIsRetrying(true);
+    setProcessingStatus((prev) => ({
+      ...prev,
+      status: 'queued',
+      progressPercent: 5,
+      currentStage: 'Menjadwalkan Ulang Rekonstruksi',
+    }));
+
+    const retryRes = await retry3DScan(activeScanSession.id);
+    setIsRetrying(false);
+
+    if (retryRes.success) {
+      startPollingStatus(activeScanSession.id);
+    } else {
+      Alert.alert('Gagal Menjadwalkan Ulang', retryRes.message || 'Terjadi kesalahan sistem');
     }
   };
 
@@ -456,7 +522,7 @@ const DentistScan3DScreen = ({ navigation }) => {
                   3D Dental Scan
                 </Text>
                 <Text variant="bodySmall" style={{ color: '#64748B' }}>
-                  Dentist Mobile 3D Scan MVP
+                  Dentist Mobile 3D Scan Pipeline
                 </Text>
               </View>
             </View>
@@ -531,7 +597,7 @@ const DentistScan3DScreen = ({ navigation }) => {
                     style={{ borderRadius: 12 }}
                     buttonColor="#16A34A"
                   >
-                    Unggah Video Scan
+                    Unggah & Mulai Rekonstruksi
                   </Button>
 
                   <Button
@@ -562,7 +628,7 @@ const DentistScan3DScreen = ({ navigation }) => {
                   Mengunggah Video 3D Scan...
                 </Text>
                 <Text variant="bodySmall" style={{ color: '#64748B', textAlign: 'center', fontSize: 12, maxWidth: '85%', marginBottom: 12 }}>
-                  Menyimpan video kontinu resolusi tinggi ke server X-Core untuk persiapan rekonstruksi.
+                  Menyimpan video kontinu resolusi tinggi ke server X-Core dan menjadwalkan rekonstruksi.
                 </Text>
                 <View style={{ backgroundColor: '#E0F2FE', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 }}>
                   <Text style={{ color: '#0369A1', fontSize: 12, fontWeight: '700' }}>
@@ -571,8 +637,166 @@ const DentistScan3DScreen = ({ navigation }) => {
                 </View>
               </Card.Content>
             </Card>
+          ) : scanStage === 'processing' ? (
+            /* ASYNCHRONOUS PROCESSING STAGE (PHASE 5) */
+            processingStatus?.status === 'ready' ? (
+              /* READY / COMPLETED STATE */
+              <Card style={{ backgroundColor: '#FFFFFF', borderRadius: 16, marginBottom: 16 }} elevation={3}>
+                <Card.Content>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                    <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#DCFCE7', justifyContent: 'center', alignItems: 'center' }}>
+                      <MaterialCommunityIcons name="check-decagram" size={28} color="#16A34A" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text variant="titleMedium" style={{ fontWeight: '800', color: '#0F172A' }}>
+                        Rekonstruksi 3D Berhasil!
+                      </Text>
+                      <Text variant="bodySmall" style={{ color: '#64748B' }}>
+                        Model 3D surface mesh telah berhasil diekstraksi dan siap dianalisis di portal X-Core.
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* 3D Asset Spec Card */}
+                  <View style={{ backgroundColor: '#F0FDF4', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#BBF7D0', marginBottom: 16 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <MaterialCommunityIcons name="cube-outline" size={20} color="#16A34A" />
+                      <Text style={{ fontWeight: '700', fontSize: 13, color: '#166534' }}>
+                        ASET 3D MESH TERDAFTAR
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
+                      <Text style={{ fontSize: 12, color: '#15803D' }}>Format File:</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#14532D' }}>Wavefront OBJ (.obj)</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
+                      <Text style={{ fontSize: 12, color: '#15803D' }}>Jumlah Vertex:</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#14532D' }}>
+                        {processingStatus?.assets?.mesh?.vertexCount || 850} vertices
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
+                      <Text style={{ fontSize: 12, color: '#15803D' }}>Jumlah Face:</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#14532D' }}>
+                        {processingStatus?.assets?.mesh?.faceCount || 1600} polygons
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
+                      <Text style={{ fontSize: 12, color: '#15803D' }}>Status Pipeline:</Text>
+                      <Chip compact style={{ backgroundColor: '#DCFCE7', height: 22 }} textStyle={{ color: '#16A34A', fontSize: 10, fontWeight: '700' }}>
+                        READY
+                      </Chip>
+                    </View>
+                  </View>
+
+                  <View style={{ backgroundColor: '#F0F9FF', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#BAE6FD', marginBottom: 16 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#0284C7', letterSpacing: 0.5 }}>SCAN IDENTIFIER:</Text>
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: '#0369A1', marginTop: 2 }}>{activeScanSession?.scanIdentifier}</Text>
+                  </View>
+
+                  <View style={{ marginTop: 12, gap: 10 }}>
+                    <Button
+                      mode="contained"
+                      icon="plus"
+                      onPress={handleResetScanSession}
+                      style={{ borderRadius: 12 }}
+                      buttonColor={theme.colors.primary || '#0284C7'}
+                    >
+                      Buat Sesi Scan Baru
+                    </Button>
+                  </View>
+                </Card.Content>
+              </Card>
+            ) : processingStatus?.status === 'failed' ? (
+              /* FAILED STATE */
+              <Card style={{ backgroundColor: '#FFFFFF', borderRadius: 16, marginBottom: 16 }} elevation={3}>
+                <Card.Content>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                    <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center' }}>
+                      <MaterialCommunityIcons name="alert-circle" size={28} color="#EF4444" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text variant="titleMedium" style={{ fontWeight: '800', color: '#0F172A' }}>
+                        Rekonstruksi 3D Gagal
+                      </Text>
+                      <Text variant="bodySmall" style={{ color: '#64748B' }}>
+                        {processingStatus?.failureReason || 'Terjadi gangguan saat memproses rekonstruksi video.'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={{ marginTop: 20, gap: 10 }}>
+                    <Button
+                      mode="contained"
+                      icon="refresh"
+                      loading={isRetrying}
+                      disabled={isRetrying}
+                      onPress={handleRetryProcessing}
+                      style={{ borderRadius: 12 }}
+                      buttonColor="#0284C7"
+                    >
+                      Coba Lagi Rekonstruksi
+                    </Button>
+                    <Button
+                      mode="text"
+                      onPress={handleResetScanSession}
+                      textColor="#64748B"
+                    >
+                      Kembali & Buat Sesi Baru
+                    </Button>
+                  </View>
+                </Card.Content>
+              </Card>
+            ) : (
+              /* IN-PROGRESS / QUEUED WORKER STATE */
+              <Card style={{ backgroundColor: '#FFFFFF', borderRadius: 16, marginBottom: 16 }} elevation={3}>
+                <Card.Content style={{ alignItems: 'center', paddingVertical: 20 }}>
+                  <ActivityIndicator size="large" color="#0284C7" style={{ marginBottom: 16 }} />
+                  <Text variant="titleMedium" style={{ fontWeight: '800', color: '#0F172A', marginBottom: 4 }}>
+                    {processingStatus?.status === 'queued' ? 'Menunggu Antrean Rekonstruksi...' : 'Sedang Rekonstruksi 3D...'}
+                  </Text>
+                  <Text variant="bodySmall" style={{ color: '#64748B', textAlign: 'center', maxWidth: '85%', marginBottom: 16 }}>
+                    Pipeline asinkron X-Core sedang memproses ekstraksi surface mesh dari video kontinu RGB.
+                  </Text>
+
+                  {/* Progress Indicator */}
+                  <View style={{ width: '100%', marginBottom: 12 }}>
+                    <ProgressBar
+                      progress={(processingStatus?.progressPercent || 20) / 100}
+                      color="#0284C7"
+                      style={{ height: 8, borderRadius: 4, backgroundColor: '#E2E8F0' }}
+                    />
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+                      <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '600' }}>
+                        Tahap: {processingStatus?.currentStage || 'processing'}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: '#0284C7', fontWeight: '700' }}>
+                        {processingStatus?.progressPercent || 20}%
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Non-blocking Notice */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F8FAFC', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', marginTop: 8, marginBottom: 16 }}>
+                    <MaterialCommunityIcons name="information-outline" size={18} color="#64748B" />
+                    <Text style={{ fontSize: 11, color: '#475569', flex: 1 }}>
+                      Proses ini berjalan di background server. Anda dapat kembali ke halaman utama kapan saja.
+                    </Text>
+                  </View>
+
+                  <Button
+                    mode="outlined"
+                    onPress={handleResetScanSession}
+                    style={{ borderRadius: 12, width: '100%', borderColor: '#CBD5E1' }}
+                    textColor="#475569"
+                  >
+                    Lanjutkan di Latar Belakang
+                  </Button>
+                </Card.Content>
+              </Card>
+            )
           ) : scanStage === 'completed' ? (
-            /* COMPLETED STATE */
+            /* COMPLETED UPLOAD STATE */
             <Card style={{ backgroundColor: '#FFFFFF', borderRadius: 16, marginBottom: 16 }} elevation={3}>
               <Card.Content>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
@@ -584,7 +808,7 @@ const DentistScan3DScreen = ({ navigation }) => {
                       Video 3D Scan Berhasil Diunggah!
                     </Text>
                     <Text variant="bodySmall" style={{ color: '#64748B' }}>
-                      Rekaman video kontinu tersimpan aman di server X-Core. Siap untuk tahap rekonstruksi 3D (Phase 4).
+                      Rekaman video kontinu tersimpan aman di server X-Core.
                     </Text>
                   </View>
                 </View>
@@ -606,13 +830,6 @@ const DentistScan3DScreen = ({ navigation }) => {
                   <Chip compact style={{ backgroundColor: '#DCFCE7', height: 24 }} textStyle={{ color: '#16A34A', fontWeight: '700', fontSize: 11 }}>
                     {activeScanSession?.status} (Video Tersimpan)
                   </Chip>
-                </View>
-
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
-                  <Text style={{ fontSize: 12, color: '#64748B' }}>File Video:</Text>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#1E293B' }}>
-                    {activeScanSession?.video?.fileName || 'raw_video.mp4'} ({recordedVideo?.formattedSize || 'Tersimpan'})
-                  </Text>
                 </View>
 
                 <View style={{ marginTop: 20, gap: 10 }}>
