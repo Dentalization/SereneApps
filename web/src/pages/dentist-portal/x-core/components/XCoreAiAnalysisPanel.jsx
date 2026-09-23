@@ -96,7 +96,7 @@ const XCoreAiAnalysisPanel = ({
                             <AppIcon name="AlertTriangle" size={18} className="mt-0.5 shrink-0 text-rose-300" />
                             <div>
                                 <h4 className="text-sm font-semibold text-rose-100">Analisis AI gagal</h4>
-                                <p className="mt-1 text-xs leading-relaxed text-rose-200/75">{error}</p>
+                                <p className="mt-1 text-xs leading-relaxed text-rose-200/75">{typeof error === 'string' ? error : (error?.message || error?.error || 'Terjadi kesalahan pada analisis.')}</p>
                             </div>
                         </div>
                         <button

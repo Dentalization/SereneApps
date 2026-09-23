@@ -14,6 +14,9 @@ import AppointmentNavigator from './AppointmentNavigator';
 import AINavigator from './AINavigator';
 import ShopNavigator from './ShopNavigator';
 import SettingsNavigator from './SettingsNavigator';
+import DentistHomeScreen from '../features/dentist/screens/DentistHomeScreen';
+import DentistScan3DScreen from '../features/dentist/screens/DentistScan3DScreen';
+import { isDentistUser } from '../utils/authUtils';
 
 const Tab = createBottomTabNavigator();
 
@@ -40,7 +43,9 @@ const TabNavigator = () => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
+  const user = useSelector((state) => state?.auth?.user);
   const cartItems = useSelector((state) => (state.cart && state.cart.items) ? state.cart.items : []);
+  const isDentist = isDentistUser(user);
 
   const bottomPosition = Platform.OS === 'ios'
     ? 20
@@ -96,6 +101,56 @@ const TabNavigator = () => {
     </View>
   );
 
+  // Role-Aware: Dentist Navigation Structure (Strictly Home & 3D Scan)
+  if (isDentist) {
+    return (
+      <Tab.Navigator
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: theme.colors.primary,
+          tabBarInactiveTintColor: '#64748B',
+          tabBarShowLabel: true,
+          tabBarStyle: baseTabBarStyle,
+          tabBarBackground: tabBarBackground,
+          tabBarLabelStyle: {
+            fontSize: 11,
+            fontWeight: '700',
+            marginTop: 2,
+          },
+        }}
+      >
+        <Tab.Screen
+          name="DentistHomeTab"
+          component={DentistHomeScreen}
+          options={({ route }) => ({
+            tabBarLabel: 'Home',
+            tabBarIcon: ({ color, focused }) => (
+              <View style={styles.iconContainer}>
+                <MaterialCommunityIcons name={focused ? 'home' : 'home-outline'} size={26} color={color} />
+              </View>
+            ),
+            tabBarStyle: getTabBarStyle(route, 'DentistHomeTab'),
+          })}
+        />
+
+        <Tab.Screen
+          name="DentistScanTab"
+          component={DentistScan3DScreen}
+          options={({ route }) => ({
+            tabBarLabel: '3D Scan',
+            tabBarIcon: ({ color, focused }) => (
+              <View style={styles.iconContainer}>
+                <MaterialCommunityIcons name={focused ? 'cube-scan' : 'cube-outline'} size={26} color={color} />
+              </View>
+            ),
+            tabBarStyle: getTabBarStyle(route, 'DentistScanTab'),
+          })}
+        />
+      </Tab.Navigator>
+    );
+  }
+
+  // Patient Navigation Structure (Preserved exactly as existing)
   return (
     <Tab.Navigator
       screenOptions={{

@@ -67,7 +67,7 @@ export function isWorldBrushAnnotation(annotation) {
 export function isWorldLineAnnotation(annotation) {
   return ['arrow', 'circle'].includes(annotation?.type)
     && isWorldPoint3D(annotation?.coordinates?.world_start)
-    && isWorldPoint3D(annotation?.coordinates?.world_end);
+    && (isWorldPoint3D(annotation?.coordinates?.world_end) || (annotation?.type === 'circle' && Number(annotation?.metadata?.world_radius_mm) > 0));
 }
 
 export function isWorldTextAnnotation(annotation) {
@@ -606,30 +606,35 @@ export function projectWorldToOverlay(worldPoint, renderer, renderWindow, contai
     }
   }
 
-  const view = renderWindow.getViews?.()?.[0] || renderWindow.getInteractor?.()?.getView?.();
-  if (!view?.worldToDisplay) return null;
+  const aspect = rectWidth / rectHeight;
+  let normX, normY, normZ;
 
-  const display = view.worldToDisplay(worldPoint[0], worldPoint[1], worldPoint[2], renderer);
-  if (!display || display.length < 3) return null;
+  if (typeof renderer.worldToNormalizedDisplay === 'function') {
+    const norm = renderer.worldToNormalizedDisplay(worldPoint[0], worldPoint[1], worldPoint[2], aspect);
+    if (!norm || norm.length < 3) return null;
+    normX = Number(norm[0]);
+    normY = Number(norm[1]);
+    normZ = Number(norm[2]);
+  } else {
+    const view = renderWindow?.getViews?.()?.[0] || renderWindow?.getInteractor?.()?.getView?.();
+    if (!view?.worldToDisplay) return null;
+    const display = view.worldToDisplay(worldPoint[0], worldPoint[1], worldPoint[2], renderer);
+    if (!display || display.length < 3) return null;
+    const viewSize = view.getSize?.() || [rectWidth, rectHeight];
+    normX = Number(display[0]) / Math.max(Number(viewSize[0]) || 1, 1);
+    normY = Number(display[1]) / Math.max(Number(viewSize[1]) || 1, 1);
+    normZ = Number(display[2]);
+  }
 
-  const displayX = Number(display[0]);
-  const displayY = Number(display[1]);
-  const displayZ = Number(display[2]);
-  if (!Number.isFinite(displayX) || !Number.isFinite(displayY) || !Number.isFinite(displayZ)) return null;
-  if (displayZ < -0.15 || displayZ > 1.15) return null;
+  if (!Number.isFinite(normX) || !Number.isFinite(normY) || !Number.isFinite(normZ)) return null;
+  if (normZ < -0.15 || normZ > 1.15) return null;
 
   const viewport = renderer.getViewport?.() || [0, 0, 1, 1];
-  const viewSize = view.getSize?.() || [rectWidth, rectHeight];
-  const fbWidth = Math.max(Number(viewSize[0]) || 1, 1);
-  const fbHeight = Math.max(Number(viewSize[1]) || 1, 1);
-
-  const normX = displayX / fbWidth;
-  const normY = displayY / fbHeight;
 
   return {
     x: normX * rectWidth,
     y: (1.0 - normY) * rectHeight,
-    depth: displayZ,
+    depth: normZ,
     inViewport: normX >= viewport[0] && normX <= viewport[2] && normY >= viewport[1] && normY <= viewport[3],
   };
 }
@@ -691,12 +696,29 @@ export function intersectRayAABB(rayOrigin, rayDir, bounds) {
   return { hit: tMax > 0, tMin: Math.max(0, tMin), tMax };
 }
 
+export function worldToVoxelIndex(imageData, worldPoint) {
+  if (!imageData || !worldPoint) return null;
+  if (typeof imageData.worldToIndex === 'function') {
+    const out = [];
+    const res = imageData.worldToIndex(worldPoint, out);
+    if (Array.isArray(res) && res.length >= 3 && Number.isFinite(res[0])) return res;
+    if (out.length >= 3 && Number.isFinite(out[0])) return out;
+  }
+  const origin = imageData.getOrigin?.() || [0, 0, 0];
+  const spacing = imageData.getSpacing?.() || [1, 1, 1];
+  return [
+    (worldPoint[0] - origin[0]) / (spacing[0] || 1),
+    (worldPoint[1] - origin[1]) / (spacing[1] || 1),
+    (worldPoint[2] - origin[2]) / (spacing[2] || 1),
+  ];
+}
+
 /**
  * Robust volume ray-march picker for CBCT 3D ImageData.
  * Traces a ray from camera through the volume and finds the first anatomical surface hit.
  * Enforces unit ray normalization for millimeter-accurate step sizes.
  */
-export function pickVolumeRaySurface(rayOrigin, rawRayDir, imageData, thresholdNormalized = 0.20) {
+export function pickVolumeRaySurface(rayOrigin, rawRayDir, imageData, thresholdNormalized = 0.18, requireSurfaceHit = false) {
   if (!imageData || !rayOrigin || !rawRayDir) return null;
 
   const rayDir = normalizeVector3(rawRayDir);
@@ -711,13 +733,14 @@ export function pickVolumeRaySurface(rayOrigin, rawRayDir, imageData, thresholdN
   const dims = imageData.getDimensions?.() || [0, 0, 0];
   const spacing = imageData.getSpacing?.() || [1, 1, 1];
   const scalars = imageData.getPointData?.()?.getScalars?.()?.getData?.();
+  const startWorld = [
+    rayOrigin[0] + (rayDir[0] * tMin),
+    rayOrigin[1] + (rayDir[1] * tMin),
+    rayOrigin[2] + (rayDir[2] * tMin),
+  ];
+
   if (!scalars || dims[0] <= 0 || dims[1] <= 0 || dims[2] <= 0) {
-    // Return bounding box entry point if scalars unavailable
-    return [
-      rayOrigin[0] + (rayDir[0] * tMin),
-      rayOrigin[1] + (rayDir[1] * tMin),
-      rayOrigin[2] + (rayDir[2] * tMin),
-    ];
+    return requireSurfaceHit ? null : startWorld;
   }
 
   const range = imageData.getPointData()?.getScalars()?.getRange?.() || [0, 1];
@@ -731,34 +754,46 @@ export function pickVolumeRaySurface(rayOrigin, rawRayDir, imageData, thresholdN
   const dimX = dims[0];
   const dimXY = dims[0] * dims[1];
 
-  for (let s = 0; s <= steps; s++) {
-    const t = tMin + (s * stepSize);
-    const wx = rayOrigin[0] + (rayDir[0] * t);
-    const wy = rayOrigin[1] + (rayDir[1] * t);
-    const wz = rayOrigin[2] + (rayDir[2] * t);
+  const endWorld = [
+    rayOrigin[0] + (rayDir[0] * tMax),
+    rayOrigin[1] + (rayDir[1] * tMax),
+    rayOrigin[2] + (rayDir[2] * tMax),
+  ];
 
-    const ijk = imageData.worldToIndex?.([wx, wy, wz]);
-    if (!ijk) continue;
+  const startIdx = worldToVoxelIndex(imageData, startWorld);
+  const endIdx = worldToVoxelIndex(imageData, endWorld);
 
-    const i = Math.round(ijk[0]);
-    const j = Math.round(ijk[1]);
-    const k = Math.round(ijk[2]);
+  if (startIdx && endIdx && steps > 0) {
+    const dI = (endIdx[0] - startIdx[0]) / steps;
+    const dJ = (endIdx[1] - startIdx[1]) / steps;
+    const dK = (endIdx[2] - startIdx[2]) / steps;
+    const dW0 = (endWorld[0] - startWorld[0]) / steps;
+    const dW1 = (endWorld[1] - startWorld[1]) / steps;
+    const dW2 = (endWorld[2] - startWorld[2]) / steps;
 
-    if (i >= 0 && i < dims[0] && j >= 0 && j < dims[1] && k >= 0 && k < dims[2]) {
-      const voxelIdx = i + (j * dimX) + (k * dimXY);
-      const val = scalars[voxelIdx];
-      if (val >= rawThreshold) {
-        return [wx, wy, wz];
+    for (let s = 0; s <= steps; s++) {
+      const i = Math.round(startIdx[0] + (s * dI));
+      const j = Math.round(startIdx[1] + (s * dJ));
+      const k = Math.round(startIdx[2] + (s * dK));
+
+      if (i >= 0 && i < dims[0] && j >= 0 && j < dims[1] && k >= 0 && k < dims[2]) {
+        const voxelIdx = i + (j * dimX) + (k * dimXY);
+        const val = scalars[voxelIdx];
+        if (val >= rawThreshold) {
+          return [
+            startWorld[0] + (s * dW0),
+            startWorld[1] + (s * dW1),
+            startWorld[2] + (s * dW2),
+          ];
+        }
       }
     }
   }
 
+  if (requireSurfaceHit) return null;
+
   // Fallback to entry point into the volume
-  return [
-    rayOrigin[0] + (rayDir[0] * tMin),
-    rayOrigin[1] + (rayDir[1] * tMin),
-    rayOrigin[2] + (rayDir[2] * tMin),
-  ];
+  return startWorld;
 }
 
 /**

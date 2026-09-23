@@ -36,8 +36,23 @@ function hasAssignedPatient(study) {
     return study?.patientId !== null && study?.patientId !== undefined;
 }
 
+function extractErrorMessage(err, fallback = IMAGING_SERVICE_OFFLINE_MESSAGE) {
+    if (!err) return fallback;
+    if (typeof err === 'string') return err;
+    if (typeof err.message === 'string') return err.message;
+    if (typeof err.detail === 'string') return err.detail;
+    if (typeof err.error === 'string') return err.error;
+    if (typeof err.error === 'object' && err.error) {
+        return extractErrorMessage(err.error, fallback);
+    }
+    if (typeof err.code === 'string') return `Service error: ${err.code}`;
+    return fallback;
+}
+
 function getSeriesLoadErrorMessage(error) {
-    const message = error?.message || '';
+    if (!error) return IMAGING_SERVICE_OFFLINE_MESSAGE;
+    if (typeof error === 'string') return error;
+    const message = typeof error?.message === 'string' ? error.message : (typeof error?.detail === 'string' ? error.detail : '');
     if (
         error?.name === 'TypeError' ||
         message === 'Failed to fetch' ||
@@ -46,7 +61,7 @@ function getSeriesLoadErrorMessage(error) {
     ) {
         return IMAGING_SERVICE_OFFLINE_MESSAGE;
     }
-    return message || IMAGING_SERVICE_OFFLINE_MESSAGE;
+    return message || extractErrorMessage(error, IMAGING_SERVICE_OFFLINE_MESSAGE);
 }
 
 function normalizeStudySeriesState(study) {
@@ -66,7 +81,7 @@ function normalizeStudySeriesState(study) {
             ...study,
             series,
             totalSeries,
-            seriesLoadError: study.seriesLoadError || null,
+            seriesLoadError: study.seriesLoadError ? extractErrorMessage(study.seriesLoadError, null) : null,
             seriesCacheUpdatedAt,
         };
     }
@@ -90,7 +105,7 @@ function normalizeStudySeriesState(study) {
         totalSeries,
         scanning: study.scanning || false,
         seriesLoadState: SERIES_LOAD_STATE.SERVICE_ERROR,
-        seriesLoadError: study.seriesLoadError || IMAGING_SERVICE_OFFLINE_MESSAGE,
+        seriesLoadError: extractErrorMessage(study.seriesLoadError, IMAGING_SERVICE_OFFLINE_MESSAGE),
         seriesCacheUpdatedAt,
     };
 }
@@ -140,12 +155,15 @@ async function fetchStudySeries(study) {
             });
         }
 
+        const rawErr = payload?.detail || payload?.error || payload;
+        const errorMsg = extractErrorMessage(rawErr, `Imaging service returned ${response.status}.`);
+
         return normalizeStudySeriesState({
             ...study,
             series: [],
             totalSeries: 0,
             seriesLoadState: SERIES_LOAD_STATE.SERVICE_ERROR,
-            seriesLoadError: payload?.detail || payload?.error || `Imaging service returned ${response.status}.`
+            seriesLoadError: errorMsg
         });
     } catch (error) {
         return normalizeStudySeriesState({
@@ -1250,7 +1268,7 @@ const Gallery = ({
                             <div className="flex flex-col items-center gap-4 text-red-500 bg-red-50 p-6 rounded-xl border border-red-100">
                                 <AppIcon name="AlertCircle" size={40} />
                                 <p className="font-medium">Failed to load studies</p>
-                                <p className="text-sm opacity-80 max-w-md text-center">{error}</p>
+                                <p className="text-sm opacity-80 max-w-md text-center">{extractErrorMessage(error, 'An unexpected error occurred.')}</p>
                                 <button
                                     onClick={handleRetrySeriesLoad}
                                     className="text-xs underline hover:text-red-700 mt-2"
@@ -1289,7 +1307,7 @@ const Gallery = ({
                                                             <span className="text-xs text-secondary">{study.patientIdDisplay}</span>
                                                             <span className="text-xs text-red-500">({study.folderName})</span>
                                                         </div>
-                                                        <p className="text-xs text-red-500 mt-1">{study.seriesLoadError || IMAGING_SERVICE_OFFLINE_MESSAGE}</p>
+                                                        <p className="text-xs text-red-500 mt-1">{extractErrorMessage(study.seriesLoadError, IMAGING_SERVICE_OFFLINE_MESSAGE)}</p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1903,7 +1921,7 @@ const Gallery = ({
 
                                 {shareError && (
                                     <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-                                        {shareError}
+                                        {extractErrorMessage(shareError, 'Failed to share study')}
                                     </div>
                                 )}
 

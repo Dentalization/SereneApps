@@ -3652,29 +3652,62 @@ const VolumeViewer3D = ({
             const endWorld = annotation.coordinates?.world_end;
             const anchorScreen = projectWorldToViewportCached(startWorld);
             if (!anchorScreen) return null;
+
             let startScreen = anchorScreen;
             let endScreen = projectWorldToViewportCached(endWorld);
+
+            if (annotation.type === 'arrow') {
+                if (!endScreen || Math.hypot(endScreen.x - anchorScreen.x, endScreen.y - anchorScreen.y) < 14) {
+                    if (endScreen) {
+                        const adx = endScreen.x - anchorScreen.x;
+                        const ady = endScreen.y - anchorScreen.y;
+                        const alen = Math.hypot(adx, ady) || 1;
+                        endScreen = {
+                            x: anchorScreen.x + ((adx / alen) * 28),
+                            y: anchorScreen.y + ((ady / alen) * 28),
+                        };
+                    } else {
+                        endScreen = { x: anchorScreen.x + 28, y: anchorScreen.y - 28 };
+                    }
+                }
+            }
+
             if (annotation.type === 'circle') {
                 startScreen = anchorScreen;
                 const worldRadius = Number(annotation.metadata?.world_radius_mm || 0);
                 if (worldRadius > 0 && isWorldPoint3D(startWorld)) {
-                    const offsetScreen = projectWorldToViewportCached([
-                        startWorld[0] + worldRadius,
-                        startWorld[1],
-                        startWorld[2],
-                    ]);
-                    if (offsetScreen) {
-                        const computedRadius = Math.hypot(offsetScreen.x - anchorScreen.x, offsetScreen.y - anchorScreen.y);
-                        if (Number.isFinite(computedRadius) && computedRadius > 0) {
-                            endScreen = {
-                                x: anchorScreen.x + computedRadius,
-                                y: anchorScreen.y,
-                            };
+                    const ctx = vtkContextRef.current;
+                    const camera = ctx?.renderer?.getActiveCamera?.();
+                    if (camera) {
+                        const vpn = camera.getViewPlaneNormal?.() || [0, 0, 1];
+                        const vup = camera.getViewUp?.() || [0, 1, 0];
+                        const rx = (vup[1] * vpn[2]) - (vup[2] * vpn[1]);
+                        const ry = (vup[2] * vpn[0]) - (vup[0] * vpn[2]);
+                        const rz = (vup[0] * vpn[1]) - (vup[1] * vpn[0]);
+                        const rLen = Math.hypot(rx, ry, rz) || 1;
+                        const offsetPoint = [
+                            startWorld[0] + ((rx / rLen) * worldRadius),
+                            startWorld[1] + ((ry / rLen) * worldRadius),
+                            startWorld[2] + ((rz / rLen) * worldRadius),
+                        ];
+                        const offsetScreen = projectWorldToViewportCached(offsetPoint);
+                        if (offsetScreen) {
+                            const computedRadius = Math.hypot(offsetScreen.x - anchorScreen.x, offsetScreen.y - anchorScreen.y);
+                            if (Number.isFinite(computedRadius) && computedRadius > 0) {
+                                const finalRadius = Math.max(8, computedRadius);
+                                endScreen = {
+                                    x: anchorScreen.x + finalRadius,
+                                    y: anchorScreen.y,
+                                };
+                            }
                         }
                     }
                 }
-                if (!endScreen) endScreen = anchorScreen;
+                if (!endScreen) {
+                    endScreen = { x: anchorScreen.x + 16, y: anchorScreen.y };
+                }
             }
+
             if (!startScreen || !endScreen) return null;
             return {
                 id: annotation.id,
@@ -3687,8 +3720,21 @@ const VolumeViewer3D = ({
             };
         }
 
+        if (annotation.type === 'region' && Array.isArray(annotation.coordinates?.world_path)) {
+            const screenPath = projectWorldPathToViewport(annotation.coordinates.world_path);
+            if (!screenPath || screenPath.length < 3) return null;
+            return {
+                id: annotation.id,
+                type: 'region',
+                screenPath,
+                color: annotation.color || '#E24B4A',
+                opacity: annotation.displayOpacity ?? annotation.opacity ?? 0.9,
+                metadata: annotation.metadata || {},
+            };
+        }
+
         return null;
-    }, [projectWorldToViewportCached]);
+    }, [projectWorldPathToViewport, projectWorldToViewportCached]);
 
     const getPointerDisplayCoords = useCallback((event) => {
         const ctx = vtkContextRef.current;
@@ -3762,64 +3808,90 @@ const VolumeViewer3D = ({
     const pickWorldPointFromPointer = useCallback((event) => {
         const ctx = vtkContextRef.current;
         const container = containerRef.current;
-        if (!ctx || !container) return null;
+        if (!ctx?.renderer || !container) return null;
 
-        const { x, y } = getPointerDisplayCoords(event);
+        const rect = container.getBoundingClientRect();
+        const rectWidth = Math.max(Number(rect.width) || 1, 1);
+        const rectHeight = Math.max(Number(rect.height) || 1, 1);
+        const domX = (Number(event.clientX) || 0) - rect.left;
+        const domY = (Number(event.clientY) || 0) - rect.top;
+        const normX = domX / rectWidth;
+        const normY = 1.0 - (domY / rectHeight);
+        const aspect = rectWidth / rectHeight;
 
-        try {
-            const picker = ctx.sharedPicker || vtkCellPicker.newInstance();
-            picker.setTolerance?.(0.035);
-            picker.initializePickList?.();
-            if (ctx.surfacePickActor) {
-                picker.setPickFromList(true);
-                picker.addPickList(ctx.surfacePickActor);
-            } else {
-                picker.setPickFromList?.(false);
-            }
-            const picked = picker.pick([x, y, 0], ctx.renderer);
-            const pickedPosition = picked ? picker.getPickPosition?.() : null;
-            const pickedCellId = picker.getCellId?.();
-            if (!ctx.sharedPicker) picker.delete?.();
-            if (pickedCellId >= 0 && pickedPosition && pickedPosition.every((value) => Number.isFinite(value))) {
-                return [...pickedPosition];
-            }
-        } catch (_) {
-            // Volumes are not always pickable by vtkCellPicker; fall back below.
+        let nearWorld = null;
+        let farWorld = null;
+
+        if (typeof ctx.renderer.normalizedDisplayToWorld === 'function') {
+            nearWorld = ctx.renderer.normalizedDisplayToWorld(normX, normY, 0.0, aspect);
+            farWorld = ctx.renderer.normalizedDisplayToWorld(normX, normY, 1.0, aspect);
+        } else {
+            const view = ctx.renderWindow?.getViews?.()?.[0] || ctx.interactor?.getView?.();
+            const { x, y } = getPointerDisplayCoords(event);
+            nearWorld = view?.displayToWorld?.(x, y, 0.0, ctx.renderer);
+            farWorld = view?.displayToWorld?.(x, y, 1.0, ctx.renderer);
         }
 
-        // Ray-march into the 3D volume to find physical anatomical voxel surface
-        const view = ctx.renderWindow.getViews?.()?.[0] || ctx.interactor?.getView?.();
-        if (view && ctx.renderer && ctx.imageData) {
+        // 1. Primary: Fast Ray-march into the 3D volume to find physical anatomical voxel surface
+        if (nearWorld && farWorld && ctx.imageData) {
+            const dx = farWorld[0] - nearWorld[0];
+            const dy = farWorld[1] - nearWorld[1];
+            const dz = farWorld[2] - nearWorld[2];
+            const len = Math.hypot(dx, dy, dz);
+            if (len > 1e-6) {
+                const rayDir = [dx / len, dy / len, dz / len];
+                const rayHit = pickVolumeRaySurface(nearWorld, rayDir, ctx.imageData, 0.18, true);
+                if (rayHit) {
+                    return rayHit;
+                }
+            }
+        }
+
+        // 2. Secondary: Cell picker if surface mesh exists
+        if (ctx.surfacePickActor && ctx.sharedPicker) {
             try {
-                const nearWorld = view.displayToWorld(x, y, 0.0, ctx.renderer);
-                const farWorld = view.displayToWorld(x, y, 1.0, ctx.renderer);
-                if (nearWorld && farWorld) {
-                    const dx = farWorld[0] - nearWorld[0];
-                    const dy = farWorld[1] - nearWorld[1];
-                    const dz = farWorld[2] - nearWorld[2];
-                    const len = Math.hypot(dx, dy, dz);
-                    if (len > 1e-6) {
-                        const rayDir = [dx / len, dy / len, dz / len];
-                        const rayHit = pickVolumeRaySurface(nearWorld, rayDir, ctx.imageData);
-                        if (rayHit) {
-                            return rayHit;
-                        }
-                    }
+                const { x, y } = getPointerDisplayCoords(event);
+                const picker = ctx.sharedPicker;
+                picker.setTolerance?.(0.035);
+                picker.initializePickList?.();
+                picker.setPickFromList(true);
+                picker.addPickList(ctx.surfacePickActor);
+                const picked = picker.pick([x, y, 0], ctx.renderer);
+                const pickedPosition = picked ? picker.getPickPosition?.() : null;
+                const pickedCellId = picker.getCellId?.();
+                if (pickedCellId >= 0 && pickedPosition && pickedPosition.every((value) => Number.isFinite(value))) {
+                    return [...pickedPosition];
                 }
             } catch (_) { }
         }
 
+        // 3. Fallback: Exact camera focal depth plane (projects with 0 screen error to cursor)
         try {
-            const focalPoint = ctx.renderer?.getActiveCamera?.()?.getFocalPoint?.();
-            const world = view?.displayToWorld?.(x, y, 0.5, ctx.renderer);
-            return world ? [world[0], world[1], world[2]] : (focalPoint ? [...focalPoint] : null);
+            const camera = ctx.renderer.getActiveCamera?.();
+            const focalPoint = camera?.getFocalPoint?.();
+            if (focalPoint) {
+                let focalZ = 0.5;
+                if (typeof ctx.renderer.worldToNormalizedDisplay === 'function') {
+                    const focalNorm = ctx.renderer.worldToNormalizedDisplay(focalPoint[0], focalPoint[1], focalPoint[2], aspect);
+                    if (focalNorm && Number.isFinite(focalNorm[2])) {
+                        focalZ = focalNorm[2];
+                    }
+                }
+                if (typeof ctx.renderer.normalizedDisplayToWorld === 'function') {
+                    const world = ctx.renderer.normalizedDisplayToWorld(normX, normY, focalZ, aspect);
+                    if (world && world.every((val) => Number.isFinite(val))) {
+                        return [world[0], world[1], world[2]];
+                    }
+                }
+            }
+            return focalPoint ? [...focalPoint] : null;
         } catch (_) {
             return null;
         }
     }, [getPointerDisplayCoords]);
 
     const pickAnnotationWorldPointFromPointer = useCallback((event) => (
-        pickSurfaceWorldPointFromPointer(event) || pickWorldPointFromPointer(event)
+        pickWorldPointFromPointer(event) || pickSurfaceWorldPointFromPointer(event)
     ), [pickSurfaceWorldPointFromPointer, pickWorldPointFromPointer]);
 
     const buildAnnotationSurfaceAnchor = useCallback((point, options = {}) => {
@@ -3899,13 +3971,44 @@ const VolumeViewer3D = ({
                 x: Number(((screenEnd.x - screenStart.x) / Math.max(viewerSize.width || 1, 1)).toFixed(6)),
                 y: Number(((screenEnd.y - screenStart.y) / Math.max(viewerSize.height || 1, 1)).toFixed(6)),
             };
+            baseMetadata.screen_offset_px = {
+                x: screenEnd.x - screenStart.x,
+                y: screenEnd.y - screenStart.y,
+            };
         }
         if (type === 'circle' && screenStart && screenEnd) {
             baseMetadata.anchor_mode = 'world_callout';
-            baseMetadata.screen_radius_norm = Number((
-                Math.hypot(screenEnd.x - screenStart.x, screenEnd.y - screenStart.y) / baseDimension
-            ).toFixed(6));
-            baseMetadata.world_radius_mm = Number(distanceMm(payload.startWorld, payload.endWorld).toFixed(3));
+            const radiusPx = Math.hypot(screenEnd.x - screenStart.x, screenEnd.y - screenStart.y);
+            baseMetadata.screen_radius_px = radiusPx;
+            baseMetadata.screen_radius_norm = Number((radiusPx / baseDimension).toFixed(6));
+
+            let computedWorldRadius = 0;
+            const ctx = vtkContextRef.current;
+            const camera = ctx?.renderer?.getActiveCamera?.();
+            if (camera && isWorldPoint3D(payload.startWorld)) {
+                const vpn = camera.getViewPlaneNormal?.() || [0, 0, 1];
+                const vup = camera.getViewUp?.() || [0, 1, 0];
+                const rx = (vup[1] * vpn[2]) - (vup[2] * vpn[1]);
+                const ry = (vup[2] * vpn[0]) - (vup[0] * vpn[2]);
+                const rz = (vup[0] * vpn[1]) - (vup[1] * vpn[0]);
+                const rLen = Math.hypot(rx, ry, rz) || 1;
+                const offset1mm = [
+                    payload.startWorld[0] + ((rx / rLen) * 1.0),
+                    payload.startWorld[1] + ((ry / rLen) * 1.0),
+                    payload.startWorld[2] + ((rz / rLen) * 1.0),
+                ];
+                const screenOffset1mm = projectWorldToViewportCached(offset1mm);
+                if (screenOffset1mm) {
+                    const pxPerMm = Math.hypot(screenOffset1mm.x - screenStart.x, screenOffset1mm.y - screenStart.y);
+                    if (pxPerMm > 0.05) {
+                        computedWorldRadius = radiusPx / pxPerMm;
+                    }
+                }
+            }
+            if (!computedWorldRadius || computedWorldRadius <= 0) {
+                computedWorldRadius = distanceMm(payload.startWorld, payload.endWorld) || 5.0;
+            }
+            baseMetadata.world_radius_mm = Number(computedWorldRadius.toFixed(3));
         }
         return {
             id: payload.id || `annotation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -4104,16 +4207,19 @@ const VolumeViewer3D = ({
         const polyData = vtkPolyData.newInstance();
         polyData.getPoints().setData(pointValues, 3);
         polyData.getLines().setData(lines, 1);
+        polyData.modified();
 
         const tube = vtkTubeFilter.newInstance({
-            radius: Math.max(0.48, getAverageSpacing(vtkContextRef.current?.imageData) * 0.95),
-            numberOfSides: 20,
+            radius: Math.max(0.55, getAverageSpacing(vtkContextRef.current?.imageData) * 1.1),
+            numberOfSides: 16,
             capping: true,
         });
         tube.setInputData(polyData);
 
         const mapper = vtkMapper.newInstance();
         mapper.setInputConnection(tube.getOutputPort());
+        mapper.setResolveCoincidentTopology?.(true);
+        mapper.setRelativeCoincidentTopologyPolygonOffsetParameters?.(-2.0, -2.0);
 
         const actor = vtkActor.newInstance();
         actor.setMapper(mapper);
@@ -4125,8 +4231,8 @@ const VolumeViewer3D = ({
         const property = actor.getProperty();
         property.setColor(r, g, b);
         property.setOpacity(annotation.displayOpacity ?? 1);
-        property.setAmbient(0.82);
-        property.setDiffuse(0.25);
+        property.setAmbient(1.0);
+        property.setDiffuse(0.2);
         property.setLighting?.(false);
         property.setSpecular(isSelected ? 0.55 : 0.35);
         property.setSpecularPower(isSelected ? 28 : 20);
@@ -4136,20 +4242,23 @@ const VolumeViewer3D = ({
 
         const centroidSource = vtkSphereSource.newInstance({
             center: centroid,
-            radius: Math.max(0.55, getAverageSpacing(vtkContextRef.current?.imageData) * 0.75),
+            radius: Math.max(0.65, getAverageSpacing(vtkContextRef.current?.imageData) * 0.9),
             thetaResolution: 14,
             phiResolution: 14,
         });
         const centroidMapper = vtkMapper.newInstance();
         centroidMapper.setInputConnection(centroidSource.getOutputPort());
+        centroidMapper.setResolveCoincidentTopology?.(true);
+        centroidMapper.setRelativeCoincidentTopologyPolygonOffsetParameters?.(-2.0, -2.0);
+
         const centroidActor = vtkActor.newInstance();
         centroidActor.setMapper(centroidMapper);
         setOverlayResources(centroidActor, { source: centroidSource });
         setOverlayAnnotationId(centroidActor, annotation.id);
         centroidActor.getProperty().setColor(r, g, b);
         centroidActor.getProperty().setOpacity(isSelected ? 0.98 : 0.9);
-        centroidActor.getProperty().setAmbient(0.82);
-        centroidActor.getProperty().setDiffuse(0.25);
+        centroidActor.getProperty().setAmbient(1.0);
+        centroidActor.getProperty().setDiffuse(0.2);
         centroidActor.getProperty().setLighting?.(false);
         centroidActor.getProperty().setSpecular(isSelected ? 0.35 : 0.2);
 
@@ -4432,7 +4541,8 @@ const VolumeViewer3D = ({
                     return activeCtx?.surfacePickActor || null;
                 }
 
-                const contourValue = 0.36;
+                const range = activeCtx.imageData.getPointData()?.getScalars()?.getRange?.() || [0, 1000];
+                const contourValue = range[0] + (0.35 * Math.max(range[1] - range[0], 1));
                 let polyData = null;
                 try {
                     polyData = await buildSurfacePickPolyDataInWorker(activeCtx.imageData, contourValue);
@@ -6632,20 +6742,66 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
             overlayDraftInputSchedulerRef.current?.cancel?.();
             overlayDraftPointerRef.current = null;
             endAnnotationInteractionQuality();
+
             const releasePoint = pickAnnotationWorldPointFromPointer(event) || worldOverlayDraft.startWorld;
             const releaseScreen = getViewportPointerPoint(event) || worldOverlayDraft.hoverScreen || worldOverlayDraft.startScreen;
             const dragPx = Math.hypot(
                 (releaseScreen?.x ?? 0) - (worldOverlayDraft.startScreen?.x ?? 0),
                 (releaseScreen?.y ?? 0) - (worldOverlayDraft.startScreen?.y ?? 0)
             );
-            if (annotationTool === 'circle' && dragPx < 8) {
+            if (dragPx < 6) {
+                worldOverlayDraftRef.current = null;
                 setWorldOverlayDraft(null);
                 return;
             }
+
             const annotationStartWorld = worldOverlayDraft.startWorld;
-            const annotationEndWorld = releasePoint;
-            const annotationStartScreen = worldOverlayDraft.startScreen;
+            let annotationEndWorld = null;
+
+            const ctx = vtkContextRef.current;
+            const camera = ctx?.renderer?.getActiveCamera?.();
+            const anchorScreen = projectWorldToViewportCached(annotationStartWorld) || worldOverlayDraft.startScreen;
+            if (camera && isWorldPoint3D(annotationStartWorld)) {
+                const vpn = camera.getViewPlaneNormal?.() || [0, 0, 1];
+                const vup = camera.getViewUp?.() || [0, 1, 0];
+                const rx = (vup[1] * vpn[2]) - (vup[2] * vpn[1]);
+                const ry = (vup[2] * vpn[0]) - (vup[0] * vpn[2]);
+                const rz = (vup[0] * vpn[1]) - (vup[1] * vpn[0]);
+                const rLen = Math.hypot(rx, ry, rz) || 1;
+                const upLen = Math.hypot(vup[0], vup[1], vup[2]) || 1;
+                const rNorm = [rx / rLen, ry / rLen, rz / rLen];
+                const upNorm = [vup[0] / upLen, vup[1] / upLen, vup[2] / upLen];
+
+                const offset1mm = [
+                    annotationStartWorld[0] + rNorm[0],
+                    annotationStartWorld[1] + rNorm[1],
+                    annotationStartWorld[2] + rNorm[2],
+                ];
+                const screenOffset1mm = projectWorldToViewportCached(offset1mm);
+                const pxPerMm = screenOffset1mm && anchorScreen
+                    ? Math.hypot(screenOffset1mm.x - anchorScreen.x, screenOffset1mm.y - anchorScreen.y)
+                    : 1;
+                const scale = pxPerMm > 0.01 ? 1 / pxPerMm : 0.2;
+
+                const dxPx = (releaseScreen?.x ?? 0) - (anchorScreen?.x ?? 0);
+                const dyPx = (releaseScreen?.y ?? 0) - (anchorScreen?.y ?? 0);
+
+                annotationEndWorld = [
+                    annotationStartWorld[0] + (rNorm[0] * dxPx * scale) - (upNorm[0] * dyPx * scale),
+                    annotationStartWorld[1] + (rNorm[1] * dxPx * scale) - (upNorm[1] * dyPx * scale),
+                    annotationStartWorld[2] + (rNorm[2] * dxPx * scale) - (upNorm[2] * dyPx * scale),
+                ];
+            } else {
+                annotationEndWorld = [
+                    annotationStartWorld[0] + 5,
+                    annotationStartWorld[1] + 5,
+                    annotationStartWorld[2],
+                ];
+            }
+
+            const annotationStartScreen = anchorScreen;
             const annotationEndScreen = releaseScreen;
+
             const nextAnnotation = buildWorldOverlayAnnotation({
                 type: annotationTool,
                 startWorld: annotationStartWorld,
@@ -6654,10 +6810,13 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                 endScreen: annotationEndScreen,
                 color: activeAnnotationColor || ANNOTATION_COLORS[annotationTool],
             });
+
+            worldOverlayDraftRef.current = null;
             setWorldOverlayDraft(null);
-            if (!nextAnnotation || !releaseScreen || !worldOverlayDraft.startScreen || dragPx < 6) {
+            if (!nextAnnotation) {
                 return;
             }
+
             pushAnnotationChange((current) => [...current, nextAnnotation]);
             setManualSegmentationError(null);
             return;
@@ -7185,11 +7344,11 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
     ), [projectWorldOverlayAnnotation, projectionTick, seriesUid, snapshotOverlay?.annotations, viewerSize.height, viewerSize.width]);
     const worldOverlayPreview = useMemo(() => {
         if (!annotateMode || !worldOverlayDraft?.startWorld || !['arrow', 'circle'].includes(annotationTool)) return null;
-        const anchorScreen = projectWorldToViewportCached(worldOverlayDraft.startWorld);
+        const anchorScreen = projectWorldToViewportCached(worldOverlayDraft.startWorld) || worldOverlayDraft.startScreen;
         const hoverScreen = worldOverlayDraft.hoverScreen || worldOverlayDraft.startScreen || anchorScreen;
         if (!anchorScreen || !hoverScreen) return null;
-        const startScreen = annotationTool === 'arrow' ? (worldOverlayDraft.startScreen || anchorScreen) : anchorScreen;
-        const endScreen = annotationTool === 'arrow' ? hoverScreen : hoverScreen;
+        const startScreen = anchorScreen;
+        const endScreen = hoverScreen;
         return {
             type: annotationTool,
             startScreen,
@@ -7904,7 +8063,7 @@ Tambahkan catatan bahwa ini bukan diagnosis final dan perlu review radiolog/dokt
                             <div className="flex flex-col items-center gap-4 text-red-400 bg-red-950/40 p-8 rounded-2xl border border-red-500/20 max-w-lg">
                                 <AppIcon name="AlertCircle" size={48} />
                                 <p className="text-lg font-semibold">Failed to Load Volume</p>
-                                <p className="text-sm text-gray-400 text-center leading-relaxed">{error}</p>
+                                <p className="text-sm text-gray-400 text-center leading-relaxed">{typeof error === 'string' ? error : (error?.message || error?.error || 'Failed to load volume')}</p>
                                 <div className="flex gap-3 mt-2">
                                     <button
                                         onClick={function () {

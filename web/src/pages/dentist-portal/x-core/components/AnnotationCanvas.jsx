@@ -626,7 +626,7 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
     if (!dragSelection && !draftAnnotation) return;
     event.preventDefault();
     event.stopPropagation();
-    try { event.currentTarget.releasePointerCapture?.(event.pointerId); } catch (_) {}
+    try { event.currentTarget.releasePointerCapture?.(event.pointerId); } catch (_) { }
 
     if (dragSelection) {
       setDragSelection(null);
@@ -932,11 +932,10 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
                       <span
                         key={plane}
                         aria-current={isActivePlane ? 'true' : undefined}
-                        className={`min-w-0 rounded px-1 py-1 text-center text-[9px] font-bold uppercase ${
-                          isActivePlane
-                            ? 'bg-cyan-400 text-slate-950'
-                            : 'bg-slate-900 text-slate-600'
-                        }`}
+                        className={`min-w-0 rounded px-1 py-1 text-center text-[9px] font-bold uppercase ${isActivePlane
+                          ? 'bg-cyan-400 text-slate-950'
+                          : 'bg-slate-900 text-slate-600'
+                          }`}
                       >
                         {plane}
                       </span>
@@ -1014,11 +1013,10 @@ const AnnotationCanvas = forwardRef(function AnnotationCanvas(
                     key={toothNumber}
                     type="button"
                     onClick={() => updateMetadataDraft({ tooth_number: toothNumber })}
-                    className={`rounded px-1 py-1 text-[10px] font-mono transition ${
-                      String(metadataDraft.metadata.tooth_number) === toothNumber
-                        ? 'bg-cyan-500 text-slate-950'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                    }`}
+                    className={`rounded px-1 py-1 text-[10px] font-mono transition ${String(metadataDraft.metadata.tooth_number) === toothNumber
+                      ? 'bg-cyan-500 text-slate-950'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
                   >
                     {toothNumber}
                   </button>
