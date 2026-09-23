@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_backend_migrations_057_extend_xcore_clinical_annotation_types_sql", "label": "057_extend_xcore_clinical_annotation_types.sql", "file_type": "code", "source_file": "backend/migrations/057_extend_xcore_clinical_annotation_types.sql", "source_location": null}], "edges": []}

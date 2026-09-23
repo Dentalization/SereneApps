@@ -21,6 +21,7 @@ import { emailSchema, passwordSchema } from '../../../utils/validation';
 import { loginSuccess } from '../../../store/slices/authSlice';
 import { loginPatient } from '../../../services/authService';
 import { getPatientProfile } from '../../../services/patientService';
+import { isDentistUser } from '../../../utils/authUtils';
 
 const HAS_LOGGED_IN_KEY = 'serene_has_logged_in_before';
 
@@ -144,11 +145,12 @@ const LoginScreen = ({ navigation }) => {
           status: 'success'
         });
 
-        // Navigate to dashboard after 1 second
+        // Navigate to appropriate home after login
+        const targetRoute = isDentistUser(result.data.user) ? 'DentistHomeTab' : 'DashboardTab';
         setTimeout(() => {
           navigation.reset({
             index: 0,
-            routes: [{ name: 'DashboardTab' }],
+            routes: [{ name: targetRoute }],
           });
         }, 1500);
       } else {
