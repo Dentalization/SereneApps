@@ -15,6 +15,7 @@ import {
   simplifyPath,
   viewportToNormalizedPoint,
 } from '../utils/annotationGeometry.mjs';
+
 import {
   normalizeSliceClinicalContext,
   SLICE_CLINICAL_PLANES,

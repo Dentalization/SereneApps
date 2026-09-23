@@ -14,8 +14,8 @@ import AppointmentNavigator from './AppointmentNavigator';
 import AINavigator from './AINavigator';
 import ShopNavigator from './ShopNavigator';
 import SettingsNavigator from './SettingsNavigator';
-import DentistHomeScreen from '../features/dentist/screens/DentistHomeScreen';
-import DentistScan3DScreen from '../features/dentist/screens/DentistScan3DScreen';
+import DentistHomeScreen from '../features/dentist/screens/DentistHome/DentistHomeScreen';
+import DentistScan3DScreen from '../features/dentist/screens/3D/DentistScan3DScreen';
 import { isDentistUser } from '../utils/authUtils';
 
 const Tab = createBottomTabNavigator();
