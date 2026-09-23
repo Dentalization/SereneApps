@@ -6,13 +6,17 @@ import math
 import numpy as np
 from datetime import datetime, timezone
 
+from .dental_filter_service import export_binary_stl, apply_dental_geometry_filters
+from .tooth_segmentation_service import run_tooth_segmentation_pipeline
+
 def generate_dental_mesh_data(scan_scope: str = "full"):
     """
-    Generates a 3D dental arch surface mesh with vertices, normals, and faces.
+    Generates a 3D dental arch surface mesh with vertices, normals, faces, and binary STL.
+    Applies Phase 9 dental geometry filters (parabolic arch, outlier pruning, gingival delimitation).
     """
-    vertices = []
-    normals = []
-    faces = []
+    raw_vertices: list[list[float]] = []
+    raw_normals: list[list[float]] = []
+    raw_faces: list[list[int]] = []
 
     num_teeth_per_side = 8
     z_levels = [-8.0, 0.0, 8.0] if scan_scope == "full" else [-4.0, 0.0, 4.0]
@@ -22,13 +26,13 @@ def generate_dental_mesh_data(scan_scope: str = "full"):
             t = i / float(num_teeth_per_side)
             x = round(t * 24.0, 3)
             y = round(-0.045 * (x * x) + 20.0 + (1.5 if z_idx == 1 else 0.0), 3)
-            vertices.append([x, y, z])
+            raw_vertices.append([x, y, z])
 
             nx = -0.09 * x
             ny = -1.0
             nz = -0.5 if z_idx == 0 else (0.5 if z_idx == 2 else 0.0)
             norm_len = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
-            normals.append([round(nx / norm_len, 3), round(ny / norm_len, 3), round(nz / norm_len, 3)])
+            raw_normals.append([round(nx / norm_len, 3), round(ny / norm_len, 3), round(nz / norm_len, 3)])
 
     cols = num_teeth_per_side * 2 + 1
     for z_idx in range(len(z_levels) - 1):
@@ -37,8 +41,15 @@ def generate_dental_mesh_data(scan_scope: str = "full"):
             v2 = v1 + 1
             v3 = (z_idx + 1) * cols + c + 1
             v4 = v3 + 1
-            faces.append([v1, v2, v3])
-            faces.append([v2, v4, v3])
+            raw_faces.append([v1, v2, v3])
+            raw_faces.append([v2, v4, v3])
+
+    # Apply Phase 9 dental geometry filtering
+    filtered = apply_dental_geometry_filters(raw_vertices, raw_normals, raw_faces, scan_scope)
+    vertices: list[list[float]] = filtered["vertices"]
+    normals: list[list[float]] = filtered["normals"]
+    faces: list[list[int]] = filtered["faces"]
+    bounds = filtered["bounds"]
 
     # Build OBJ text
     obj_lines = [
@@ -78,15 +89,17 @@ def generate_dental_mesh_data(scan_scope: str = "full"):
 
     ply_content = "\n".join(ply_lines)
 
+    # Build STL binary
+    stl_bytes = export_binary_stl(vertices, faces, normals, f"Dental_3D_{scan_scope.upper()}")
+
     return {
         "obj_content": obj_content,
         "ply_content": ply_content,
+        "stl_bytes": stl_bytes,
         "vertex_count": len(vertices),
         "face_count": len(faces),
-        "bounds": {
-            "min": [-24.0, 0.0, z_levels[0]],
-            "max": [24.0, 21.5, z_levels[-1]]
-        }
+        "bounds": bounds,
+        "dental_metrics": filtered["metrics"]
     }
 
 
@@ -148,6 +161,10 @@ def process_3d_scan_reconstruction(study_dir: str, scan_scope: str = "full", vid
     with open(ply_path, "w", encoding="utf-8") as f:
         f.write(mesh_data["ply_content"])
 
+    stl_path = os.path.join(study_dir, "mesh.stl")
+    with open(stl_path, "wb") as f:
+        f.write(mesh_data["stl_bytes"])
+
     # 3. Save preview image
     preview_path = os.path.join(study_dir, "preview.png")
     if preview_frame is not None:
@@ -160,7 +177,23 @@ def process_3d_scan_reconstruction(study_dir: str, scan_scope: str = "full", vid
         cv2.putText(synthetic_img, f"Scope: {scan_scope.upper()}", (75, 145), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 116, 139), 1)
         cv2.imwrite(preview_path, synthetic_img)
 
-    # 4. Generate report
+    # 4. Run tooth segmentation (geometric heuristic)
+    add_log("py_tooth_seg", "Running geometric tooth segmentation (Phase 12)")
+    try:
+        arch_params = mesh_data["dental_metrics"].get("dentalArchFit", {})
+        run_tooth_segmentation_pipeline(
+            study_dir=study_dir,
+            vertices=filtered["vertices"],
+            faces=filtered["faces"],
+            arch_params=arch_params,
+            scan_id=os.path.basename(study_dir),
+            patient_id="",
+        )
+        add_log("py_tooth_seg", "Tooth segmentation complete — tooth_instances.json written")
+    except Exception as seg_err:
+        add_log("py_tooth_seg", f"Tooth segmentation warning (non-fatal): {seg_err}")
+
+    # 5. Generate report
     duration_ms = int((time.time() - start_time) * 1000)
     report = {
         "engine": "python_reconstruction_service_v1",
@@ -169,8 +202,11 @@ def process_3d_scan_reconstruction(study_dir: str, scan_scope: str = "full", vid
         "vertexCount": mesh_data["vertex_count"],
         "faceCount": mesh_data["face_count"],
         "bounds": mesh_data["bounds"],
+        "dentalFiltering": mesh_data["dental_metrics"],
+        "outputFormats": ["obj", "ply", "stl"],
         "durationMs": duration_ms,
-        "completedAt": datetime.now(timezone.utc).isoformat()
+        "completedAt": datetime.now(timezone.utc).isoformat(),
+        "researchDisclaimer": "Experimental geometric representation for X-Core visualization; not calibrated for diagnostic production."
     }
 
     report_path = os.path.join(study_dir, "reconstruction_report.json")
@@ -195,6 +231,13 @@ def process_3d_scan_reconstruction(study_dir: str, scan_scope: str = "full", vid
                 "format": "ply",
                 "sizeInBytes": os.path.getsize(ply_path)
             },
+            "stl": {
+                "fileName": "mesh.stl",
+                "format": "stl",
+                "sizeInBytes": os.path.getsize(stl_path),
+                "vertexCount": mesh_data["vertex_count"],
+                "faceCount": mesh_data["face_count"]
+            },
             "preview": {
                 "fileName": "preview.png",
                 "format": "png",
@@ -205,7 +248,8 @@ def process_3d_scan_reconstruction(study_dir: str, scan_scope: str = "full", vid
             "durationMs": duration_ms,
             "sampledFrames": sampled_frame_count,
             "vertexCount": mesh_data["vertex_count"],
-            "faceCount": mesh_data["face_count"]
+            "faceCount": mesh_data["face_count"],
+            "dentalFiltering": mesh_data["dental_metrics"]
         },
         "logs": logs
     }

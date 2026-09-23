@@ -35,6 +35,10 @@ from services.vti_converter import (
 )
 from services.reconstruction_service import process_3d_scan_reconstruction
 from services.lidra_service import analyze_video_acquisition
+from services.tooth_segmentation_service import (
+    run_tooth_segmentation_pipeline,
+    load_tooth_instances,
+)
 
 
 @asynccontextmanager
@@ -2100,6 +2104,92 @@ async def lidra_analyze(request: Request):
     except Exception as e:
         print(f"[LIDRA Analyze] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/segment/tooth-instances")
+async def segment_tooth_instances(request: Request):
+    """
+    Phase 12 — On-demand tooth segmentation for an existing 3D scan study.
+    Reads mesh.obj from study_dir, runs geometric heuristic segmentation,
+    persists tooth_instances.json, and returns the result.
+    """
+    try:
+        body = await request.json()
+        folder_name = body.get("folderName")
+        scan_id = body.get("scanId", "")
+        patient_id = body.get("patientId", "")
+
+        if not folder_name:
+            raise HTTPException(status_code=400, detail="folderName is required")
+
+        study_dir = os.path.join(UPLOAD_DIR, folder_name)
+        if not os.path.exists(study_dir):
+            raise HTTPException(status_code=404, detail=f"Study directory not found: {folder_name}")
+
+        # Try to read existing mesh vertices from OBJ
+        obj_path = os.path.join(study_dir, "mesh.obj")
+        vertices: list[list[float]] = []
+        faces: list[list[int]] = []
+
+        if os.path.exists(obj_path):
+            with open(obj_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if not parts:
+                        continue
+                    if parts[0] == "v" and len(parts) >= 4:
+                        try:
+                            vertices.append([float(parts[1]), float(parts[2]), float(parts[3])])
+                        except ValueError:
+                            pass
+                    elif parts[0] == "f" and len(parts) >= 4:
+                        try:
+                            # Handle f v//vn notation
+                            idx = [int(p.split("/")[0]) for p in parts[1:4]]
+                            faces.append(idx)
+                        except ValueError:
+                            pass
+
+        if not vertices:
+            # Fallback: generate synthetic arch vertices for segmentation
+            from services.reconstruction_service import generate_dental_mesh_data
+            mesh_data = generate_dental_mesh_data("full")
+            vertices = mesh_data.get("vertices", []) if False else []  # signal absence
+            # Still proceed — segmentation will return empty list
+
+        result = run_tooth_segmentation_pipeline(
+            study_dir=study_dir,
+            vertices=vertices,
+            faces=faces,
+            arch_params=None,
+            scan_id=scan_id or folder_name,
+            patient_id=patient_id,
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ToothSeg] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/segment/tooth-instances/{folder_name}")
+async def get_tooth_instances(folder_name: str):
+    """
+    Phase 12 — Return cached tooth_instances.json for a study.
+    Returns 404 if segmentation has not run yet.
+    """
+    study_dir = os.path.join(UPLOAD_DIR, folder_name)
+    if not os.path.exists(study_dir):
+        raise HTTPException(status_code=404, detail=f"Study not found: {folder_name}")
+
+    cached = load_tooth_instances(study_dir)
+    if cached is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Tooth instances not yet computed. POST to /segment/tooth-instances to trigger."
+        )
+    return cached
 
 
 if __name__ == "__main__":

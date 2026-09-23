@@ -6,12 +6,15 @@ import ImageViewer2D from './ImageViewer2D';
 import SliceViewer from './SliceViewer';
 import SeriesSidebar from './SeriesSidebar';
 import LinkedViewer from './LinkedViewer';
+import Scan3DMeshViewer from './3D/Scan3DMeshViewer';
 import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 
 const resolveInitialViewMode = (activeStudy, analysisCaseContext) => {
     const seriesType = activeStudy?.selectedSeriesType;
     const classification = activeStudy?.classification;
     const modality = activeStudy?.modality;
+
+    if (modality === '3D_SCAN' || seriesType === '3D Mesh') return '3d-scan';
     const is3D = seriesType === '3D Volume' || seriesType === '3D' || classification === '3D';
     const is2D = seriesType === '2D Image' || seriesType === '2D' || classification === '2D' || modality === 'Panoramic' || modality === 'Cephalometric' || modality === 'OPG';
 
@@ -214,6 +217,20 @@ const Viewer3D = ({ study, onBack, comparisonPaneId = null, comparisonSyncEnable
     const renderActiveViewer = () => {
         const seriesType = activeStudy?.selectedSeriesType;
         const is3D = seriesType === '3D Volume' || seriesType === '3D' || activeStudy?.classification === '3D';
+
+        // Phase 10-11: 3D Surface Reconstruction Scan Viewer (with measurement & annotation)
+        if (activeStudy?.modality === '3D_SCAN' || seriesType === '3D Mesh' || viewMode === '3d-scan') {
+            return (
+                <Scan3DMeshViewer
+                    study={activeStudy}
+                    onBack={onBack}
+                    isFullscreen={isFullscreen}
+                    toggleFullscreen={toggleFullscreen}
+                    analysisCaseContext={analysisCaseContext}
+                    onCaptureForCase={onCaptureForCase}
+                />
+            );
+        }
 
         if (viewMode === '3d' && is3D) {
             return (

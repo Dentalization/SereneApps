@@ -5,6 +5,8 @@ import express from 'express';
 import multer from 'multer';
 import { PrismaClient } from '@prisma/client';
 
+import fs from 'node:fs';
+import path from 'node:path';
 const prisma = new PrismaClient();
 const {
   getScanPatients,
@@ -18,6 +20,8 @@ const {
   get3DScanAsset,
   get3DScanEngines,
   get3DScanLidraReport,
+  get3DScanToothInstances,
+  trigger3DScanSegmentation,
 } = await import('../src/controllers/xCoreScanController.js');
 
 const { processScanNow } = await import('../src/services/scan3D/scan3DWorker.js');
@@ -55,6 +59,8 @@ function createApp() {
   app.get('/v1/x-core/3d-scans/:id/status', authMiddlewareMock, requireDentistMock, get3DScanStatus);
   app.post('/v1/x-core/3d-scans/:id/retry', authMiddlewareMock, requireDentistMock, retry3DScan);
   app.get('/v1/x-core/3d-scans/:id/assets/:fileName', authMiddlewareMock, requireDentistMock, get3DScanAsset);
+  app.get('/v1/x-core/3d-scans/:id/tooth-instances', authMiddlewareMock, requireDentistMock, get3DScanToothInstances);
+  app.post('/v1/x-core/3d-scans/:id/tooth-instances/segment', authMiddlewareMock, requireDentistMock, trigger3DScanSegmentation);
 
   return app;
 }
@@ -323,6 +329,25 @@ test('3D Scan Workflow: Dentist can create patient specifically for 3D scan and 
     assert(meshContent.includes('v '));
     assert(meshContent.includes('f '));
 
+    // Phase 8 & 9: Test mesh.stl binary asset
+    const stlRes = await fetch(`${baseUrl}/v1/x-core/3d-scans/${scan.id}/assets/mesh.stl`);
+    assert.equal(stlRes.status, 200);
+    assert(stlRes.headers.get('content-type').includes('model/stl'));
+    const stlBuf = Buffer.from(await stlRes.arrayBuffer());
+    assert(stlBuf.length >= 84); // 80-byte header + 4-byte triangle count
+
+    // Phase 8 & 9: Verify reconstruction report and dental filtering metadata
+    const reportRes = await fetch(`${baseUrl}/v1/x-core/3d-scans/${scan.id}/assets/reconstruction_report.json`);
+    assert.equal(reportRes.status, 200);
+    const reportJson = await reportRes.json();
+    assert.equal(reportJson.reconstructionStatus, 'ready');
+    assert.deepEqual(reportJson.outputFormats, ['obj', 'ply', 'stl']);
+    assert(reportJson.inputFrameCount !== undefined);
+    assert(reportJson.dentalFiltering);
+    assert(reportJson.dentalFiltering.dentalArchFit);
+    assert(reportJson.dentalFiltering.prunedOutliersCount !== undefined);
+    assert(reportJson.dentalFiltering.researchDisclaimer);
+
     const previewRes = await fetch(`${baseUrl}/v1/x-core/3d-scans/${scan.id}/assets/preview.png`);
     assert.equal(previewRes.status, 200);
     assert(previewRes.headers.get('content-type').includes('image/png'));
@@ -330,6 +355,58 @@ test('3D Scan Workflow: Dentist can create patient specifically for 3D scan and 
     // 12. Test Security: Reject unauthorized/disallowed file access
     const badExtRes = await fetch(`${baseUrl}/v1/x-core/3d-scans/${scan.id}/assets/exploit.exe`);
     assert.equal(badExtRes.status, 400);
+
+    // Phase 12: Tooth Segmentation & FDI instances
+    const folderName = scan.scanIdentifier || scan.folderName || `SCAN-3D-${scan.id}`;
+    const uploadDir = path.join(process.cwd(), 'uploads/x-core', folderName);
+    fs.mkdirSync(uploadDir, { recursive: true });
+    const mockToothInstances = {
+      provenance: {
+        scanId: scan.id.toString(),
+        engine: 'geometric_arch_heuristic_v1',
+        experimental: true,
+        diagnosticUseAllowed: false,
+      },
+      count: 2,
+      instances: [
+        {
+          toothId: 'tooth-11',
+          fdi: 11,
+          quadrant: 1,
+          name: 'Maxillary Right Central Incisor',
+          confidence: 0.85,
+          type: 'incisor',
+          centroid: [2.5, 12.0, 1.0],
+        },
+        {
+          toothId: 'tooth-21',
+          fdi: 21,
+          quadrant: 2,
+          name: 'Maxillary Left Central Incisor',
+          confidence: 0.85,
+          type: 'incisor',
+          centroid: [-2.5, 12.0, 1.0],
+        },
+      ],
+    };
+    fs.writeFileSync(path.join(uploadDir, 'tooth_instances.json'), JSON.stringify(mockToothInstances));
+
+    const teethRes = await httpJson(baseUrl, `/v1/x-core/3d-scans/${scan.id}/tooth-instances`);
+    assert.equal(teethRes.status, 200);
+    assert.equal(teethRes.json.success, true);
+    assert.equal(teethRes.json.count, 2);
+    assert.equal(teethRes.json.instances[0].fdi, 11);
+    assert.equal(teethRes.json.provenance.experimental, true);
+    assert.equal(teethRes.json.provenance.diagnosticUseAllowed, false);
+
+    // Test POST trigger tooth segmentation (returns 202 accepted)
+    const segTriggerRes = await httpJson(baseUrl, `/v1/x-core/3d-scans/${scan.id}/tooth-instances/segment`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    assert.equal(segTriggerRes.status, 202);
+    assert.equal(segTriggerRes.json.success, true);
+    assert.equal(segTriggerRes.json.scanId, scan.id.toString());
 
     // 13. Test POST /v1/x-core/3d-scans/:id/retry (Retry Workflow)
     // First simulate failure

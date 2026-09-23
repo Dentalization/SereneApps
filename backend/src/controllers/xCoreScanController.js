@@ -751,7 +751,7 @@ export const get3DScanAsset = async (req, res) => {
 
     // Sanitize filename to prevent directory traversal
     const safeFileName = path.basename(rawFileName);
-    const allowedExtensions = ['.obj', '.ply', '.png', '.jpg', '.jpeg', '.json', '.mtl', '.mp4'];
+    const allowedExtensions = ['.obj', '.ply', '.stl', '.glb', '.gltf', '.png', '.jpg', '.jpeg', '.json', '.mtl', '.mp4'];
     const ext = path.extname(safeFileName).toLowerCase();
 
     if (!allowedExtensions.includes(ext)) {
@@ -783,6 +783,9 @@ export const get3DScanAsset = async (req, res) => {
     // Set MIME types
     const mimeMap = {
       '.obj': 'model/obj',
+      '.stl': 'model/stl',
+      '.glb': 'model/gltf-binary',
+      '.gltf': 'model/gltf+json',
       '.ply': 'application/octet-stream',
       '.png': 'image/png',
       '.jpg': 'image/jpeg',
@@ -880,3 +883,127 @@ export const get3DScanLidraReport = async (req, res) => {
     return res.status(500).json({ error: 'Failed to retrieve LIDRA acquisition report' });
   }
 };
+
+// ---------------------------------------------------------------------------
+// Phase 12 — Tooth Segmentation & FDI
+// ---------------------------------------------------------------------------
+
+const PY_SERVICE_BASE_URL = process.env.PY_SERVICE_BASE_URL || 'http://127.0.0.1:8000';
+
+/**
+ * GET /v1/x-core/3d-scans/:id/tooth-instances
+ * Return cached tooth segmentation for a scan.
+ * Tries disk cache (tooth_instances.json) first, then proxies to Python service.
+ */
+export const get3DScanToothInstances = async (req, res) => {
+  try {
+    const dentistId = parseBigIntId(req.user?.id);
+    if (!dentistId) return res.status(401).json({ error: 'Authentication required' });
+
+    const scanId = parseBigIntId(req.params.id);
+    if (!scanId) return res.status(400).json({ error: 'Invalid scan ID' });
+
+    const scan = await prisma.imagingStudy.findFirst({
+      where: { id: scanId, modality: '3D_SCAN', dentistId },
+    });
+    if (!scan) return res.status(404).json({ error: '3D scan not found' });
+
+    const folderName = scan.folderName || `SCAN-3D-${scan.id}`;
+    const studyDir = path.join(XCORE_UPLOAD_DIR, folderName);
+    const cachePath = path.join(studyDir, 'tooth_instances.json');
+
+    // 1. Disk cache hit — fast path
+    if (fs.existsSync(cachePath)) {
+      try {
+        const cached = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+        return res.status(200).json(serializeJson({ success: true, ...cached }));
+      } catch {
+        // corrupt cache — fall through to Python
+      }
+    }
+
+    // 2. Python service proxy
+    try {
+      const pyResp = await fetch(`${PY_SERVICE_BASE_URL}/segment/tooth-instances/${encodeURIComponent(folderName)}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (pyResp.ok) {
+        const pyData = await pyResp.json();
+        return res.status(200).json(serializeJson({ success: true, ...pyData }));
+      }
+      if (pyResp.status === 404) {
+        return res.status(404).json({
+          error: 'Tooth instances not yet computed',
+          hint: 'POST to /tooth-instances/segment to trigger segmentation',
+        });
+      }
+    } catch (pyErr) {
+      console.warn('[xCoreScanController] Python tooth-instances unavailable:', pyErr.message);
+    }
+
+    return res.status(404).json({
+      error: 'Tooth instances not available',
+      hint: 'POST to /tooth-instances/segment to trigger segmentation',
+    });
+  } catch (error) {
+    console.error('[xCoreScanController] get3DScanToothInstances error:', error);
+    return res.status(500).json({ error: 'Failed to retrieve tooth instances' });
+  }
+};
+
+/**
+ * POST /v1/x-core/3d-scans/:id/tooth-instances/segment
+ * Trigger on-demand tooth segmentation for a scan.
+ */
+export const trigger3DScanSegmentation = async (req, res) => {
+  try {
+    const dentistId = parseBigIntId(req.user?.id);
+    if (!dentistId) return res.status(401).json({ error: 'Authentication required' });
+
+    const scanId = parseBigIntId(req.params.id);
+    if (!scanId) return res.status(400).json({ error: 'Invalid scan ID' });
+
+    const scan = await prisma.imagingStudy.findFirst({
+      where: { id: scanId, modality: '3D_SCAN', dentistId },
+      include: { patient: { select: { id: true } } },
+    });
+    if (!scan) return res.status(404).json({ error: '3D scan not found' });
+    if (scan.status !== 'ready') {
+      return res.status(409).json({ error: `Scan is not ready for segmentation (status: ${scan.status})` });
+    }
+
+    const folderName = scan.folderName || `SCAN-3D-${scan.id}`;
+
+    // Proxy to Python service — non-blocking (respond 202 immediately)
+    res.status(202).json({
+      success: true,
+      message: 'Tooth segmentation triggered',
+      scanId: scan.id.toString(),
+      folderName,
+      pollUrl: `/v1/x-core/3d-scans/${scan.id}/tooth-instances`,
+    });
+
+    // Fire-and-forget to Python
+    try {
+      const pyResp = await fetch(`${PY_SERVICE_BASE_URL}/segment/tooth-instances`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          folderName,
+          scanId: scan.id.toString(),
+          patientId: scan.patient?.id?.toString() || '',
+        }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!pyResp.ok) {
+        console.warn(`[xCoreScanController] Python segmentation returned ${pyResp.status} for scan ${scan.id}`);
+      }
+    } catch (pyErr) {
+      console.warn('[xCoreScanController] Python tooth segmentation fire-and-forget error:', pyErr.message);
+    }
+  } catch (error) {
+    console.error('[xCoreScanController] trigger3DScanSegmentation error:', error);
+    // Response may already be sent — log only
+  }
+};
+
