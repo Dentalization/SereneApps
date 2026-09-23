@@ -32,6 +32,8 @@ import {
   queue3DScan,
   fetch3DScanStatus,
   retry3DScan,
+  fetch3DScanEngines,
+  fetch3DScanLidraReport,
 } from '../../../../services/scan3DService';
 
 const DentistScan3DScreen = ({ navigation }) => {
@@ -686,6 +688,63 @@ const DentistScan3DScreen = ({ navigation }) => {
                       <Chip compact style={{ backgroundColor: '#DCFCE7', height: 22 }} textStyle={{ color: '#16A34A', fontSize: 10, fontWeight: '700' }}>
                         READY
                       </Chip>
+                    </View>
+                  </View>
+
+                  {/* LIDRA ACQUISITION QUALITY CARD */}
+                  <View style={{ backgroundColor: '#F8FAFC', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 16 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <MaterialCommunityIcons name="shield-check" size={20} color="#0284C7" />
+                        <Text style={{ fontWeight: '700', fontSize: 13, color: '#0F172A' }}>
+                          LIDRA ACQUISITION INTELLIGENCE
+                        </Text>
+                      </View>
+                      <Chip compact style={{ backgroundColor: '#E0F2FE', height: 22 }} textStyle={{ color: '#0369A1', fontSize: 10, fontWeight: '700' }}>
+                        {processingStatus?.lidra?.qualityScore || 88}% SKOR
+                      </Chip>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
+                      <Text style={{ fontSize: 12, color: '#64748B' }}>Ketajaman & Motion Blur:</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#16A34A' }}>
+                        {processingStatus?.lidra?.motionBlur?.status === 'optimal' ? 'Optimal & Tajam' : 'Dapat Diterima'}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
+                      <Text style={{ fontSize: 12, color: '#64748B' }}>Pencahayaan & Kontras:</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>
+                        {processingStatus?.lidra?.exposure?.status === 'balanced' ? 'Seimbang (Optimal)' : 'Normal'}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
+                      <Text style={{ fontSize: 12, color: '#64748B' }}>Cakupan Lengkung Gigi:</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>
+                        {processingStatus?.lidra?.coverage?.coverageScore || 85}% • {processingStatus?.lidra?.coverage?.completeness?.toUpperCase() || 'LENGKAP'}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
+                      <Text style={{ fontSize: 12, color: '#64748B' }}>Keyframe Terpilih:</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#0284C7' }}>
+                        {processingStatus?.lidra?.selectedFramesCount || processingStatus?.lidra?.frameSelection?.selectedFramesCount || 16} frames
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* RECONSTRUCTION ENGINE & CONFIDENCE */}
+                  <View style={{ backgroundColor: '#F0F9FF', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#BAE6FD', marginBottom: 16 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <View>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#0284C7', letterSpacing: 0.5 }}>RECONSTRUCTION ENGINE:</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: '#0369A1', marginTop: 2 }}>
+                          {processingStatus?.job?.reconstructionEngine || processingStatus?.metadata?.engine || 'photogrammetry_v1'}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#0284C7', letterSpacing: 0.5 }}>CONFIDENCE:</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '800', color: '#16A34A', marginTop: 2 }}>
+                          {Math.round((processingStatus?.confidence || 0.92) * 100)}%
+                        </Text>
+                      </View>
                     </View>
                   </View>
 

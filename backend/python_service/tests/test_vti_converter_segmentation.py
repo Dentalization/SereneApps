@@ -53,6 +53,7 @@ class ToothSegmentationTests(unittest.TestCase):
         labels, manifest = _build_heuristic_tooth_labels(volume)
 
         self.assertIsNotNone(labels)
+        assert labels is not None
         self.assertEqual(manifest['num_labels'], 1)
         self.assertGreater(manifest['voxel_counts']['1'], 8 * 8 * 8)
         self.assertLessEqual(manifest['voxel_counts']['1'], int(np.count_nonzero(volume > 0.45)))
@@ -65,6 +66,7 @@ class ToothSegmentationTests(unittest.TestCase):
 
         labels_a, manifest_a = _build_heuristic_tooth_labels(volume)
         labels_b, manifest_b = _build_heuristic_tooth_labels(volume)
+        assert labels_a is not None and labels_b is not None
 
         self.assertEqual(manifest_a['label_ids'], [1, 2])
         self.assertEqual(manifest_a, manifest_b)
@@ -88,6 +90,7 @@ class ToothSegmentationTests(unittest.TestCase):
             manifest = read_label_manifest(study_path, 'series123')
 
             self.assertIsNotNone(info)
+            assert info is not None and manifest is not None
             self.assertEqual(info['num_labels'], 2)
             self.assertEqual(info['segmentation_method'], TOOTH_SEGMENT_METHOD)
             self.assertTrue(os.path.exists(os.path.join(study_path, 'labels_series123.vti')))

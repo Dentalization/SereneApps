@@ -106,6 +106,9 @@ export async function processScanJob(study) {
         ...processingMetadata,
         assets: result.assets,
         metrics: result.metrics,
+        lidra: result.lidra,
+        confidence: result.confidence,
+        cameraTrajectory: result.cameraTrajectory,
         processingJob: {
           ...processingMetadata.processingJob,
           status: 'ready',

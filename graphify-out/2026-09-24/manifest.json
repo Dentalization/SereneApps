@@ -492,9 +492,9 @@
     "semantic_hash": "342a8932c43daa4785d1c1f440428aac"
   },
   "backend/python_service/main.py": {
-    "mtime": 1790183686.0453346,
-    "seen": 1790183933.1868742,
-    "ast_hash": "9a4563693ab705f12a4c69d4b69f89db",
+    "mtime": 1790183269.1799855,
+    "seen": 1790183448.0640461,
+    "ast_hash": "7e7be6a40054c7d16bc723f13d30ba38",
     "semantic_hash": ""
   },
   "backend/python_service/pyrightconfig.json": {
@@ -504,10 +504,10 @@
     "semantic_hash": "b71e81bbdd8a8b3b84cfdc038e6d3182"
   },
   "backend/python_service/services/dicom_handler.py": {
-    "mtime": 1790183799.069817,
-    "seen": 1790183933.18689,
-    "ast_hash": "c01e599a0828ad98f85a5b4e66c32797",
-    "semantic_hash": ""
+    "mtime": 1786818382.8520947,
+    "seen": 1790178528.320485,
+    "ast_hash": "e8bc463dc1bafadf557da595133115c9",
+    "semantic_hash": "e8bc463dc1bafadf557da595133115c9"
   },
   "backend/python_service/services/morita_handler.py": {
     "mtime": 1790183385.6351166,
@@ -516,15 +516,15 @@
     "semantic_hash": ""
   },
   "backend/python_service/services/morita_volume.py": {
-    "mtime": 1790183770.4419844,
-    "seen": 1790183933.186923,
-    "ast_hash": "5f738adab1a666fc5e7785dbda8b8c14",
-    "semantic_hash": ""
+    "mtime": 1786818386.9968238,
+    "seen": 1790178528.3204858,
+    "ast_hash": "e3aaf6cd7ad782285c28bdcf47a59fed",
+    "semantic_hash": "e3aaf6cd7ad782285c28bdcf47a59fed"
   },
   "backend/python_service/services/vti_converter.py": {
-    "mtime": 1790183740.8980196,
-    "seen": 1790183933.18694,
-    "ast_hash": "5c95e012b7e40d8f00c5ae458e1c61c2",
+    "mtime": 1790183340.9773958,
+    "seen": 1790183448.064099,
+    "ast_hash": "b007cbc69d7f2c9de8dd031fba3ac458",
     "semantic_hash": ""
   },
   "backend/python_service/tests/test_density_histogram.py": {
@@ -534,10 +534,10 @@
     "semantic_hash": "75ba84f2cefe68a7bc3355a6058087c8"
   },
   "backend/python_service/tests/test_dicom_handler.py": {
-    "mtime": 1790183845.7613578,
-    "seen": 1790183933.1869571,
-    "ast_hash": "357b391a4e65c783dbcb1539c31065cf",
-    "semantic_hash": ""
+    "mtime": 1785748462.331044,
+    "seen": 1790178528.320488,
+    "ast_hash": "1c996407a68d7a1b6495edc99572dcaa",
+    "semantic_hash": "1c996407a68d7a1b6495edc99572dcaa"
   },
   "backend/python_service/tests/test_instances_endpoint.py": {
     "mtime": 1786818382.8551824,
@@ -546,10 +546,10 @@
     "semantic_hash": "35474b4a7ccc08afaff7aff4877b60ec"
   },
   "backend/python_service/tests/test_main_share_and_labels.py": {
-    "mtime": 1790183866.6865556,
-    "seen": 1790183933.186972,
-    "ast_hash": "768f4cd5153772d7fa79d0fa765892ed",
-    "semantic_hash": ""
+    "mtime": 1785748462.331835,
+    "seen": 1790178528.320489,
+    "ast_hash": "af02498821ea0e99155699bec0d62596",
+    "semantic_hash": "af02498821ea0e99155699bec0d62596"
   },
   "backend/python_service/tests/test_main_singleflight.py": {
     "mtime": 1785748462.3319135,
@@ -570,10 +570,10 @@
     "semantic_hash": "b13471fa70962163c381a5e9d420b9d3"
   },
   "backend/python_service/tests/test_nerve_canal.py": {
-    "mtime": 1790183876.9408813,
-    "seen": 1790183933.187021,
-    "ast_hash": "71d7b2d0bb35c0f90ee01544771e44bb",
-    "semantic_hash": ""
+    "mtime": 1785748462.332032,
+    "seen": 1790178528.320492,
+    "ast_hash": "d1673d22c7ebc091c1fdb0d490eb8bb0",
+    "semantic_hash": "d1673d22c7ebc091c1fdb0d490eb8bb0"
   },
   "backend/python_service/tests/test_preview_endpoint.py": {
     "mtime": 1785748462.333127,
@@ -588,10 +588,10 @@
     "semantic_hash": "17144663913b8412870dab4e12b39437"
   },
   "backend/python_service/tests/test_vti_converter_segmentation.py": {
-    "mtime": 1790183886.903726,
-    "seen": 1790183933.187052,
-    "ast_hash": "13c5bb6d57243f53cadd7360bcd13658",
-    "semantic_hash": ""
+    "mtime": 1785748462.3332555,
+    "seen": 1790178528.320493,
+    "ast_hash": "33cf2ca2f09a60ae08379d829301f805",
+    "semantic_hash": "33cf2ca2f09a60ae08379d829301f805"
   },
   "backend/scratch/append_specialist_suffixes.js": {
     "mtime": 1785748462.3333468,

@@ -12,6 +12,7 @@ import {
 } from '../services/patients/patientIdentityResolver.js';
 import { enqueueScan, getScanJobStatus, retryScan } from '../services/scan3D/scan3DQueueService.js';
 import { processScanNow } from '../services/scan3D/scan3DWorker.js';
+import { reconstructionEngineRegistry } from '../services/scan3D/engines/reconstructionEngineRegistry.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -370,6 +371,9 @@ export const get3DScanDetails = async (req, res) => {
         sizeInBytes: scan.sizeInBytes.toString(),
         createdAt: scan.createdAt.toISOString(),
         metadata: scan.metadata || {},
+        lidra: scan.metadata?.lidra || null,
+        confidence: scan.metadata?.confidence || null,
+        assets: scan.metadata?.assets || null,
         patient: scan.patient
           ? {
               id: scan.patient.id.toString(),
@@ -794,5 +798,85 @@ export const get3DScanAsset = async (req, res) => {
   } catch (error) {
     console.error('[xCoreScanController] get3DScanAsset error:', error);
     return res.status(500).json({ error: 'Failed to retrieve 3D asset' });
+  }
+};
+
+/**
+ * GET /v1/x-core/3d-scans/engines
+ * Lists all registered 3D reconstruction engines and their capabilities.
+ */
+export const get3DScanEngines = async (req, res) => {
+  try {
+    const dentistId = parseBigIntId(req.user?.id);
+    if (!dentistId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const engines = reconstructionEngineRegistry.list();
+    return res.status(200).json({
+      success: true,
+      defaultEngine: 'photogrammetry_v1',
+      engines,
+    });
+  } catch (error) {
+    console.error('[xCoreScanController] get3DScanEngines error:', error);
+    return res.status(500).json({ error: 'Failed to list reconstruction engines' });
+  }
+};
+
+/**
+ * GET /v1/x-core/3d-scans/:id/lidra
+ * Retrieves the LIDRA acquisition analysis report for a 3D scan session.
+ */
+export const get3DScanLidraReport = async (req, res) => {
+  try {
+    const dentistId = parseBigIntId(req.user?.id);
+    if (!dentistId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const scanId = parseBigIntId(req.params.id);
+    if (!scanId) {
+      return res.status(400).json({ error: 'Invalid scan ID' });
+    }
+
+    const scan = await prisma.imagingStudy.findFirst({
+      where: {
+        id: scanId,
+        modality: '3D_SCAN',
+        OR: [
+          { dentistId },
+          { dentistShares: { some: { recipientDentistId: dentistId, revokedAt: null } } },
+        ],
+      },
+    });
+
+    if (!scan) {
+      return res.status(404).json({ error: 'Scan session not found or unauthorized' });
+    }
+
+    const folderName = scan.folderName || `SCAN-3D-${scan.id}`;
+    const reportPath = path.join(XCORE_UPLOAD_DIR, folderName, 'lidra_analysis.json');
+
+    let lidraReport = scan.metadata?.lidra || null;
+    if (fs.existsSync(reportPath)) {
+      try {
+        lidraReport = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
+      } catch {}
+    }
+
+    if (!lidraReport) {
+      return res.status(404).json({ error: 'LIDRA acquisition report not yet generated' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      scanId: scan.id.toString(),
+      scanIdentifier: scan.folderName,
+      lidra: lidraReport,
+    });
+  } catch (error) {
+    console.error('[xCoreScanController] get3DScanLidraReport error:', error);
+    return res.status(500).json({ error: 'Failed to retrieve LIDRA acquisition report' });
   }
 };

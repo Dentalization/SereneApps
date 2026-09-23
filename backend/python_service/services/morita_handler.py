@@ -122,7 +122,7 @@ class MoritaHandler:
             if self.volume is None:
                 self._load_volume()
             
-            if self.volume is None:
+            if self.volume is None or self.shape is None:
                 raise ValueError("Failed to load 3D volume for MPR")
             
             # Calculate aspect ratio correction
@@ -181,6 +181,9 @@ class MoritaHandler:
         else:
             raise ValueError(f"Unknown view: {view}")
         
+        if pixel_array is None:
+            raise ValueError("Failed to obtain slice image")
+
         # Convert to JPEG for streaming
         _, encoded_img = cv2.imencode('.jpg', pixel_array, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
         
@@ -207,7 +210,7 @@ class MoritaHandler:
                 dimensions = [z, rows, cols]
             else:
                 dimensions = [len(self.files), 512, 512]
-        elif self.volume is not None:
+        elif self.volume is not None and self.shape is not None:
             dimensions = list(self.shape)
         else:
             dimensions = [0, 0, 0]
@@ -231,3 +234,18 @@ class MoritaHandler:
             }],
             "total_series_found": 1
         }
+
+    def is_morita_study(self) -> bool:
+        return bool(self.files)
+
+    def list_images(self) -> list[dict]:
+        images = []
+        for idx, fpath in enumerate(self.files):
+            images.append({
+                "path": fpath,
+                "filename": os.path.basename(fpath),
+                "index": idx,
+                "width": 512,
+                "height": 512,
+            })
+        return images

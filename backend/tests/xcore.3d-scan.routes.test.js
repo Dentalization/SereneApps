@@ -16,6 +16,8 @@ const {
   get3DScanStatus,
   retry3DScan,
   get3DScanAsset,
+  get3DScanEngines,
+  get3DScanLidraReport,
 } = await import('../src/controllers/xCoreScanController.js');
 
 const { processScanNow } = await import('../src/services/scan3D/scan3DWorker.js');
@@ -44,8 +46,10 @@ function createApp() {
 
   app.get('/v1/x-core/3d-scans/patients', authMiddlewareMock, requireDentistMock, getScanPatients);
   app.post('/v1/x-core/3d-scans/patients', authMiddlewareMock, requireDentistMock, createScanPatient);
+  app.get('/v1/x-core/3d-scans/engines', authMiddlewareMock, requireDentistMock, get3DScanEngines);
   app.post('/v1/x-core/3d-scans', authMiddlewareMock, requireDentistMock, create3DScan);
   app.get('/v1/x-core/3d-scans/:id', authMiddlewareMock, requireDentistMock, get3DScanDetails);
+  app.get('/v1/x-core/3d-scans/:id/lidra', authMiddlewareMock, requireDentistMock, get3DScanLidraReport);
   app.post('/v1/x-core/3d-scans/:id/video', authMiddlewareMock, requireDentistMock, upload.single('video'), upload3DScanVideo);
   app.post('/v1/x-core/3d-scans/:id/queue', authMiddlewareMock, requireDentistMock, enqueue3DScan);
   app.get('/v1/x-core/3d-scans/:id/status', authMiddlewareMock, requireDentistMock, get3DScanStatus);
@@ -283,8 +287,35 @@ test('3D Scan Workflow: Dentist can create patient specifically for 3D scan and 
     assert.equal(readyStatusRes.json.assets.mesh.fileName, 'mesh.obj');
     assert(readyStatusRes.json.assets.preview);
     assert.equal(readyStatusRes.json.assets.preview.fileName, 'preview.png');
+    assert(readyStatusRes.json.lidra);
+    assert(readyStatusRes.json.lidra.qualityScore > 0);
+    assert(readyStatusRes.json.confidence >= 0.5);
+    assert(Array.isArray(readyStatusRes.json.cameraTrajectory));
 
-    // 11. Test GET /v1/x-core/3d-scans/:id/assets/:fileName (Download Generated Assets)
+    // 11. Test Phase 6: GET /v1/x-core/3d-scans/:id/lidra (LIDRA Report)
+    const lidraRes = await httpJson(baseUrl, `/v1/x-core/3d-scans/${scan.id}/lidra`);
+    assert.equal(lidraRes.status, 200);
+    assert.equal(lidraRes.json.success, true);
+    assert(lidraRes.json.lidra);
+    assert(lidraRes.json.lidra.qualityScore > 0);
+    assert(lidraRes.json.lidra.motionBlur);
+    assert(lidraRes.json.lidra.coverage);
+
+    // 12. Test Phase 7: GET /v1/x-core/3d-scans/engines (Reconstruction Engines List)
+    const enginesRes = await httpJson(baseUrl, '/v1/x-core/3d-scans/engines');
+    assert.equal(enginesRes.status, 200);
+    assert.equal(enginesRes.json.success, true);
+    assert.equal(enginesRes.json.defaultEngine, 'photogrammetry_v1');
+    assert(Array.isArray(enginesRes.json.engines));
+    const engineNames = enginesRes.json.engines.map((e) => e.name);
+    assert(engineNames.includes('photogrammetry_v1'));
+    assert(engineNames.includes('colmap'));
+    assert(engineNames.includes('dust3r'));
+    assert(engineNames.includes('mast3r'));
+    assert(engineNames.includes('neuralangelo'));
+    assert(engineNames.includes('abot_recon'));
+
+    // 13. Test GET /v1/x-core/3d-scans/:id/assets/:fileName (Download Generated Assets)
     const meshRes = await fetch(`${baseUrl}/v1/x-core/3d-scans/${scan.id}/assets/mesh.obj`);
     assert.equal(meshRes.status, 200);
     assert(meshRes.headers.get('content-type').includes('model/obj'));

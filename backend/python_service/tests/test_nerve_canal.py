@@ -24,6 +24,7 @@ class NerveCanalDetectionTests(unittest.TestCase):
         result = detect_mandibular_canal(volume, (0.5, 0.5, 0.5), (10.0, 20.0, -5.0))
 
         self.assertIsNotNone(result)
+        assert result is not None
         self.assertGreaterEqual(len(result["centerline"]), 6)
         self.assertGreater(result["confidence"], 0)
         self.assertEqual(result["radius_mm"], 1.2)

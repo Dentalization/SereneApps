@@ -263,6 +263,40 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
       expect(result.success).toBe(true);
       expect(result.scan.status).toBe('queued');
     });
+
+    test('fetch3DScanEngines returns registered reconstruction engines list', async () => {
+      const mockEngines = [
+        { name: 'photogrammetry_v1', displayName: 'Native Photogrammetry', isDefault: true },
+        { name: 'colmap', displayName: 'COLMAP' },
+        { name: 'abot_recon', displayName: 'ABot-Recon' },
+      ];
+      api.get.mockResolvedValueOnce({
+        data: { success: true, defaultEngine: 'photogrammetry_v1', engines: mockEngines },
+      });
+
+      const result = await scan3DService.fetch3DScanEngines();
+      expect(api.get).toHaveBeenCalledWith('/x-core/3d-scans/engines');
+      expect(result.success).toBe(true);
+      expect(result.engines).toEqual(mockEngines);
+      expect(result.defaultEngine).toBe('photogrammetry_v1');
+    });
+
+    test('fetch3DScanLidraReport returns acquisition report for scan session', async () => {
+      const mockLidra = {
+        qualityScore: 92,
+        motionBlur: { status: 'optimal' },
+        exposure: { status: 'balanced' },
+        coverage: { coverageScore: 88, completeness: 'complete' },
+      };
+      api.get.mockResolvedValueOnce({
+        data: { success: true, scanId: '201', lidra: mockLidra },
+      });
+
+      const result = await scan3DService.fetch3DScanLidraReport('201');
+      expect(api.get).toHaveBeenCalledWith('/x-core/3d-scans/201/lidra');
+      expect(result.success).toBe(true);
+      expect(result.lidra.qualityScore).toBe(92);
+    });
   });
 
   describe('DentistScan3DScreen UI Flow', () => {

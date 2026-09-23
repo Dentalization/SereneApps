@@ -220,3 +220,48 @@ export const retry3DScan = async (scanId, options = {}) => {
   }
 };
 
+/**
+ * Fetch available 3D reconstruction engines and capabilities.
+ * @returns {Promise<{success: boolean, engines: Array, defaultEngine?: string, message?: string}>}
+ */
+export const fetch3DScanEngines = async () => {
+  try {
+    const response = await api.get('/x-core/3d-scans/engines');
+    return {
+      success: true,
+      engines: response.data?.engines || [],
+      defaultEngine: response.data?.defaultEngine,
+    };
+  } catch (error) {
+    console.error('[scan3DService] fetch3DScanEngines error:', error);
+    const errData = error.response?.data;
+    return {
+      success: false,
+      engines: [],
+      message: errData?.error || error.message || 'Gagal memuat daftar engine rekonstruksi',
+    };
+  }
+};
+
+/**
+ * Fetch LIDRA acquisition intelligence report for a 3D scan.
+ * @param {string|number} scanId
+ * @returns {Promise<{success: boolean, lidra?: Object, message?: string}>}
+ */
+export const fetch3DScanLidraReport = async (scanId) => {
+  try {
+    const response = await api.get(`/x-core/3d-scans/${scanId}/lidra`);
+    return {
+      success: true,
+      lidra: response.data?.lidra,
+    };
+  } catch (error) {
+    console.error('[scan3DService] fetch3DScanLidraReport error:', error);
+    const errData = error.response?.data;
+    return {
+      success: false,
+      message: errData?.error || error.message || 'Gagal memuat laporan akuisisi LIDRA',
+    };
+  }
+};
+

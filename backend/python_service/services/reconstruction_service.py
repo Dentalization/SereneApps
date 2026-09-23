@@ -90,7 +90,7 @@ def generate_dental_mesh_data(scan_scope: str = "full"):
     }
 
 
-def process_3d_scan_reconstruction(study_dir: str, scan_scope: str = "full", video_path: str = None):
+def process_3d_scan_reconstruction(study_dir: str, scan_scope: str = "full", video_path: str | None = None):
     """
     Executes frame sampling, surface reconstruction, and asset packaging.
     """

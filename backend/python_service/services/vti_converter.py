@@ -25,17 +25,18 @@ import json
 import shutil
 import numpy as np
 import pydicom
+from pydicom.dataset import FileMetaDataset
 from pydicom.uid import ExplicitVRLittleEndian
 import glob
 from collections import defaultdict
 import time
-from typing import Optional
+from typing import Optional, Any, overload, Literal
 from datetime import datetime, timezone
 import urllib.request
 
 from services.morita_volume import discover_jm_volumes, load_jm_volume_for_viewer
 
-def log_python_event(run_id: str, event_type: str, details: dict = None):
+def log_python_event(run_id: str | None, event_type: str, details: dict | None = None):
     if not run_id:
         return
     try:
@@ -59,7 +60,7 @@ def log_python_event(run_id: str, event_type: str, details: dict = None):
     except Exception as e:
         print(f"[X-Core Benchmark] Error writing python event log: {e}")
 
-def notify_backend_callback(run_id: str, event_type: str, details: dict = None):
+def notify_backend_callback(run_id: str | None, event_type: str, details: dict | None = None):
     if not run_id:
         return
     try:
@@ -206,7 +207,7 @@ def _parse_and_group_dicom_files(all_files: list[str]) -> tuple[dict, dict]:
         try:
             ds = pydicom.dcmread(fp, force=True, stop_before_pixels=True)
             if not hasattr(ds, 'file_meta') or ds.file_meta is None:
-                ds.file_meta = pydicom.dataset.FileMetaDataset()
+                ds.file_meta = FileMetaDataset()
             if not hasattr(ds.file_meta, 'TransferSyntaxUID') or ds.file_meta.TransferSyntaxUID is None:
                 ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
 
@@ -334,7 +335,16 @@ def _discover_plain_2d_series(study_path: str) -> dict:
     return series_groups
 
 
-def scan_dicom_series(study_path: str, include_sr: bool = False) -> dict:
+@overload
+def scan_dicom_series(study_path: str, include_sr: Literal[False] = False) -> dict: ...
+
+@overload
+def scan_dicom_series(study_path: str, include_sr: Literal[True]) -> tuple[dict, dict]: ...
+
+@overload
+def scan_dicom_series(study_path: str, include_sr: bool) -> dict | tuple[dict, dict]: ...
+
+def scan_dicom_series(study_path: str, include_sr: bool = False) -> dict | tuple[dict, dict]:
     """
     Scan folder and group DICOM files by SeriesInstanceUID.
     Handles both standard DICOM extensions and extensionless files.
@@ -367,7 +377,7 @@ def read_dicom_volume(file_list: list) -> tuple:
         try:
             ds = pydicom.dcmread(fp, force=True)
             if not hasattr(ds, 'file_meta') or ds.file_meta is None:
-                ds.file_meta = pydicom.dataset.FileMetaDataset()
+                ds.file_meta = FileMetaDataset()
             if not hasattr(ds.file_meta, 'TransferSyntaxUID') or ds.file_meta.TransferSyntaxUID is None:
                 ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
 
@@ -435,7 +445,7 @@ def read_dicom_volume(file_list: list) -> tuple:
     return volume, spacing, origin, orientation
 
 
-def _slice_normal_z_sign(orientation_cosines: list = None) -> float:
+def _slice_normal_z_sign(orientation_cosines: list | None = None) -> float:
     """
     Return the sign of the DICOM slice normal's patient-Z component.
 
@@ -553,7 +563,7 @@ def monai_preprocess(
     volume: np.ndarray,
     spacing: tuple,
     origin: tuple,
-    orientation_cosines: list = None,
+    orientation_cosines: list | None = None,
     target_spacing: tuple | None = (0.5, 0.5, 0.5),
 ) -> tuple:
     """
@@ -573,13 +583,13 @@ def monai_preprocess(
     patient axis, so Orientation("RAS") can reorder them properly.
     """
     import torch
-    from monai.transforms import (
+    from monai.transforms.spatial.array import (
         Orientation,
         Spacing,
-        ScaleIntensityRange,
-        CropForeground,
     )
-    from monai.data import MetaTensor
+    from monai.transforms.intensity.array import ScaleIntensityRange
+    from monai.transforms.croppad.array import CropForeground
+    from monai.data.meta_tensor import MetaTensor
 
     print(f"[MONAI] Input volume: shape={volume.shape}, range=[{volume.min():.0f}, {volume.max():.0f}]")
 
@@ -610,7 +620,7 @@ def monai_preprocess(
 
     # ── Step 2: Convert to MONAI MetaTensor ──
     tensor = torch.from_numpy(volume.copy()).unsqueeze(0).float()  # (1, Z, Y, X)
-    meta_tensor = MetaTensor(tensor, affine=torch.from_numpy(affine).float())
+    meta_tensor: Any = MetaTensor(tensor, affine=torch.from_numpy(affine).float())
     print(f"[MONAI] MetaTensor shape: {meta_tensor.shape}")
 
     # ── Step 3: Orientation("RAS") — Reorder (S,A,R) → (R,A,S) = (X,Y,Z) ──
@@ -646,7 +656,7 @@ def monai_preprocess(
 
     # ── Step 6: CropForeground — Remove surrounding air/cylinder ──
     try:
-        pre_crop_tensor = meta_tensor.clone()
+        pre_crop_tensor: Any = meta_tensor.clone() if hasattr(meta_tensor, 'clone') else meta_tensor
         pre_crop_shape = meta_tensor.shape
         crop_spacing = target_spacing if target_spacing is not None else spacing
         margin_voxels = _crop_margin_voxels_for_spacing(crop_spacing)
@@ -656,7 +666,7 @@ def monai_preprocess(
             f"margin={margin_voxels} voxels (12.0mm physical)"
         )
         try:
-            crop_transform = CropForeground(
+            crop_transform: Any = CropForeground(
                 select_fn=lambda x: x > crop_threshold,
                 margin=margin_voxels,
                 allow_smaller=True,
@@ -679,13 +689,15 @@ def monai_preprocess(
     # ── Step 7: Extract final numpy array ──
     # After Orientation("RAS"): axes are (R, A, S) = (X, Y, Z)
     # This is exactly what write_vti_vtk expects: shape (nx, ny, nz)
-    result = meta_tensor.squeeze(0).detach().cpu().numpy().astype(np.float32)
+    tensor_for_numpy: Any = meta_tensor.squeeze(0)
+    result = tensor_for_numpy.detach().cpu().numpy().astype(np.float32) if hasattr(tensor_for_numpy, 'detach') else np.asarray(tensor_for_numpy, dtype=np.float32)
 
     final_spacing = tuple(float(value) for value in (target_spacing if target_spacing is not None else spacing))
 
     # Get updated origin from MONAI affine
     if hasattr(meta_tensor, 'affine') and meta_tensor.affine is not None:
-        new_affine = meta_tensor.affine.cpu().numpy()
+        raw_affine: Any = meta_tensor.affine
+        new_affine = raw_affine.cpu().numpy() if hasattr(raw_affine, 'cpu') else np.asarray(raw_affine)
         new_origin = (float(new_affine[0, 3]), float(new_affine[1, 3]), float(new_affine[2, 3]))
     else:
         new_origin = origin
@@ -768,7 +780,7 @@ def _binary_erode(mask: np.ndarray, iterations: int = 1) -> np.ndarray:
     return eroded
 
 
-def _binary_dilate(mask: np.ndarray, iterations: int = 1, clip_mask: np.ndarray = None) -> np.ndarray:
+def _binary_dilate(mask: np.ndarray, iterations: int = 1, clip_mask: np.ndarray | None = None) -> np.ndarray:
     """Lightweight 3D dilation using one-voxel 6-connectivity."""
     dilated = mask.astype(bool, copy=True)
 
@@ -938,7 +950,7 @@ def _component_regrows_to_boundary(component: dict, shape: tuple, clip_mask: np.
     xs, ys, zs = component["voxels"]
     seed_component[xs, ys, zs] = True
     grown_component = _binary_dilate(seed_component, iterations=1, clip_mask=clip_mask)
-    return (
+    return bool(
         grown_component[0, :, :].any()
         or grown_component[-1, :, :].any()
         or grown_component[:, 0, :].any()
@@ -965,7 +977,7 @@ def _build_heuristic_tooth_labels(volume: np.ndarray) -> tuple[Optional[np.ndarr
         return None, _empty_segmentation_manifest()
 
     try:
-        from scipy import ndimage
+        from scipy import ndimage  # type: ignore # pyright: ignore[reportMissingImports]
         labeled_array, num_features = ndimage.label(seed_mask)
         components = _scipy_components_to_list(labeled_array, num_features, volume.shape)
     except Exception:
@@ -1353,10 +1365,11 @@ def generate_2d_image(file_list: list, output_path: str) -> dict:
             }
             
         import pydicom
+        from pydicom.dataset import FileMetaDataset
         from pydicom.uid import ExplicitVRLittleEndian
         ds = pydicom.dcmread(input_path, force=True)
         if not hasattr(ds, 'file_meta') or ds.file_meta is None:
-            ds.file_meta = pydicom.dataset.FileMetaDataset()
+            ds.file_meta = FileMetaDataset()
         if not hasattr(ds.file_meta, 'TransferSyntaxUID') or ds.file_meta.TransferSyntaxUID is None:
             ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
         
@@ -1423,10 +1436,11 @@ def generate_thumbnail(file_list: list, output_path: str, target_index: int = -1
             return True
             
         import pydicom
+        from pydicom.dataset import FileMetaDataset
         from pydicom.uid import ExplicitVRLittleEndian
         ds = pydicom.dcmread(input_path, force=True)
         if not hasattr(ds, 'file_meta') or ds.file_meta is None:
-            ds.file_meta = pydicom.dataset.FileMetaDataset()
+            ds.file_meta = FileMetaDataset()
         if not hasattr(ds.file_meta, 'TransferSyntaxUID') or ds.file_meta.TransferSyntaxUID is None:
             ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
         
@@ -1561,7 +1575,7 @@ def _process_2d_series_conversion(
     series_info: dict,
     sorted_files: list,
     force: bool,
-    run_id: str,
+    run_id: str | None = None,
 ) -> dict:
     safe_uid = series_uid.replace('.', '_')[:50]
     img_path = os.path.join(study_path, f"image_{safe_uid}.jpg")
@@ -1610,7 +1624,7 @@ def _process_3d_series_conversion(
     force: bool,
     segment: bool,
     progress_callback,
-    run_id: str,
+    run_id: str | None = None,
 ) -> tuple[dict, bool]:
     safe_uid = series_uid.replace('.', '_')[:50]
     modality = series_info['modality']
@@ -1742,11 +1756,11 @@ def convert_study_to_vti(
     force: bool = False,
     segment: bool = False,
     progress_callback=None,
-    study_id: str = None,
+    study_id: str | None = None,
     quality: str = "standard",
-    run_id: str = None,
-    case_id: str = None,
-    iteration: str = None,
+    run_id: str | None = None,
+    case_id: str | None = None,
+    iteration: str | None = None,
 ) -> dict:
     """Main entry point: Convert a DICOM study folder to output files."""
     start_time = time.time()

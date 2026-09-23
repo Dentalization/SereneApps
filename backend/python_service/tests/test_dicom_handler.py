@@ -8,6 +8,14 @@ from types import SimpleNamespace
 
 import numpy as np
 import pydicom
+from typing import Any
+from pydicom.dataset import FileMetaDataset, FileDataset
+from pydicom.valuerep import PersonName
+from pydicom.uid import (
+    ExplicitVRLittleEndian,
+    SecondaryCaptureImageStorage,
+    generate_uid,
+)
 
 PY_SERVICE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if PY_SERVICE_ROOT not in sys.path:
@@ -18,7 +26,7 @@ from services.dicom_handler import DicomHandler
 
 class DicomWindowingTests(unittest.TestCase):
     def _make_handler(self, window_center=None, window_width=None):
-        handler = DicomHandler.__new__(DicomHandler)
+        handler: Any = DicomHandler.__new__(DicomHandler)
 
         if window_center is None and window_width is None:
             handler.first_ds = SimpleNamespace()
@@ -87,7 +95,7 @@ class DicomWindowingTests(unittest.TestCase):
         self.assertIn('No DICOM window found', stdout.getvalue())
 
     def test_metadata_exposes_additional_first_slice_fields(self):
-        handler = DicomHandler.__new__(DicomHandler)
+        handler: Any = DicomHandler.__new__(DicomHandler)
         handler.volume = None
         handler.shape = None
         handler.files = ['slice1.dcm']
@@ -100,7 +108,7 @@ class DicomWindowingTests(unittest.TestCase):
             SliceThickness=0.4,
             WindowCenter=400,
             WindowWidth=1200,
-            PatientName=pydicom.valuerep.PersonName('Jane^Doe'),
+            PatientName=PersonName('Jane^Doe'),
             PatientID='P-42',
             PatientBirthDate='19800115',
             PatientSex='F',
@@ -138,12 +146,12 @@ class DicomWindowingTests(unittest.TestCase):
     def test_raw_tags_skip_pixel_data_and_include_private_tags(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             file_path = os.path.join(tmpdir, 'slice.dcm')
-            file_meta = pydicom.dataset.FileMetaDataset()
-            file_meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
-            file_meta.MediaStorageSOPClassUID = pydicom.uid.SecondaryCaptureImageStorage
-            file_meta.MediaStorageSOPInstanceUID = pydicom.uid.generate_uid()
-            file_meta.ImplementationClassUID = pydicom.uid.generate_uid()
-            dataset = pydicom.dataset.FileDataset(file_path, {}, file_meta=file_meta, preamble=b'\0' * 128)
+            file_meta = FileMetaDataset()
+            file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+            file_meta.MediaStorageSOPClassUID = SecondaryCaptureImageStorage
+            file_meta.MediaStorageSOPInstanceUID = generate_uid()
+            file_meta.ImplementationClassUID = generate_uid()
+            dataset = FileDataset(file_path, {}, file_meta=file_meta, preamble=b'\0' * 128)
             dataset.SOPClassUID = file_meta.MediaStorageSOPClassUID
             dataset.SOPInstanceUID = file_meta.MediaStorageSOPInstanceUID
             dataset.PatientName = 'Jane^Doe'
