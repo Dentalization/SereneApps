@@ -34,7 +34,7 @@ def numbers(value):
 def audit_dataset(raw_root):
     root = Path(raw_root) if raw_root else None
     if root is None or not root.is_dir() or not any(root.rglob("*")):
-        return {"status": DATASET_UNAVAILABLE, "studyCount": None, "usableSamples": None,
+        return {"status": DATASET_UNAVAILABLE, "dataStatus": "RAW_DICOM_UNAVAILABLE_CURRENT_ENVIRONMENT", "studyCount": None, "usableSamples": None,
                 "studies": [], "processingVersion": VERSION, "reason": "Raw DICOM research dataset not supplied"}
     groups, unreadable = {}, []
     for path in sorted(root.rglob("*")):
@@ -105,7 +105,7 @@ def audit_dataset(raw_root):
             "exclusionReason": sorted(set(issues)), "inputChecksums": [item["checksum"] for item in items],
             "pixelIntegrity": "not_decoded_by_header_audit", "missingSliceDetection": "spacing_consistency_only_not_acquisition_count_proof"})
     if not records:
-        return {"status": DATASET_UNAVAILABLE, "studyCount": None, "usableSamples": None, "studies": [],
+        return {"status": DATASET_UNAVAILABLE, "dataStatus": "RAW_DICOM_UNAVAILABLE_CURRENT_ENVIRONMENT", "studyCount": None, "usableSamples": None, "studies": [],
                 "unreadableFiles": unreadable, "reason": "No readable DICOM image series", "processingVersion": VERSION}
     return {"status": "audited_not_ml_ready", "studyCount": len({s["studyId"] for s in records}),
         "seriesCount": len(records), "usableSamples": None, "studies": records, "unreadableFiles": unreadable,

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Independent scale calibration request; no reference-based fitting",
+  "type": "object",
+  "required": [
+    "reconstructionPath",
+    "provenancePath",
+    "independentMeasurement"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "reconstructionPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provenancePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "independentMeasurement": {
+      "type": "object",
+      "required": [
+        "measurementId",
+        "device",
+        "measuredAt",
+        "reviewer",
+        "landmarkDefinition",
+        "evidencePath",
+        "source",
+        "usedValidationReference",
+        "units",
+        "evidenceSha256",
+        "vertexIndices",
+        "distance",
+        "uncertainty"
+      ],
+      "properties": {
+        "measurementId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "device": {
+          "type": "string",
+          "minLength": 1
+        },
+        "measuredAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "landmarkDefinition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidencePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "const": "independent_physical_measurement"
+        },
+        "usedValidationReference": {
+          "const": false
+        },
+        "units": {
+          "enum": [
+            "mm",
+            "m",
+            "um"
+          ]
+        },
+        "evidenceSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "vertexIndices": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "distance": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "uncertainty": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

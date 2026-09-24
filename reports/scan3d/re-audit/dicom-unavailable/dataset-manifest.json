@@ -1,0 +1,9 @@
+{
+  "status": "DATASET_UNAVAILABLE",
+  "dataStatus": "RAW_DICOM_UNAVAILABLE_CURRENT_ENVIRONMENT",
+  "studyCount": null,
+  "usableSamples": null,
+  "studies": [],
+  "processingVersion": "dicom-research-audit-1",
+  "reason": "Raw DICOM research dataset not supplied"
+}

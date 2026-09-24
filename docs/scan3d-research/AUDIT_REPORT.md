@@ -1,5 +1,7 @@
 # Phase 1–18 audit and implementation report
 
+> Updated re-audit: see [RE_AUDIT_REPORT.md](RE_AUDIT_REPORT.md). Historical B001 CBCT benchmark evidence exists. Its configured raw directory is unavailable in the current environment; this is not a claim that a DICOM dataset never existed. Phase 8 is an image-derived experimental baseline.
+
 Date: 2026-09-24. Repository: Dentalization/SereneApps. Existing branch: ADRIANHHALIM. No branch creation, commit, push, reset or discard. This report records software work and controlled tests, not a completed clinical product or empirical research study.
 
 **IMPLEMENTED ≠ EXPERIMENTALLY VALIDATED ≠ CLINICALLY VALIDATED**

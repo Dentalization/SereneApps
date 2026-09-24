@@ -1,0 +1,104 @@
+{
+  "status": "software_verification_only",
+  "syntheticInput": true,
+  "datasetStatus": "DATASET_UNAVAILABLE",
+  "experimentallyValidated": false,
+  "clinicallyValidated": false,
+  "configuration": {
+    "frameSampling": {
+      "minPixelDifference": 0.1
+    },
+    "reconstruction": {
+      "parameters": {
+        "maxViews": 4
+      }
+    }
+  },
+  "environment": {
+    "python": "3.14.0",
+    "platform": "Darwin",
+    "machine": "arm64",
+    "opencv": "4.13.0",
+    "numpy": "2.4.4"
+  },
+  "runs": [
+    {
+      "timingsMs": {
+        "acquisitionMs": 90.931,
+        "poseAndTriangulationMs": 20.57004199741641,
+        "meshExportMs": 14.528749998135027,
+        "totalMs": 211.71433400013484,
+        "cpuTimeMs": 320.226
+      },
+      "memory": {
+        "processPeakRssBytes": 158826496,
+        "scope": "process_lifetime_high_water_mark_not_job_delta",
+        "gpuMemoryBytes": null
+      },
+      "assetBytes": {
+        "mesh": 8795,
+        "ply": 8477,
+        "stl": 7584,
+        "preview": 215408
+      },
+      "inputBytes": 519128,
+      "vertexCount": 154,
+      "faceCount": 150
+    },
+    {
+      "timingsMs": {
+        "acquisitionMs": 61.454,
+        "poseAndTriangulationMs": 14.180375001160428,
+        "meshExportMs": 12.485916002333397,
+        "totalMs": 160.92958399894997,
+        "cpuTimeMs": 300.06700000000006
+      },
+      "memory": {
+        "processPeakRssBytes": 162332672,
+        "scope": "process_lifetime_high_water_mark_not_job_delta",
+        "gpuMemoryBytes": null
+      },
+      "assetBytes": {
+        "mesh": 8795,
+        "ply": 8477,
+        "stl": 7584,
+        "preview": 215408
+      },
+      "inputBytes": 519128,
+      "vertexCount": 154,
+      "faceCount": 150
+    },
+    {
+      "timingsMs": {
+        "acquisitionMs": 61.397,
+        "poseAndTriangulationMs": 13.905625000916189,
+        "meshExportMs": 11.73699999708333,
+        "totalMs": 160.09158299857518,
+        "cpuTimeMs": 295.597
+      },
+      "memory": {
+        "processPeakRssBytes": 162562048,
+        "scope": "process_lifetime_high_water_mark_not_job_delta",
+        "gpuMemoryBytes": null
+      },
+      "assetBytes": {
+        "mesh": 8795,
+        "ply": 8477,
+        "stl": 7584,
+        "preview": 215408
+      },
+      "inputBytes": 519128,
+      "vertexCount": 154,
+      "faceCount": 150
+    }
+  ],
+  "smartphoneCapture": null,
+  "networkUploadMs": null,
+  "gpuMemoryBytes": null,
+  "limitations": [
+    "Controlled rendered texture sequence, not a smartphone or dental dataset",
+    "No trueness, precision or geometric accuracy is evaluated",
+    "Memory is process lifetime high-water mark",
+    "Media and all reconstructed geometry are discarded after software profiling"
+  ]
+}

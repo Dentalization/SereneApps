@@ -1,0 +1,101 @@
+{
+  "schemaVersion": "1",
+  "checkedAt": "2026-09-24T07:50:51.490466+00:00",
+  "historicalCBCT": {
+    "status": "repository_benchmark_evidence_present",
+    "caseId": "B001",
+    "folderAlias": "representative_cbct_01",
+    "repeatRunsConfigured": 5,
+    "runs": [
+      {
+        "runId": "xcore_single_complete_cbct_repeated_benchmark_1781387380687",
+        "successCount": 0,
+        "failureCount": 5,
+        "fileCounts": [
+          559
+        ],
+        "sourceBytes": [
+          1603253221
+        ],
+        "reportedSliceCounts": [
+          300
+        ]
+      },
+      {
+        "runId": "xcore_single_complete_cbct_repeated_benchmark_1781387396531",
+        "successCount": 5,
+        "failureCount": 0,
+        "fileCounts": [
+          559
+        ],
+        "sourceBytes": [
+          1603253221
+        ],
+        "reportedSliceCounts": [
+          300
+        ]
+      },
+      {
+        "runId": "xcore_single_complete_cbct_repeated_benchmark_1781387526163",
+        "successCount": 0,
+        "failureCount": 5,
+        "fileCounts": [
+          550
+        ],
+        "sourceBytes": [
+          1539068687
+        ],
+        "reportedSliceCounts": [
+          300
+        ]
+      },
+      {
+        "runId": "xcore_single_complete_cbct_repeated_benchmark_1781387626964",
+        "successCount": 5,
+        "failureCount": 0,
+        "fileCounts": [
+          550
+        ],
+        "sourceBytes": [
+          1539068687
+        ],
+        "reportedSliceCounts": [
+          300
+        ]
+      }
+    ],
+    "meaning": "Repeated software processing of a recorded case; not repeated physical smartphone captures, surface truth or clinical validation"
+  },
+  "currentRawDICOM": {
+    "status": "RAW_DICOM_UNAVAILABLE_CURRENT_ENVIRONMENT",
+    "reason": "Configured raw path is missing",
+    "configuredPathSource": "scripts/xcore-benchmark/benchmark.single.config.json",
+    "studyCount": null,
+    "usableSamples": null
+  },
+  "smartphone": {
+    "status": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+    "basis": "No smartphone research dataset supplied in the authorized workflow; tracked-file audit recorded in re-audit report"
+  },
+  "repeatedCaptures": {
+    "status": "REPEATED_CAPTURE_DATA_UNAVAILABLE"
+  },
+  "surfaceReferences": {
+    "status": "REFERENCE_GEOMETRY_UNAVAILABLE"
+  },
+  "syntheticFixtures": {
+    "permittedUse": "software_verification_only",
+    "researchEligible": false
+  },
+  "sources": [
+    {
+      "path": "scripts/xcore-benchmark/benchmark.single.config.json",
+      "sha256": "1355fe1d46b3b945f59c8fb6a83d1d77b63876d1781081c41970707640823721"
+    },
+    {
+      "path": "scripts/xcore-benchmark/results/benchmark-runs.csv",
+      "sha256": "a9d784148eacd7a29e153c47c60926cd2a9c88a5ffc262d3bc69b081b7889628"
+    }
+  ],
+  "clinicalValidation": false
+}

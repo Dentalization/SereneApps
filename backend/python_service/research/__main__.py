@@ -3,9 +3,12 @@ import json
 from pathlib import Path
 from .validation import evaluate, repeatability, write_report
 from .dataset import audit_dataset, dataset_layout, derive_reference
+from .calibration import calibrate
+from .evidence import dataset_evidence
 
 parser = argparse.ArgumentParser(description="Offline experimental research tools; no automatic validation or clinical promotion")
-parser.add_argument("command", choices=["validate", "repeatability", "dataset-audit", "dataset-init", "derive-reference"])
+parser.add_argument("command", choices=["validate", "repeatability", "dataset-audit", "dataset-init", "derive-reference", "calibrate", "dataset-evidence"])
+parser.add_argument("--repository", default=".", help="Repository root for historical benchmark evidence")
 parser.add_argument("--config", help="Researcher-controlled JSON configuration")
 parser.add_argument("--raw", help="Read-only DICOM input root")
 parser.add_argument("--output", required=True, help="New evidence directory (never a raw data directory)")
@@ -17,7 +20,17 @@ if args.command == "dataset-init":
 else:
     if args.raw and Path(args.output).resolve().is_relative_to(Path(args.raw).resolve()):
         parser.error("Output must be outside the raw dataset")
-    if args.command in ("validate", "repeatability"):
+    if args.command == "dataset-evidence":
+        result = dataset_evidence(args.repository)
+        Path(args.output).mkdir(parents=True, exist_ok=True)
+        with (Path(args.output) / "dataset-evidence.json").open("x") as stream:
+            json.dump(result, stream, indent=2, allow_nan=False)
+        result = {"status": result["currentRawDICOM"]["status"]}
+    elif args.command == "calibrate":
+        result = calibrate(config, args.output)
+        if result["status"] == "DATASET_UNAVAILABLE":
+            write_report(result, args.output)
+    elif args.command in ("validate", "repeatability"):
         result = evaluate(config) if args.command == "validate" else repeatability(config)
         write_report(result, args.output)
     else:

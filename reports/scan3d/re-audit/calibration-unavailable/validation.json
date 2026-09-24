@@ -1,0 +1,7 @@
+{
+  "status": "DATASET_UNAVAILABLE",
+  "dataStatus": "CALIBRATION_INPUT_UNAVAILABLE",
+  "metrics": null,
+  "processingVersion": "independent-scale-1",
+  "reason": "Real reconstruction, provenance and independent calibration evidence required"
+}

@@ -1,0 +1,88 @@
+{
+  "status": "software_verification_only",
+  "datasetStatus": "DATASET_UNAVAILABLE",
+  "timestamp": "2026-09-24T07:53:25.470Z",
+  "environment": {
+    "node": "v22.12.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "release": "25.6.0"
+  },
+  "results": [
+    {
+      "fixture": "synthetic_planar_triangles_software_verification_only",
+      "faces": 1000,
+      "bytes": 50084,
+      "parsedVertices": 3000,
+      "parsedFaces": 1000,
+      "parseMs": 2.1066670000000016,
+      "processRssDeltaBytes": 753664,
+      "heapDeltaBytes": 390400,
+      "memoryScope": "Node process deltas, GC dependent; excludes browser/GPU",
+      "fps": null,
+      "renderMs": null
+    },
+    {
+      "fixture": "synthetic_planar_triangles_software_verification_only",
+      "faces": 25000,
+      "bytes": 1250084,
+      "parsedVertices": 75000,
+      "parsedFaces": 25000,
+      "parseMs": 6.209791999999993,
+      "processRssDeltaBytes": 2015232,
+      "heapDeltaBytes": 254768,
+      "memoryScope": "Node process deltas, GC dependent; excludes browser/GPU",
+      "fps": null,
+      "renderMs": null
+    },
+    {
+      "fixture": "synthetic_planar_triangles_software_verification_only",
+      "faces": 100000,
+      "bytes": 5000084,
+      "parsedVertices": 300000,
+      "parsedFaces": 100000,
+      "parseMs": 17.91154200000001,
+      "processRssDeltaBytes": 7536640,
+      "heapDeltaBytes": -1111112,
+      "memoryScope": "Node process deltas, GC dependent; excludes browser/GPU",
+      "fps": null,
+      "renderMs": null
+    },
+    {
+      "fixture": "synthetic_planar_triangles_software_verification_only",
+      "faces": 500000,
+      "bytes": 25000084,
+      "parsedVertices": 1500000,
+      "parsedFaces": 500000,
+      "parseMs": 7.688416999999987,
+      "processRssDeltaBytes": 32096256,
+      "heapDeltaBytes": -224024,
+      "memoryScope": "Node process deltas, GC dependent; excludes browser/GPU",
+      "fps": null,
+      "renderMs": null
+    }
+  ],
+  "stateTimings": [
+    {
+      "annotationCount": 1,
+      "stateUpdateMs": 0.6937499999999943,
+      "scope": "pure state reducer only, not browser annotation latency"
+    },
+    {
+      "annotationCount": 100,
+      "stateUpdateMs": 1.642832999999996,
+      "scope": "pure state reducer only, not browser annotation latency"
+    },
+    {
+      "annotationCount": 1000,
+      "stateUpdateMs": 10.884459000000021,
+      "scope": "pure state reducer only, not browser annotation latency"
+    }
+  ],
+  "limitations": [
+    "No smartphone or clinical geometry",
+    "No browser rendering, FPS, GPU memory or camera interaction measurement",
+    "Single runs without statistical inference",
+    "No maximum supported mesh size established"
+  ]
+}
