@@ -26,11 +26,15 @@ export function scanAnnotationStorageKey({ scanId, ownerId, asset }) {
 }
 
 export function scanAssetPath(scanId, asset) {
+  const diagnostic = `/v1/x-core/3d-scans/${encodeURIComponent(scanId)}/diagnostic-mesh`;
   const prefix = `/v1/x-core/3d-scans/${encodeURIComponent(scanId)}/assets/`;
   const path = asset?.assetUrl;
+  if (asset?.diagnosticOnly === true && path === diagnostic
+      && ['obj', 'ply', 'stl'].includes(asset.format)
+      && /^[a-f0-9]{64}$/.test(asset.sha256 || '')) return `/api${diagnostic}`;
   if (typeof path !== 'string' || !path.startsWith(prefix)) return null;
   const filename = path.slice(prefix.length);
-  return /^[a-zA-Z0-9_-]+\.(stl|ply|obj)$/.test(filename) ? path : null;
+  return /^[a-zA-Z0-9_-]+\.(stl|ply|obj)$/.test(filename) ? `/api${path}` : null;
 }
 
 export const MAX_SCAN_ASSET_BYTES = 128 * 1024 * 1024;

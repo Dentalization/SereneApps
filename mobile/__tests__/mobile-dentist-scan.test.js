@@ -2,10 +2,11 @@ import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { useSelector } from 'react-redux';
 import { PaperProvider } from 'react-native-paper';
+import { TouchableOpacity } from 'react-native';
 
 import * as scan3DService from '../src/services/scan3DService';
 import api from '../src/services/api';
-import DentistScan3DScreen from '../src/features/dentist/screens/3D/DentistScan3DScreen';
+import DentistScan3DScreen, { captureGuideMessage, captureReviewWarnings, formatScanIdentifier, scanFailureMessage } from '../src/features/dentist/screens/3D/DentistScan3DScreen';
 import DentistHomeScreen from '../src/features/dentist/screens/DentistHome/DentistHomeScreen';
 jest.mock('../src/services/authService', () => ({ logoutPatient: jest.fn().mockResolvedValue({ success: true }) }));
 
@@ -54,6 +55,7 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     api.get.mockReset();
+    api.post.mockReset();
     api.get.mockImplementation((url) => Promise.resolve({ data: url === '/auth/me' ? { id: 10, roles: ['dentist'] } : {} }));
   });
 
@@ -343,8 +345,10 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
       });
 
       const textValues = collectText(tree.toJSON());
-      expect(textValues).toContain('3D Dental Scan');
-      expect(textValues).toContain('Dentist Mobile 3D Scan Pipeline');
+      expect(textValues).toContain('Smartphone Dental 3D Scan');
+      expect(textValues).toContain('drg. Dr. Sarah');
+      expect(textValues).toContain('Akun Dokter Gigi');
+      expect(textValues).toContain('Keluar');
       expect(textValues).toContain('+ Pasien Baru');
       expect(textValues).toContain('Pilih Pasien Terdaftar:');
       expect(textValues).toContain('Dewi Lestari');
@@ -399,7 +403,7 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
 
       // Initially renders idle screen
       const initialTexts = collectText(tree.toJSON());
-      expect(initialTexts).toContain('3D Dental Scan');
+      expect(initialTexts).toContain('Smartphone Dental 3D Scan');
 
       await act(async () => {
         tree.unmount();
@@ -487,6 +491,122 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
       // Let's verify initial state rendered
       let texts = collectText(tree.toJSON());
       expect(texts).toContain('Budi Handoko');
+
+      await act(async () => {
+        tree.unmount();
+      });
+    });
+
+    test('formatScanIdentifier correctly truncates long UUID scan identifiers with ellipsis', () => {
+      expect(formatScanIdentifier('SCAN-3D-d3401f2e-a291-4902-b59d-af96139972ef')).toBe('SCAN-3D-d3401f2e...9972ef');
+      expect(formatScanIdentifier('SCAN-3D-20260923-BUDI42')).toBe('SCAN-3D-20260923-BUDI42');
+      expect(formatScanIdentifier('short-id')).toBe('short-id');
+      expect(formatScanIdentifier(null)).toBe('-');
+      expect(formatScanIdentifier(undefined)).toBe('-');
+    });
+
+    test('service failures are distinguished from footage quality failures', () => {
+      expect(scanFailureMessage('SCAN_SERVICE_NOT_CONFIGURED')).toContain('administrator');
+      expect(scanFailureMessage('ACQUISITION_SERVICE_UNAVAILABLE')).toContain('Rekaman sudah tersimpan');
+      expect(scanFailureMessage('CAPTURE_QUALITY_REJECTED')).toContain('Rekam video baru');
+      expect(scanFailureMessage('RECONSTRUCTION_GEOMETRY_INSUFFICIENT')).toContain('Rekam video baru');
+      expect(scanFailureMessage('OTHER_ERROR', 'Alasan dari server')).toBe('Alasan dari server');
+    });
+
+    test('capture prompts cover one arch without claiming measured anatomy', () => {
+      expect(captureGuideMessage(0)).toContain('geraham kiri');
+      expect(captureGuideMessage(8)).toContain('gigi depan');
+      expect(captureGuideMessage(16)).toContain('geraham kanan');
+      expect(captureGuideMessage(24)).toContain('sisi kunyah');
+      expect(captureReviewWarnings({ durationSec: 15, requestedResolution: '720p' })).toHaveLength(2);
+      expect(captureReviewWarnings({ durationSec: 25, requestedResolution: '1080p' })).toEqual([]);
+    });
+
+    test('a rejected queue request keeps the uploaded scan recoverable instead of displaying completion', async () => {
+      useSelector.mockImplementation((selector) => selector({ auth: {
+        authLevel: 'full_account', accessToken: 'test-session',
+        user: { id: 10, name: 'Dr. Sarah', roles: ['dentist'] },
+      } }));
+      api.get.mockImplementation((url) => {
+        if (url === '/auth/me') return Promise.resolve({ data: { id: 10, roles: ['dentist'] } });
+        if (url === '/x-core/3d-scans/patients') return Promise.resolve({ data: { patients: [{ id: 42, name: 'Budi Handoko' }] } });
+        if (url === '/x-core/3d-scans/501/status') return Promise.resolve({ data: { status: 'uploaded' } });
+        return Promise.reject(new Error(`Unexpected GET ${url}`));
+      });
+      const scan = { id: '501', scanIdentifier: 'SCAN-3D-501', scanScope: 'full', patient: { id: 42, name: 'Budi Handoko' } };
+      api.post
+        .mockResolvedValueOnce({ data: { scan: { ...scan, status: 'pending_capture' } } })
+        .mockResolvedValueOnce({ data: { scan: { ...scan, status: 'uploaded' } } })
+        .mockRejectedValueOnce({ response: { data: { error: 'Queue unavailable' } } });
+
+      const containsText = (node, wanted) => node.children.some((child) =>
+        typeof child === 'string' ? child === wanted : containsText(child, wanted));
+      const pressNamed = async (tree, wanted) => {
+        const control = tree.root.findAllByType(TouchableOpacity).find((node) => containsText(node, wanted));
+        expect(control).toBeDefined();
+        await act(async () => { control.props.onPress(); });
+      };
+      let tree;
+      await act(async () => { tree = renderer.create(<PaperProvider><DentistScan3DScreen navigation={{}} /></PaperProvider>); });
+      await pressNamed(tree, 'Budi Handoko');
+      const fullArch = tree.root.findAllByType(TouchableOpacity).find((node) => containsText(node, 'Full Arch'));
+      expect(fullArch.props.disabled).toBe(true);
+      await pressNamed(tree, 'Mulai Sesi 3D Scan');
+      expect(api.post).toHaveBeenNthCalledWith(1, '/x-core/3d-scans', expect.objectContaining({ scanScope: 'upper' }));
+      const continueButton = tree.root.findAllByProps({ children: 'Lanjutkan ke Perekaman Video' }).find((node) => node.props.onPress);
+      await act(async () => { continueButton.props.onPress(); });
+      const camera = tree.root.findAllByProps({ testID: 'camera-view' })[0];
+      expect(camera.props.facing).toBe('back');
+      expect(tree.root.findAllByType(TouchableOpacity).find((node) => node.props.style?.width === 72).props.disabled).toBe(true);
+      await act(async () => { camera.props.onCameraReady(); });
+      const shutter = tree.root.findAllByType(TouchableOpacity).find((node) => node.props.style?.width === 72);
+      expect(shutter.props.disabled).toBe(false);
+      await act(async () => { await shutter.props.onPress(); });
+      const uploadButton = tree.root.findAllByProps({ children: 'Unggah & Mulai Rekonstruksi' }).find((node) => node.props.onPress);
+      await act(async () => { await uploadButton.props.onPress(); });
+
+      const words = collectText(tree.toJSON()).join(' ');
+      expect(words).toContain('Video Tersimpan, Rekonstruksi Belum Dimulai');
+      expect(words).toContain('Coba Jadwalkan Lagi');
+      expect(words).not.toContain('Rekonstruksi 3D Berhasil!');
+      expect(api.post).toHaveBeenCalledTimes(3);
+      await act(async () => tree.unmount());
+    });
+
+    test('DentistScan3DScreen calls setOptions/setParams to hide bottom navbar in camera mode', async () => {
+      useSelector.mockImplementation((selector) => {
+        return selector({
+          auth: {
+            authLevel: 'full_account', accessToken: 'test-session',
+            user: { id: 10, name: 'Dr. Sarah', roles: ['dentist'] },
+          },
+        });
+      });
+
+      api.get.mockImplementation((url) => {
+        if (url === '/auth/me') return Promise.resolve({ data: { id: 10, roles: ['dentist'] } });
+        return Promise.resolve({ data: { success: true, patients: [] } });
+      });
+
+      const mockSetOptions = jest.fn();
+      const mockSetParams = jest.fn();
+      const mockNavigation = {
+        setOptions: mockSetOptions,
+        setParams: mockSetParams,
+        getParent: () => ({ setOptions: jest.fn() }),
+      };
+
+      let tree;
+      await act(async () => {
+        tree = renderer.create(
+          <PaperProvider>
+            <DentistScan3DScreen navigation={mockNavigation} />
+          </PaperProvider>
+        );
+      });
+
+      // Initially in setup stage, hideTabBar is false
+      expect(mockSetParams).toHaveBeenCalledWith({ hideTabBar: false });
 
       await act(async () => {
         tree.unmount();

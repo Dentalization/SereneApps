@@ -16,7 +16,7 @@ from research.validation import (rigid_matrix, kabsch, transform_points, sample_
 from research.dataset import audit_dataset, dataset_layout, derive_reference
 from research.reproduce import reproduce
 from services.lidra_service import analyze_video_acquisition
-from services.reconstruction_service import triangulate_verified, process_3d_scan_reconstruction, ReconstructionUnavailable
+from services.reconstruction_service import triangulate_verified, process_3d_scan_reconstruction, mesh_topology_diagnostics, ReconstructionUnavailable
 
 
 class SurfaceSoftwareTests(unittest.TestCase):
@@ -92,6 +92,14 @@ class SurfaceSoftwareTests(unittest.TestCase):
 
 
 class AcquisitionSoftwareTests(unittest.TestCase):
+    def test_mesh_topology_reports_fragments_without_claiming_anatomy(self):
+        faces = np.array([[0, 1, 2], [1, 2, 3], [4, 5, 6]], dtype=int)
+        self.assertEqual(mesh_topology_diagnostics(8, faces), {
+            'connectedComponents': 2, 'largestComponentFaces': 2,
+            'largestComponentFaceFraction': 2 / 3, 'usedVertices': 7, 'isolatedVertices': 1})
+        with self.assertRaisesRegex(ValueError, 'invalid vertex'):
+            mesh_topology_diagnostics(3, np.array([[0, 1, 3]]))
+
     def test_missing_corrupt_and_blank_video_fail_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -144,7 +152,12 @@ class AcquisitionSoftwareTests(unittest.TestCase):
             self.assertTrue(result['success'])
             self.assertGreaterEqual(result['metadata']['vertexCount'], 20)
             self.assertGreater(result['metadata']['faceCount'], 0)
-            self.assertEqual(len(result['cameraTrajectory']), 2)
+            self.assertGreaterEqual(result['metadata']['meshTopology']['connectedComponents'], 1)
+            self.assertIn('firstFrame', result['metadata']['bestPair'])
+            self.assertGreaterEqual(len(result['cameraTrajectory']), 3)
+            self.assertEqual(result['metadata']['registeredFrames'], len(result['cameraTrajectory']))
+            self.assertTrue(any(view['provenance'] == 'pnp_ransac' for view in result['cameraTrajectory']))
+            self.assertEqual(len(result['metadata']['featureSupport']['normalizedBounds']), 4)
             self.assertEqual(result['metadata']['units'], 'arbitrary')
             self.assertIsNone(result['confidence'])
             self.assertEqual(result['metadata']['measurementCapability'], 'visualization_only')
@@ -163,6 +176,22 @@ class AcquisitionSoftwareTests(unittest.TestCase):
             self.assertIn('minSharpness', result['metadata']['configuration']['frameSampling'])
             self.assertEqual(len(result['metadata']['reproducibility']['sourceSha256']), 3)
             self.assertTrue(all('sha256' in f for f in result['metadata']['selectedFrames']))
+            reuse_dir = Path(tmp) / 'reuse-output'
+            measured = analyze_video_acquisition(video, str(reuse_dir), configuration={'minPixelDifference': .1})
+            self.assertEqual(measured['status'], 'ready')
+            with patch('services.reconstruction_service.analyze_video_acquisition', side_effect=AssertionError('video analyzed twice')):
+                reused = process_3d_scan_reconstruction(str(reuse_dir), video_path=video,
+                    configuration={'frameSampling': {'minPixelDifference': .1}, 'reconstruction': {'parameters': {'maxViews': 4}}})
+            self.assertEqual(reused['metadata']['acquisitionSource'], 'verified_persisted_report')
+            self.assertEqual([(f['frameIndex'], f['sha256']) for f in reused['metadata']['selectedFrames']],
+                             [(f['frameIndex'], f['sha256']) for f in measured['selectedFrames']])
+            tampered_dir = Path(tmp) / 'tampered-output'
+            tampered = analyze_video_acquisition(video, str(tampered_dir), configuration={'minPixelDifference': .1})
+            first_frame = tampered_dir / 'frames' / tampered['selectedFrames'][0]['fileName']
+            first_frame.write_bytes(b'tampered software fixture')
+            with self.assertRaisesRegex(ReconstructionUnavailable, 'checksum mismatch'):
+                process_3d_scan_reconstruction(str(tampered_dir), video_path=video,
+                    configuration={'frameSampling': {'minPixelDifference': .1}})
             with self.assertRaisesRegex(ValueError, 'already exists'):
                 process_3d_scan_reconstruction(str(Path(tmp) / 'output'), video_path=video)
 

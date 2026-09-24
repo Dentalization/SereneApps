@@ -3,9 +3,31 @@ import fs from 'node:fs/promises';
 import { scanDirectory, confinedExistingFile } from './scanStorage.js';
 import { scanServiceHeaders, scanServiceSignal } from './engines/pythonServiceEngine.js';
 
-export function unavailableAcquisition(reason) {
+const HTTP_FAILURE_CODES = {
+  400: 'ACQUISITION_REQUEST_INVALID',
+  401: 'SCAN_SERVICE_AUTH_FAILED',
+  403: 'SCAN_SERVICE_AUTH_FAILED',
+  404: 'ACQUISITION_ENDPOINT_UNAVAILABLE',
+  422: 'ACQUISITION_CONFIGURATION_INVALID',
+  503: 'SCAN_SERVICE_NOT_CONFIGURED',
+};
+
+function acquisitionFailureCode(error) {
+  if (error.code && Object.values(HTTP_FAILURE_CODES).includes(error.code)) return error.code;
+  if (error.code === 'SCAN_SERVICE_NOT_CONFIGURED' || error.code === 'ACQUISITION_SERVICE_UNAVAILABLE') return error.code;
+  if (error.name === 'TimeoutError' || error.code === 'ETIMEDOUT' || error.cause?.code === 'ETIMEDOUT') {
+    return 'ACQUISITION_TIMEOUT';
+  }
+  if (['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET', 'EHOSTUNREACH'].includes(error.code)
+      || ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET', 'EHOSTUNREACH'].includes(error.cause?.code)) {
+    return 'ACQUISITION_SERVICE_UNAVAILABLE';
+  }
+  return 'ACQUISITION_UNAVAILABLE';
+}
+
+export function unavailableAcquisition(reason, failureCode = 'ACQUISITION_UNAVAILABLE') {
   const unavailable = { status: 'unavailable', reason };
-  return { success: false, status: 'unavailable', version: 'lidra-measured-2',
+  return { success: false, status: 'unavailable', failureCode, version: 'lidra-measured-2',
     qualityScore: null, frameQuality: unavailable, blur: unavailable, motionBlur: unavailable,
     exposure: unavailable, motion: unavailable, redundancy: unavailable, coverage: unavailable,
     selectedFrames: [], frameSelection: { selectedFramesCount: 0 },
@@ -29,7 +51,13 @@ export async function runLidraAcquisition(study, options = {}) {
       body: JSON.stringify({ folderName: study.folderName, videoPath, outputDir,
         attemptId: options.attemptId, scanScope: study.metadata?.scanScope || 'full', configuration: options.configuration || {} }),
     });
-    if (!response.ok) throw new Error(`Acquisition service failed (HTTP ${response.status})`);
+    if (!response.ok) {
+      const error = new Error(`Acquisition service failed (HTTP ${response.status})`);
+      error.code = HTTP_FAILURE_CODES[response.status] ||
+        (response.status >= 500 || [408, 429].includes(response.status)
+          ? 'ACQUISITION_SERVICE_UNAVAILABLE' : 'ACQUISITION_UNAVAILABLE');
+      throw error;
+    }
     const report = await response.json();
     if (!['ready', 'rejected', 'unavailable'].includes(report.status) || report.qualityScore != null ||
       report.synthetic === true || !report.qualityDecision) {
@@ -38,6 +66,7 @@ export async function runLidraAcquisition(study, options = {}) {
     return { ...report, durationMs: performance.now() - start, qualityScore: null };
   } catch (error) {
     if (options.signal?.aborted) throw error;
-    return { ...unavailableAcquisition(error.message), durationMs: performance.now() - start };
+    const failureCode = acquisitionFailureCode(error);
+    return { ...unavailableAcquisition(error.message, failureCode), durationMs: performance.now() - start };
   }
 }

@@ -1,10 +1,12 @@
-"""Experimental two-view SfM from decoded video; no procedural geometry fallback.
+"""Experimental sparse SfM from decoded video; no procedural geometry fallback.
 
-The mesh interpolates sparse, measured feature tracks in one camera's image plane.
+The mesh interpolates sparse, measured feature tracks from one camera pair.
+Additional frames can verify pose but do not densify this mesh.
 It is a partial visualization, not a dense dental surface or a validated measurement.
 """
 import json
 import os
+import re
 import resource
 import platform
 import hashlib
@@ -27,12 +29,13 @@ class ReconstructionBest(TypedDict):
     parallax: np.ndarray
     first: int
     second: int
+    query_indices: np.ndarray
 
 from .dental_filter_service import export_binary_stl
-from .lidra_service import analyze_video_acquisition, file_sha256
+from .lidra_service import DEFAULT_CONFIG as LIDRA_DEFAULT_CONFIG, VERSION as LIDRA_VERSION, analyze_video_acquisition, file_sha256
 
 ENGINE = "opencv_sparse_sfm"
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 DEFAULT_CONFIG = {"maxViews": 8, "maxImageDimension": 1600, "maxFeatures": 6000,
                   "ratioThreshold": 0.72, "ransacThresholdPx": 1.0,
                   "maxReprojectionErrorPx": 2.0, "minPoints": 20,
@@ -42,6 +45,44 @@ DEFAULT_CONFIG = {"maxViews": 8, "maxImageDimension": 1600, "maxFeatures": 6000,
 
 class ReconstructionUnavailable(ValueError):
     """The real input cannot support the requested reconstruction."""
+
+
+def _verified_acquisition(study_dir, video_path, scan_scope, frame_sampling):
+    """Reuse this attempt's measured frames only when report and bytes still agree."""
+    report_path = Path(study_dir, "lidra_analysis.json")
+    if not report_path.exists():
+        return None
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as error:
+        raise ReconstructionUnavailable("Acquisition report cannot be read") from error
+    expected_config = {**LIDRA_DEFAULT_CONFIG, **(frame_sampling or {})}
+    if (not isinstance(report, dict) or report.get("version") != LIDRA_VERSION
+            or report.get("status") != "ready" or report.get("scanScope") != scan_scope
+            or report.get("configuration") != expected_config):
+        raise ReconstructionUnavailable("Acquisition report does not match this scan configuration")
+    media = report.get("videoMetadata") or {}
+    if (not isinstance(media, dict) or not video_path or not Path(video_path).is_file()
+            or media.get("sha256") != file_sha256(video_path)
+            or media.get("sizeInBytes") != Path(video_path).stat().st_size):
+        raise ReconstructionUnavailable("Acquisition report does not match the input video")
+    selected = report.get("selectedFrames")
+    frames_dir = Path(study_dir, "frames")
+    if not isinstance(selected, list) or len(selected) < 2 or frames_dir.is_symlink():
+        raise ReconstructionUnavailable("Acquisition report has no verified frame selection")
+    seen = set()
+    for item in selected:
+        if not isinstance(item, dict) or not isinstance(item.get("frameIndex"), int):
+            raise ReconstructionUnavailable("Acquisition frame record is invalid")
+        index = item["frameIndex"]
+        filename = f"frame_{index:08d}.jpg"
+        if index < 0 or item.get("fileName") != filename or not re.fullmatch(r"[a-f0-9]{64}", str(item.get("sha256", ""))) or index in seen:
+            raise ReconstructionUnavailable("Acquisition frame identity is invalid")
+        seen.add(index)
+        frame = frames_dir / filename
+        if frame.is_symlink() or not frame.is_file() or file_sha256(frame) != item["sha256"]:
+            raise ReconstructionUnavailable("Acquisition frame checksum mismatch")
+    return report
 
 
 def triangulate_verified(first, second, intrinsic, rotation, translation, max_error=2.0, min_parallax=0.5):
@@ -88,6 +129,36 @@ def image_topology_mesh(points, pixels, width, height, max_edge=120.0, depth_rat
     return np.asarray(faces, dtype=int).reshape(-1, 3)
 
 
+def mesh_topology_diagnostics(vertex_count, faces):
+    """Report observed connectivity, without inferring dental completeness."""
+    if vertex_count < 0 or faces.ndim != 2 or faces.shape[1] != 3:
+        raise ValueError("Mesh topology is invalid")
+    parent = list(range(vertex_count))
+
+    def root(index):
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    for triangle in faces:
+        a, b, c = (int(i) for i in triangle)
+        if min(a, b, c) < 0 or max(a, b, c) >= vertex_count:
+            raise ValueError("Mesh face references an invalid vertex")
+        anchor = root(a)
+        parent[root(b)] = anchor
+        parent[root(c)] = anchor
+    components = {}
+    for triangle in faces:
+        component = root(int(triangle[0]))
+        components[component] = components.get(component, 0) + 1
+    largest_faces = max(components.values(), default=0)
+    used_vertices = len(set(int(i) for i in faces.flat))
+    return {"connectedComponents": len(components), "largestComponentFaces": largest_faces,
+            "largestComponentFaceFraction": largest_faces / len(faces) if len(faces) else 0.0,
+            "usedVertices": used_vertices, "isolatedVertices": vertex_count - used_vertices}
+
+
 def process_3d_scan_reconstruction(study_dir, scan_scope="full", video_path=None, configuration=None):
     started, cpu_started = time.perf_counter(), time.process_time()
     if configuration is None:
@@ -111,7 +182,10 @@ def process_3d_scan_reconstruction(study_dir, scan_scope="full", video_path=None
     os.makedirs(study_dir, exist_ok=True)
     if any(Path(study_dir, name).exists() for name in ('mesh.obj', 'points.ply', 'mesh.stl', 'reconstruction_report.json')):
         raise ValueError('Reconstruction output already exists; use a new attempt directory')
-    acquisition = analyze_video_acquisition(video_path, study_dir, scan_scope, configuration.get("frameSampling"))
+    acquisition = _verified_acquisition(study_dir, video_path, scan_scope, configuration.get("frameSampling"))
+    acquisition_source = "verified_persisted_report" if acquisition is not None else "fresh_analysis"
+    if acquisition is None:
+        acquisition = analyze_video_acquisition(video_path, study_dir, scan_scope, configuration.get("frameSampling"))
     if acquisition["status"] != "ready":
         raise ReconstructionUnavailable(acquisition.get("reason", "Insufficient distinct usable video frames"))
     extraction_ms = acquisition["durationMs"]
@@ -180,6 +254,7 @@ def process_3d_scan_reconstruction(study_dir, scan_scope="full", video_path=None
             points, valid, errors, parallax = triangulate_verified(first[good], second[good], intrinsic, rotation, translation,
                 config["maxReprojectionErrorPx"], config["minParallaxDegrees"])
             pixels = first[good][valid]
+            query_indices = np.asarray([m.queryIdx for m in matches], dtype=int)[good][valid]
             pair_diagnostics.append({"firstFrame": views[i]["frameIndex"], "secondFrame": views[j]["frameIndex"],
                                      "matches": len(matches), "acceptedPoints": len(points)})
             if len(points) >= int(config["minPoints"]) and (best is None or len(points) > len(best["points"])):
@@ -192,6 +267,7 @@ def process_3d_scan_reconstruction(study_dir, scan_scope="full", video_path=None
                     "parallax": parallax,
                     "first": i,
                     "second": j,
+                    "query_indices": query_indices,
                 }
     pose_ms = (time.perf_counter() - pose_started) * 1000
     if best is None:
@@ -204,6 +280,37 @@ def process_3d_scan_reconstruction(study_dir, scan_scope="full", video_path=None
                                 config["maxTriangleEdgePixels"], config["maxTriangleDepthRatio"])
     if len(faces) < 1:
         raise ReconstructionUnavailable("Verified point cloud does not support a mesh under configured edge limits")
+    topology = mesh_topology_diagnostics(len(points), faces)
+    # Register additional views against the same measured 3D points. This verifies
+    # support across time; it does not turn a sparse pair mesh into a dense surface.
+    registered_views = []
+    reference_descriptors = features[best["first"]][1]
+    point_by_feature = {int(index): point for index, point in zip(best["query_indices"], points)}
+    for view_index, (_, descriptors) in enumerate(features):
+        if view_index in (best["first"], best["second"]) or descriptors is None:
+            continue
+        candidates = matcher.knnMatch(reference_descriptors, descriptors, k=2)
+        matches = [a for pair in candidates if len(pair) == 2 for a, b in [pair]
+                   if a.distance < config["ratioThreshold"] * b.distance and a.queryIdx in point_by_feature]
+        matches = list({m.trainIdx: m for m in sorted(matches, key=lambda m: -m.distance)}.values())
+        if len(matches) < 8:
+            continue
+        object_points = np.asarray([point_by_feature[m.queryIdx] for m in matches], dtype=np.float64)
+        image_points = np.asarray([features[view_index][0][m.trainIdx].pt for m in matches], dtype=np.float64)
+        cv2.setRNGSeed(int(config["seed"]))
+        try:
+            solved, rvec, tvec, inliers = cv2.solvePnPRansac(object_points, image_points, intrinsic, None,
+                iterationsCount=100, reprojectionError=max(2.0, float(config["maxReprojectionErrorPx"])),
+                confidence=0.999, flags=cv2.SOLVEPNP_EPNP)
+        except cv2.error:
+            continue
+        if not solved or inliers is None or len(inliers) < 8:
+            continue
+        projected, _ = cv2.projectPoints(object_points[inliers[:, 0]], rvec, tvec, intrinsic, None)
+        errors = np.linalg.norm(projected[:, 0, :] - image_points[inliers[:, 0]], axis=1)
+        if not np.isfinite(errors).all() or float(np.median(errors)) > float(config["maxReprojectionErrorPx"]):
+            continue
+        registered_views.append((view_index, cv2.Rodrigues(rvec)[0], tvec.reshape(3), len(inliers), float(np.median(errors))))
     obj_lines = ["# Experimental sparse two-view reconstruction; units arbitrary; visualization only"]
     obj_lines += ["v " + " ".join(f"{x:.12g}" for x in point) for point in points]
     obj_lines += ["f " + " ".join(str(int(x) + 1) for x in face) for face in faces]
@@ -224,12 +331,15 @@ def process_3d_scan_reconstruction(study_dir, scan_scope="full", video_path=None
     mesh_ms = (time.perf_counter() - mesh_started) * 1000
     bounds = {"min": points.min(axis=0).tolist(), "max": points.max(axis=0).tolist()}
     trajectory = []
-    for idx, rotation, translation in [(best["first"], np.eye(3), np.zeros(3)),
-                                     (best["second"], best["rotation"], best["translation"].reshape(3))]:
+    base_views = [(best["first"], np.eye(3), np.zeros(3), "reference_camera"),
+                  (best["second"], best["rotation"], best["translation"].reshape(3), "essential_matrix_recoverPose")]
+    verified_views = [(idx, rotation, translation, "pnp_ransac")
+                      for idx, rotation, translation, _, _ in registered_views]
+    for idx, rotation, translation, provenance in base_views + verified_views:
         trajectory.append({"frameIndex": views[idx]["frameIndex"], "fileName": views[idx]["fileName"],
             "timestampMs": views[idx]["timestampMs"], "pose": {"worldToCameraRotation": rotation.tolist(),
                 "worldToCameraTranslation": translation.tolist(), "position": (-rotation.T @ translation).tolist()},
-            "provenance": "essential_matrix_recoverPose", "units": "arbitrary"})
+            "provenance": provenance, "units": "arbitrary"})
     timings: dict[str, float] = {
         "acquisitionMs": extraction_ms,
         "poseAndTriangulationMs": pose_ms,
@@ -257,8 +367,18 @@ def process_3d_scan_reconstruction(study_dir, scan_scope="full", video_path=None
                              ('reconstruction_service.py', 'lidra_service.py', 'dental_filter_service.py')},
             "determinismScope": "Same input/configuration/runtime; cross-platform bitwise identity not guaranteed"}, "cameraIntrinsics": intrinsic.tolist(),
         "intrinsicsSource": intrinsics_source, "lensDistortion": "not_corrected",
-        "frameExtractionVersion": acquisition["version"], "scanScope": scan_scope,
-        "sampledFrames": len(selected), "registeredFrames": 2, "vertexCount": len(points), "faceCount": len(faces),
+        "frameExtractionVersion": acquisition["version"], "acquisitionSource": acquisition_source, "scanScope": scan_scope,
+        "sampledFrames": len(selected), "registeredFrames": len(trajectory), "vertexCount": len(points), "faceCount": len(faces),
+        "meshTopology": topology,
+        "additionalViewEvidence": [{"frameIndex": views[idx]["frameIndex"], "matchedPoints": count,
+                                    "medianReprojectionErrorPx": error} for idx, _, _, count, error in registered_views],
+        "featureSupport": {"normalizedBounds": [float(best["pixels"][:, 0].min() / width),
+                                                  float(best["pixels"][:, 1].min() / height),
+                                                  float(best["pixels"][:, 0].max() / width),
+                                                  float(best["pixels"][:, 1].max() / height)]},
+        "bestPair": {"firstFrame": views[best["first"]]["frameIndex"],
+                     "secondFrame": views[best["second"]]["frameIndex"],
+                     "acceptedPoints": len(points)},
         "bounds": bounds, "cameraTrajectory": trajectory, "pairDiagnostics": pair_diagnostics,
         "meanReprojectionErrorPx": float(best["errors"].mean()), "medianParallaxDegrees": float(np.median(best["parallax"])),
         "dentalFiltering": {"enabled": False, "reason": "No anatomical transformations applied"},

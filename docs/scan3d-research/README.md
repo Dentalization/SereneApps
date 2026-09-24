@@ -11,6 +11,10 @@ Use the existing backend and Python environments. Python requirements are in `ba
 
 Keep the private directory outside public static roots. The backend handles authenticated video upload/asset reads and the worker; the Python service handles authenticated computation. Configure `PY_SERVICE_BASE_URL` (default `http://127.0.0.1:8000`) on the backend. Inspect the existing application startup scripts rather than starting a second application stack. Unknown/disabled engines fail explicitly. Do not enable procedural fixtures on a production path.
 
+For local scans, run the Python service at `PY_SERVICE_BASE_URL` before queuing work and give it the same `SCAN3D_SERVICE_TOKEN` as the backend. The backend's `XCORE_PY_API_BASE_URL` setting alone does not configure the scan worker token. If the scan status reports `SCAN_SERVICE_NOT_CONFIGURED`, set the shared token and restart the services; if it reports `ACQUISITION_SERVICE_UNAVAILABLE`, check that the Python service is reachable. These are service failures, not evidence that a recording failed the frame-quality check. Retry a failed scan only after restoring the service; keep the existing video and attempt history.
+
+For a local backend with the repository `.venv`, run `cd backend && npm run start:scan3d` after setting `SCAN3D_SERVICE_TOKEN` in `backend/.env`. This launches Python and Node with the same environment, waits for Python health, and stops both together. Stop any older services on ports 8000 and 4000 first. Deployment environments should instead supervise both services with the same private token and storage root.
+
 ## Experiment contract
 
 JSON Schemas describe experiment requests, complete physical-validation inputs, and validation outputs. They are interchange contracts; runtime validators enforce semantic constraints such as calibrated provenance and rigid transforms. The intentionally incomplete `validation.example.json` does not pass the complete-input schema until real inputs and study decisions are supplied.

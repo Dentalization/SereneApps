@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
+    "start:scan3d": "node scripts/start-scan3d-local.mjs",
     "dev": "node --watch src/server.js",
     "migrate": "node src/migrate.js",
     "seed": "node src/seed.js",

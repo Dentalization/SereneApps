@@ -68,9 +68,9 @@ test('Phase 10: 3D Scan X-Core Integration Contract', async (t) => {
 
     assert.match(gallery, /if\s*\(study\?\.modality\s*===\s*['"]3D_SCAN['"]\)/);
     assert.match(gallery, /modality:\s*['"]3D_SCAN['"]/);
-    assert.match(gallery, /type:\s*['"]3D Mesh['"]/);
-    assert.match(gallery, /\/v1\/x-core\/3d-scans\/\$\{study\.id\}\/assets\/preview\.png/);
-    assert.match(gallery, /3D Scan Mesh/);
+    assert.match(gallery, /type:\s*scanState\.seriesType/);
+    assert.match(gallery, /\/api\/v1\/x-core\/3d-scans\/\$\{encodeURIComponent\(study\.id\)\}\/assets\/preview\.png/);
+    assert.match(gallery, /Mesh 3D Eksperimental/);
   });
 
   await t.test('Viewer3D contract mounts Scan3DMeshViewer for 3D_SCAN scans', () => {
@@ -93,5 +93,8 @@ test('Phase 10: 3D Scan X-Core Integration Contract', async (t) => {
     assert.match(meshViewer, /setRepresentation/);
     assert.match(meshViewer, /Rekonstruksi 3D Berjalan/);
     assert.match(meshViewer, /Coba Lagi Rekonstruksi 3D/);
+    assert.match(meshViewer, /pending_capture/);
+    assert.match(meshViewer, /waitingForVideo \? 'Menunggu Rekaman Video'/);
+    assert.match(meshViewer, /scanStatus === 'failed' && statusData\?\.status === 'failed' && statusData\?\.job\?\.recoverable !== false/);
   });
 });

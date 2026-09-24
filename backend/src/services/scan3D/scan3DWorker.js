@@ -6,12 +6,28 @@ import { runReconstruction } from './reconstructionEngineAdapter.js';
 import { scanDirectory } from './scanStorage.js';
 import { DEFAULT_SCAN_ENGINE, MAX_SCAN_ATTEMPTS } from './scan3DQueueService.js';
 import { EXPERIMENTAL_CAPABILITIES, scanEvent } from './scanIntegrity.js';
+import { assessScanGeometry, GEOMETRY_INSUFFICIENT_CODE, GEOMETRY_INSUFFICIENT_MESSAGE } from './scanGeometryQuality.js';
 
 import { auditedScanUpdate } from './scanAudit.js';
 const prisma = new PrismaClient();
 const LEASE_MS = 60000;
 const JOB_TIMEOUT_MS = Math.min(3600000, Math.max(10000, Number(process.env.SCAN3D_JOB_TIMEOUT_MS) || 600000));
 const delayFor = attempts => Math.min(300000, 5000 * 2 ** Math.max(0, attempts - 1));
+const failureMessage = code => ({
+  SCAN_SERVICE_NOT_CONFIGURED: 'The scan processing service is not configured. Contact the system administrator before retrying.',
+  SCAN_SERVICE_AUTH_FAILED: 'The scan processing services do not share the same authentication token. Contact the system administrator before retrying.',
+  ACQUISITION_ENDPOINT_UNAVAILABLE: 'The scan processing endpoint is missing or outdated. Contact the system administrator before retrying.',
+  ACQUISITION_REQUEST_INVALID: 'The scan processing services disagree about the video path or request. Contact the system administrator before retrying.',
+  ACQUISITION_CONFIGURATION_INVALID: 'The scan processing configuration was rejected. Review its settings before retrying.',
+  ACQUISITION_SERVICE_UNAVAILABLE: 'The scan processing service is unavailable. Retry when it is running.',
+  ACQUISITION_TIMEOUT: 'The scan processing service timed out. Retry after it recovers.',
+  ACQUISITION_UNAVAILABLE: 'The capture could not be analyzed. Check the processing service and try again.',
+  CAPTURE_QUALITY_REJECTED: 'The recording did not provide enough usable distinct frames. Record a new video.',
+  VIDEO_NOT_VERIFIED: 'The uploaded video could not be verified. Upload a new recording.',
+  VIDEO_CORRUPT: 'The uploaded video changed or is damaged. Upload a new recording.',
+  RECONSTRUCTION_TIMEOUT: 'Reconstruction timed out. Retry after the service recovers.',
+  ENGINE_UNAVAILABLE: 'The selected reconstruction engine is unavailable. Contact the system administrator.',
+})[code] || 'Reconstruction failed. Review the capture and processing configuration before retrying.';
 
 export function createScanWorker(client, reconstruct = runReconstruction, { leaseMs = LEASE_MS, timeoutMs = JOB_TIMEOUT_MS } = {}) {
   async function fencedUpdate(id, token, transform) {
@@ -85,9 +101,26 @@ export function createScanWorker(client, reconstruct = runReconstruction, { leas
       if (result.provenance?.geometrySource !== 'image_derived' || result.provenance?.synthetic !== false || !result.assets?.mesh) {
         throw Object.assign(new Error('Engine output does not have verified image-derived geometry'), { code: 'INVALID_RECONSTRUCTION' });
       }
+      const qualityAssessment = assessScanGeometry(result);
+      if (qualityAssessment.status !== 'candidate') {
+        const published = await fencedUpdate(study.id, token, current => ({ status: 'failed', metadata: {
+          ...current.metadata, assets: null, diagnosticAssets: { mesh: result.assets.mesh }, metrics: result.metrics, lidra: result.lidra,
+          cameraTrajectory: result.cameraTrajectory || [], provenance: result.provenance,
+          qualityAssessment, confidence: null, capabilities: EXPERIMENTAL_CAPABILITIES,
+          clinicalStatus: 'experimental',
+          performance: { ...result.performance, serverProcessingMs: performance.now() - started },
+          processingJob: { ...current.metadata.processingJob, status: 'failed', failedAt: new Date().toISOString(),
+            progressPercent: 100, currentStage: 'geometry_insufficient', leaseToken: null, leaseExpiresAt: null,
+            failureReason: GEOMETRY_INSUFFICIENT_MESSAGE, failureCode: GEOMETRY_INSUFFICIENT_CODE,
+            recoverable: false,
+            logs: scanEvent(current.metadata.processingJob, 'geometry_quality_rejected', { level: 'error', code: GEOMETRY_INSUFFICIENT_CODE }) },
+        } }));
+        return { success: false, studyId: study.id, status: published ? 'failed' : 'lease_lost',
+          error: GEOMETRY_INSUFFICIENT_MESSAGE };
+      }
       const published = await fencedUpdate(study.id, token, current => ({ status: 'ready', metadata: {
-        ...current.metadata, assets: result.assets, metrics: result.metrics, lidra: result.lidra, confidence: null,
-        cameraTrajectory: result.cameraTrajectory || [], provenance: result.provenance,
+        ...current.metadata, assets: result.assets, diagnosticAssets: null, metrics: result.metrics, lidra: result.lidra, confidence: null,
+        cameraTrajectory: result.cameraTrajectory || [], provenance: result.provenance, qualityAssessment,
         capabilities: EXPERIMENTAL_CAPABILITIES, clinicalStatus: 'experimental',
         performance: { ...result.performance, serverProcessingMs: performance.now() - started },
         processingJob: { ...current.metadata.processingJob, status: 'ready', completedAt: new Date().toISOString(),
@@ -101,8 +134,9 @@ export function createScanWorker(client, reconstruct = runReconstruction, { leas
       const permanent = error.retryable === false || ['INVALID_RECONSTRUCTION', 'INVALID_VIDEO', 'ENGINE_UNAVAILABLE', 'VIDEO_NOT_VERIFIED'].includes(error.code);
       const exhausted = attempts >= MAX_SCAN_ATTEMPTS || permanent;
       const status = exhausted ? 'failed' : 'queued';
-      const message = exhausted ? 'Reconstruction failed. Review the capture and processing configuration before retrying.' : 'Processing was interrupted. Retrying after a short delay.';
+      const message = exhausted ? failureMessage(error.code) : 'Processing was interrupted. Retrying after a short delay.';
       const saved = await fencedUpdate(study.id, token, current => ({ status, metadata: { ...current.metadata, assets: null,
+        qualityAssessment: null,
         performance: { ...current.metadata.performance, lastAttemptMs: performance.now() - started },
         processingJob: { ...current.metadata.processingJob, status, currentStage: exhausted ? 'failed' : 'retry_queued',
           failedAt: exhausted ? new Date().toISOString() : null, progressPercent: exhausted ? 0 : 5,

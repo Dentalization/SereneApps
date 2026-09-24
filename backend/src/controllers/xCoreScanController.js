@@ -10,7 +10,7 @@ import { processScanNow } from '../services/scan3D/scan3DWorker.js';
 import { reconstructionEngineRegistry } from '../services/scan3D/engines/reconstructionEngineRegistry.js';
 import { privateScanDirectory, scanDirectory, confinedExistingFile, registeredAsset, safeComponent, sha256File } from '../services/scan3D/scanStorage.js';
 import { inspectVideo } from '../services/scan3D/videoInspection.js';
-import { clientScanMetadata, publicScanMetadata, associatedPatientWhere, EXPERIMENTAL_CAPABILITIES } from '../services/scan3D/scanIntegrity.js';
+import { clientScanMetadata, publicScanState, associatedPatientWhere, EXPERIMENTAL_CAPABILITIES } from '../services/scan3D/scanIntegrity.js';
 
 import { auditScanEvent, auditedScanUpdate } from '../services/scan3D/scanAudit.js';
 const prisma = new PrismaClient();
@@ -50,9 +50,9 @@ function patientJson(patient) {
     createdAt: patient.createdAt?.toISOString() };
 }
 function scanJson(scan) {
-  const metadata = publicScanMetadata(scan.metadata || {});
+  const { status, metadata } = publicScanState(scan);
   return { id: scan.id.toString(), scanIdentifier: scan.folderName, patientId: scan.patientId?.toString() || null,
-    dentistId: scan.dentistId?.toString() || null, clinicId: scan.clinicId?.toString() || null, status: scan.status,
+    dentistId: scan.dentistId?.toString() || null, clinicId: scan.clinicId?.toString() || null, status,
     scanScope: metadata.scanScope || 'full', sizeInBytes: scan.sizeInBytes.toString(), createdAt: scan.createdAt.toISOString(),
     metadata, lidra: metadata.lidra || null, confidence: null, assets: metadata.assets, video: metadata.video || null,
     capabilities: metadata.capabilities, provenance: metadata.provenance, patient: scan.patient ? patientJson(scan.patient) : null };
@@ -187,7 +187,7 @@ export async function upload3DScanVideo(req, res) {
     const metadata = { ...current, storageVersion: 'private_v1', videoFileName: fileName, videoMimeType: video.mimeType,
       videoSizeInBytes: video.sizeInBytes, checksum: video.checksum, durationMs: video.durationMs, resolution: video.resolution, fps: video.fps,
       video: { ...video, fileName, clientDeclared }, captureMetadata, uploadedAt: new Date().toISOString(), preservedOriginal: true,
-      assets: null, processingJob: null, lidra: null, metrics: null, confidence: null, cameraTrajectory: [], provenance: null,
+      assets: null, diagnosticAssets: null, processingJob: null, lidra: null, metrics: null, confidence: null, cameraTrajectory: [], provenance: null,
       performance: { uploadReceiptMs: req.scanUploadStartedAt ? started - req.scanUploadStartedAt : null,
         inspectionAndStorageMs: performance.now() - started, videoBytes: video.sizeInBytes },
       capabilities: EXPERIMENTAL_CAPABILITIES, clinicalStatus: 'experimental' };
@@ -228,14 +228,35 @@ export async function get3DScanAsset(req, res) {
     const mime = { '.obj': 'model/obj', '.ply': 'application/octet-stream', '.stl': 'model/stl', '.glb': 'model/gltf-binary',
       '.gltf': 'model/gltf+json', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.json': 'application/json', '.mtl': 'model/mtl' }[ext];
     if (!mime) throw problem(400, 'File type not permitted');
-    const asset = registeredAsset(publicScanMetadata(scan.metadata).assets ? scan.metadata : {}, fileName);
-    if (scan.status !== 'ready' || !asset) throw problem(404, 'Requested asset is not registered to a verified reconstruction');
+    const publicState = publicScanState(scan);
+    const asset = registeredAsset(publicState.metadata.assets ? scan.metadata : {}, fileName);
+    if (publicState.status !== 'ready' || !asset) throw problem(404, 'Requested asset is not registered to a verified reconstruction');
     let file;
     try { file = await confinedExistingFile(scanDirectory(scan), asset.storagePath || fileName); }
     catch (error) { if (error.code === 'ENOENT') throw problem(404, 'Requested 3D asset is missing', 'ASSET_MISSING'); throw error; }
     if (await sha256File(file) !== asset.checksum) throw problem(409, 'Asset integrity check failed', 'ASSET_CORRUPTION');
     await auditScanEvent(prisma, scan, 'asset_viewed', dentistId(req), { checksum: asset.checksum });
     res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.sendFile(file);
+  } catch (error) { return respondError(res, error); }
+}
+export async function get3DScanDiagnosticMesh(req, res) {
+  try {
+    const scan = await authorizedScan(req);
+    const state = publicScanState(scan);
+    const descriptor = state.metadata.diagnosticMesh;
+    if (state.status !== 'failed' || !descriptor) throw problem(404, 'Diagnostic mesh is unavailable');
+    const source = scan.metadata?.diagnosticAssets?.mesh || scan.metadata?.assets?.mesh;
+    const asset = registeredAsset({ assets: { mesh: source } }, descriptor.fileName);
+    if (!asset || asset.checksum !== descriptor.sha256) throw problem(404, 'Diagnostic mesh is unavailable');
+    let file;
+    try { file = await confinedExistingFile(scanDirectory(scan), asset.storagePath || asset.fileName); }
+    catch (error) { if (error.code === 'ENOENT') throw problem(404, 'Diagnostic mesh file is missing', 'ASSET_MISSING'); throw error; }
+    if (await sha256File(file) !== asset.checksum) throw problem(409, 'Diagnostic mesh integrity check failed', 'ASSET_CORRUPTION');
+    await auditScanEvent(prisma, scan, 'diagnostic_asset_viewed', dentistId(req), { checksum: asset.checksum });
+    res.setHeader('Content-Type', { obj: 'model/obj', ply: 'application/octet-stream', stl: 'model/stl' }[descriptor.format]);
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     return res.sendFile(file);

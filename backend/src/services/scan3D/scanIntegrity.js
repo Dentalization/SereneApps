@@ -1,3 +1,6 @@
+import { assessScanGeometry, GEOMETRY_QUALITY_VERSION, GEOMETRY_INSUFFICIENT_CODE, GEOMETRY_INSUFFICIENT_MESSAGE } from './scanGeometryQuality.js';
+import { registeredAsset } from './scanStorage.js';
+
 export const EXPERIMENTAL_CAPABILITIES = Object.freeze({ measurement: 'visualization_only', measurementCapability: 'visualization_only', units: 'arbitrary', scale: { status: 'unvalidated', units: 'arbitrary' }, validated: false, clinicallyValidated: false, clinicalStatus: 'experimental', scaleValidated: false, diagnosticUseAllowed: false });
 
 export function clientScanMetadata(metadata = {}) {
@@ -10,19 +13,53 @@ export function clientScanMetadata(metadata = {}) {
 }
 
 export function publicScanMetadata(metadata = {}) {
-  const { processingJob, ...publicMetadata } = metadata;
+  const { processingJob, diagnosticAssets, ...publicMetadata } = metadata;
   const real = metadata.provenance?.geometrySource === 'image_derived' && metadata.provenance?.synthetic === false;
+  const qualityAssessment = real
+    ? (metadata.qualityAssessment?.version === GEOMETRY_QUALITY_VERSION
+        && metadata.qualityAssessment.status === 'insufficient'
+        ? metadata.qualityAssessment : assessScanGeometry(metadata))
+    : null;
   const measuredAcquisition = metadata.lidra?.version === 'lidra_measured_v2'
     && ['ready', 'rejected', 'unavailable'].includes(metadata.lidra?.status);
-  const assets = real ? Object.fromEntries(Object.entries(metadata.assets || {}).map(([key, asset]) => [key,
+  const assets = real && qualityAssessment.status === 'candidate' ? Object.fromEntries(Object.entries(metadata.assets || {}).map(([key, asset]) => [key,
     asset && typeof asset === 'object' ? { ...asset, capabilities: EXPERIMENTAL_CAPABILITIES, clinicalStatus: 'experimental' } : asset])) : null;
-  return { ...publicMetadata, assets, metrics: real ? metadata.metrics || null : null,
+  return { ...publicMetadata, assets, qualityAssessment, metrics: real ? metadata.metrics || null : null,
     lidra: measuredAcquisition ? { ...metadata.lidra, qualityScore: null } : {
       status: 'unavailable', qualityScore: null, coverage: { status: 'unavailable' },
       reason: 'No measured acquisition report is registered; legacy estimates are not measurements',
     }, cameraTrajectory: real ? metadata.cameraTrajectory || [] : [], confidence: null, capabilities: EXPERIMENTAL_CAPABILITIES, clinicalStatus: 'experimental',
     provenance: metadata.provenance || { geometrySource: 'unknown', synthetic: null, validationStatus: 'unvalidated' },
     processingJob: processingJob ? publicJob(processingJob) : undefined };
+}
+
+// Old ready scans are evaluated at read time, without mutating the persisted
+// record. This also protects asset access if a pre-gate worker published a sparse mesh.
+export function publicScanState(scan) {
+  const metadata = publicScanMetadata(scan.metadata || {});
+  const source = scan.metadata || {};
+  const candidate = source.diagnosticAssets?.mesh || source.assets?.mesh;
+  const diagnosticMesh = source.storageVersion === 'private_v1'
+    && source.provenance?.geometrySource === 'image_derived'
+    && source.provenance?.synthetic === false
+    && metadata.qualityAssessment?.status === 'insufficient'
+    && ['ready', 'failed'].includes(scan.status)
+    && typeof candidate?.fileName === 'string'
+    && /\.(obj|ply|stl)$/i.test(candidate.fileName)
+    && registeredAsset({ assets: { mesh: candidate } }, candidate.fileName)
+    ? { fileName: candidate.fileName, format: candidate.fileName.split('.').pop().toLowerCase(),
+        sha256: candidate.checksum, diagnosticOnly: true, measurementCapability: 'visualization_only',
+        clinicalStatus: 'experimental', provenance: { synthetic: false, geometrySource: 'image_derived' },
+        assetUrl: `/v1/x-core/3d-scans/${scan.id}/diagnostic-mesh` }
+    : null;
+  if (scan.status !== 'ready' || metadata.qualityAssessment?.status === 'candidate') {
+    return { status: scan.status, metadata: { ...metadata, diagnosticMesh } };
+  }
+  return { status: 'failed', metadata: { ...metadata, assets: null, diagnosticMesh, processingJob: {
+    ...(metadata.processingJob || {}), status: 'failed', currentStage: 'geometry_insufficient',
+    failureCode: GEOMETRY_INSUFFICIENT_CODE, failureReason: GEOMETRY_INSUFFICIENT_MESSAGE,
+    recoverable: false,
+  } } };
 }
 
 export function publicJob(job = {}) {

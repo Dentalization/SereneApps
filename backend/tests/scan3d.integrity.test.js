@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -9,8 +9,16 @@ import { createScanQueue, MAX_SCAN_ATTEMPTS } from '../src/services/scan3D/scan3
 import { createScanWorker } from '../src/services/scan3D/scan3DWorker.js';
 import { inspectVideo, parseVideoProbe } from '../src/services/scan3D/videoInspection.js';
 import { confinedExistingFile, registeredAsset, safeComponent, sha256File } from '../src/services/scan3D/scanStorage.js';
-import { publicScanMetadata, clientScanMetadata, associatedPatientWhere, assertRealSegmentation } from '../src/services/scan3D/scanIntegrity.js';
+import { publicScanMetadata, publicScanState, clientScanMetadata, associatedPatientWhere, assertRealSegmentation } from '../src/services/scan3D/scanIntegrity.js';
+import { assessScanGeometry, GEOMETRY_INSUFFICIENT_CODE } from '../src/services/scan3D/scanGeometryQuality.js';
 import { isPrivateScanProxyPath } from '../src/services/scan3D/scanPublicAccess.js';
+
+const initialServiceToken = process.env.SCAN3D_SERVICE_TOKEN;
+process.env.SCAN3D_SERVICE_TOKEN = 'scan3d-contract-test-token';
+after(() => {
+  if (initialServiceToken === undefined) delete process.env.SCAN3D_SERVICE_TOKEN;
+  else process.env.SCAN3D_SERVICE_TOKEN = initialServiceToken;
+});
 
 const execute = promisify(execFile);
 const registry = { list: () => [
@@ -38,8 +46,9 @@ function memoryStore(initial) {
   store.$transaction = async operation => operation(store);
   return store;
 }
-const realResult = { success: true, assets: { mesh: { fileName: 'mesh.obj', checksum: 'b'.repeat(64) } },
-  provenance: { geometrySource: 'image_derived', synthetic: false }, metrics: {}, lidra: {}, performance: {} };
+const realResult = { success: true, assets: { mesh: { fileName: 'mesh.obj', checksum: 'b'.repeat(64), vertexCount: 120, faceCount: 140 } },
+  provenance: { geometrySource: 'image_derived', synthetic: false },
+  metrics: { registeredFrames: 3, vertexCount: 120, faceCount: 140 }, lidra: {}, performance: {} };
 
 test('queue rejects missing verified input, unknown engines, simulations and scaffolds', async () => {
   for (const engine of ['missing', 'photogrammetry_v1', 'dust3r']) {
@@ -47,6 +56,21 @@ test('queue rejects missing verified input, unknown engines, simulations and sca
   }
   const scan = scanFixture(); scan.metadata.video.decodeVerified = false;
   await assert.rejects(createScanQueue(memoryStore(scan), registry).enqueue(1n), { code: 'VIDEO_NOT_VERIFIED' });
+});
+
+test('queue rejects an unconfigured scan service before changing the scan state', async () => {
+  const store = memoryStore(scanFixture());
+  const token = process.env.SCAN3D_SERVICE_TOKEN;
+  delete process.env.SCAN3D_SERVICE_TOKEN;
+  try {
+    await assert.rejects(createScanQueue(store, registry).enqueue(1n), {
+      code: 'SCAN_SERVICE_NOT_CONFIGURED', status: 503,
+    });
+    assert.equal(store.get().status, 'uploaded');
+    assert.equal(store.audits.length, 0);
+  } finally {
+    process.env.SCAN3D_SERVICE_TOKEN = token;
+  }
 });
 
 test('queue accepts a verified video, ignores client retry inflation, and is idempotent', async () => {
@@ -115,12 +139,70 @@ test('worker rejects synthetic output and records no assets', async () => {
   assert.equal(store.get().metadata.processingJob.recoverable, false);
 });
 
+test('sparse two-view geometry fails closed, retains diagnostics, and is not retried with the same capture', async () => {
+  const store = memoryStore(scanFixture('queued'));
+  const sparse = { ...realResult,
+    assets: { mesh: { ...realResult.assets.mesh, vertexCount: 86, faceCount: 94 } },
+    metrics: { registeredFrames: 2, vertexCount: 86, faceCount: 94, sampledFrames: 18 } };
+  const result = await createScanWorker(store, async () => sparse).processStudy(store.get());
+  assert.equal(result.status, 'failed');
+  assert.equal(store.get().metadata.assets, null);
+  assert.equal(store.get().metadata.diagnosticAssets.mesh.fileName, 'mesh.obj');
+  assert.equal(store.get().metadata.qualityAssessment.status, 'insufficient');
+  assert(store.get().metadata.qualityAssessment.reasons.includes('TOO_FEW_REGISTERED_VIEWS'));
+  assert.equal(store.get().metadata.processingJob.failureCode, GEOMETRY_INSUFFICIENT_CODE);
+  assert.equal(store.get().metadata.processingJob.recoverable, false);
+  assert.equal(store.get().metadata.metrics.sampledFrames, 18);
+  const publicMetadata = publicScanMetadata(store.get().metadata);
+  assert.equal(publicMetadata.qualityAssessment.registeredFrames, 2);
+  assert(publicMetadata.qualityAssessment.reasons.includes('TOO_FEW_REGISTERED_VIEWS'));
+  assert.equal(publicMetadata.assets, null);
+  assert.equal(publicMetadata.diagnosticAssets, undefined);
+  const diagnostic = publicScanState(store.get()).metadata.diagnosticMesh;
+  assert.equal(diagnostic?.assetUrl, '/v1/x-core/3d-scans/1/diagnostic-mesh');
+  assert.equal(diagnostic?.diagnosticOnly, true);
+});
+
+test('pre-gate ready sparse scan is reclassified on read and cannot expose assets', () => {
+  const scan = scanFixture('ready');
+  scan.metadata = { ...scan.metadata, assets: { mesh: { fileName: 'mesh.obj', checksum: 'b'.repeat(64), vertexCount: 86, faceCount: 94 } },
+    metrics: { registeredFrames: 2, vertexCount: 86, faceCount: 94 },
+    provenance: { geometrySource: 'image_derived', synthetic: false } };
+  const presented = publicScanState(scan);
+  assert.equal(scan.status, 'ready');
+  assert.equal(presented.status, 'failed');
+  assert.equal(presented.metadata.assets, null);
+  assert.equal(presented.metadata.diagnosticMesh?.assetUrl, '/v1/x-core/3d-scans/1/diagnostic-mesh');
+  assert.equal(presented.metadata.processingJob.failureCode, GEOMETRY_INSUFFICIENT_CODE);
+  assert.equal(presented.metadata.processingJob.recoverable, false);
+});
+
+test('geometry gate is an engineering floor, never anatomical or clinical validation', () => {
+  const candidate = assessScanGeometry(realResult);
+  assert.equal(candidate.status, 'candidate');
+  assert.equal(candidate.anatomicalCoverage, 'unavailable');
+  assert.equal(candidate.validated, false);
+  assert.equal(candidate.clinicallyValidated, false);
+  assert.equal(assessScanGeometry({ ...realResult, assets: { mesh: { ...realResult.assets.mesh, faceCount: 139 } } }).status, 'insufficient');
+  assert.equal(assessScanGeometry({ ...realResult, metrics: {} }).status, 'insufficient');
+});
+
 test('worker permanently fails missing dependencies instead of retrying indefinitely', async () => {
   const store = memoryStore(scanFixture('queued'));
   await createScanWorker(store, async () => { throw Object.assign(new Error('private service detail'), { retryable: false, code: 'SCAN_SERVICE_NOT_CONFIGURED' }); }).processStudy(store.get());
   assert.equal(store.get().status, 'failed');
   assert.equal(store.get().metadata.processingJob.recoverable, false);
   assert(!store.get().metadata.processingJob.failureReason.includes('private service detail'));
+  assert.match(store.get().metadata.processingJob.failureReason, /not configured/);
+});
+
+test('worker identifies capture rejection without disclosing internal errors', async () => {
+  const store = memoryStore(scanFixture('queued'));
+  await createScanWorker(store, async () => { throw Object.assign(new Error('private capture detail'), { retryable: false, code: 'CAPTURE_QUALITY_REJECTED' }); }).processStudy(store.get());
+  assert.equal(store.get().status, 'failed');
+  assert.equal(store.get().metadata.processingJob.failureCode, 'CAPTURE_QUALITY_REJECTED');
+  assert.match(store.get().metadata.processingJob.failureReason, /new video/);
+  assert(!store.get().metadata.processingJob.failureReason.includes('private capture detail'));
 });
 
 test('timeout aborts processing and schedules bounded backoff', async () => {

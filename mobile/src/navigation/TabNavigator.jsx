@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Platform } from 'react-native';
+import { StyleSheet, View, Platform, Dimensions } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from 'react-native-paper';
@@ -57,21 +57,42 @@ const TabNavigator = () => {
     left: 16,
     right: 16,
     bottom: bottomPosition,
-    backgroundColor: 'transparent',
-    height: Platform.OS === 'ios' ? 80 : 70,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 12,
-    paddingTop: 10,
+    backgroundColor: Platform.OS === 'android' ? '#FFFFFF' : 'transparent',
+    borderRadius: 32,
+    height: Platform.OS === 'ios' ? 78 : 66,
+    paddingBottom: Platform.OS === 'ios' ? 18 : 10,
+    paddingTop: 8,
     paddingHorizontal: 24,
     borderTopWidth: 0,
     // PENTING: Jangan gunakan overflow: 'hidden' di sini karena akan memotong shadow di iOS
-    elevation: 12, // Shadow untuk Android
+    elevation: Platform.OS === 'android' ? 4 : 0, // Soft shadow untuk Android tanpa dark halo
     shadowColor: '#000', // Shadow untuk iOS
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
     shadowRadius: 16,
+    ...(Platform.OS === 'android' && {
+      borderWidth: 1,
+      borderColor: 'rgba(98, 16, 159, 0.08)',
+    }),
+  };
+
+  const { width: windowWidth } = Dimensions.get('window');
+  // Compact floating island for dentist 2-item navigation (sleek & balanced)
+  const dentistTabWidth = Math.min(240, windowWidth - 64);
+  const dentistTabLeft = (windowWidth - dentistTabWidth) / 2;
+
+  const dentistTabBarStyle = {
+    ...baseTabBarStyle,
+    width: dentistTabWidth,
+    left: dentistTabLeft,
+    right: undefined,
+    paddingHorizontal: 16,
   };
 
   const getTabBarStyle = (route, defaultRouteName) => {
+    if (route.params?.hideTabBar) {
+      return { display: 'none' };
+    }
     const routeName = getFocusedRouteNameFromRoute(route) ?? defaultRouteName;
     if (HIDDEN_TAB_ROUTES.has(routeName)) {
       return { display: 'none' };
@@ -79,25 +100,39 @@ const TabNavigator = () => {
     return { ...baseTabBarStyle };
   };
 
-  // Komponen Background Tab Bar dengan INLINE CSS
+  const getDentistTabBarStyle = (route, defaultRouteName) => {
+    if (route.params?.hideTabBar) {
+      return { display: 'none' };
+    }
+    const routeName = getFocusedRouteNameFromRoute(route) ?? defaultRouteName;
+    if (HIDDEN_TAB_ROUTES.has(routeName)) {
+      return { display: 'none' };
+    }
+    return { ...dentistTabBarStyle };
+  };
+
+  // Komponen Background Tab Bar dengan Glassmorphism di iOS & Clean Surface di Android
   const tabBarBackground = () => (
     <View
       style={{
         flex: 1,
         borderRadius: 32,
         overflow: 'hidden',
-        borderWidth: 1.5,
-        borderColor: 'rgba(255, 255, 255, 0.7)' // Memberikan efek border putih tebal ala Glassmorphism
+        borderWidth: Platform.OS === 'ios' ? 1.5 : 0,
+        borderColor: 'rgba(255, 255, 255, 0.7)',
+        backgroundColor: Platform.OS === 'android' ? '#FFFFFF' : 'transparent',
       }}
     >
-      <BlurView
-        intensity={Platform.OS === 'ios' ? 80 : 60}
-        tint="light"
-        style={StyleSheet.absoluteFill}
-      >
-        {/* Layer putih solid transparan agar warna blur lebih kuat / bold */}
-        <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.85)' }} />
-      </BlurView>
+      {Platform.OS === 'ios' && (
+        <BlurView
+          intensity={80}
+          tint="light"
+          style={StyleSheet.absoluteFill}
+        >
+          {/* Layer putih solid transparan agar warna blur lebih kuat / bold */}
+          <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.85)' }} />
+        </BlurView>
+      )}
     </View>
   );
 
@@ -111,7 +146,7 @@ const TabNavigator = () => {
           tabBarActiveTintColor: theme.colors.primary,
           tabBarInactiveTintColor: '#64748B',
           tabBarShowLabel: true,
-          tabBarStyle: baseTabBarStyle,
+          tabBarStyle: dentistTabBarStyle,
           tabBarBackground: tabBarBackground,
           tabBarLabelStyle: {
             fontSize: 11,
@@ -127,10 +162,10 @@ const TabNavigator = () => {
             tabBarLabel: 'Home',
             tabBarIcon: ({ color, focused }) => (
               <View style={styles.iconContainer}>
-                <MaterialCommunityIcons name={focused ? 'home' : 'home-outline'} size={26} color={color} />
+                <MaterialCommunityIcons name={focused ? 'home' : 'home-outline'} size={24} color={color} />
               </View>
             ),
-            tabBarStyle: getTabBarStyle(route, 'DentistHomeTab'),
+            tabBarStyle: getDentistTabBarStyle(route, 'DentistHomeTab'),
           })}
         />
 
@@ -141,10 +176,10 @@ const TabNavigator = () => {
             tabBarLabel: '3D Scan',
             tabBarIcon: ({ color, focused }) => (
               <View style={styles.iconContainer}>
-                <MaterialCommunityIcons name={focused ? 'cube-scan' : 'cube-outline'} size={26} color={color} />
+                <MaterialCommunityIcons name={focused ? 'tooth' : 'tooth-outline'} size={24} color={color} />
               </View>
             ),
-            tabBarStyle: getTabBarStyle(route, 'DentistScanTab'),
+            tabBarStyle: getDentistTabBarStyle(route, 'DentistScanTab'),
           })}
         />
       </Tab.Navigator>

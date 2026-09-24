@@ -67,9 +67,8 @@ const LoginScreen = ({ navigation }) => {
       nextErrors.email = emailCheck.error.issues?.[0]?.message || 'Email tidak valid';
     }
 
-    const passwordCheck = passwordSchema.safeParse(form.password);
-    if (!passwordCheck.success) {
-      nextErrors.password = passwordCheck.error.issues?.[0]?.message || 'Password tidak valid';
+    if (!form.password || form.password.trim().length === 0) {
+      nextErrors.password = 'Password wajib diisi';
     }
 
     return nextErrors;
@@ -94,7 +93,7 @@ const LoginScreen = ({ navigation }) => {
       console.log('📤 Attempting login for:', form.email.trim());
 
       // Call login API
-      const result = await loginPatient(form.email.trim(), form.password);
+      const result = await loginPatient(form.email.trim().toLowerCase(), form.password);
 
       if (result.success) {
         // Login successful!
@@ -276,11 +275,12 @@ const LoginScreen = ({ navigation }) => {
             <View style={styles.fieldSpacing}>
               <TextInput
                 mode="outlined"
-                label="Email klinik"
+                label="Email (Pasien / Dokter)"
                 value={form.email}
                 onChangeText={(text) => handleChange('email', text)}
                 keyboardType="email-address"
                 autoCapitalize="none"
+                autoCorrect={false}
                 left={<TextInput.Icon icon="email-outline" />}
                 error={Boolean(errors.email)}
               />
@@ -296,6 +296,8 @@ const LoginScreen = ({ navigation }) => {
                 value={form.password}
                 onChangeText={(text) => handleChange('password', text)}
                 secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
                 left={<TextInput.Icon icon="lock-outline" />}
                 right={
                   <TextInput.Icon

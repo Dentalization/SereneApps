@@ -26,11 +26,21 @@ test('annotation identity changes with geometry and user and rejects unversioned
 });
 
 test('asset discovery rejects other scans, paths, external origins and traversal', () => {
-  assert.equal(scanAssetPath(1, { assetUrl: '/v1/x-core/3d-scans/1/assets/raw_mesh.ply' }), '/v1/x-core/3d-scans/1/assets/raw_mesh.ply');
+  assert.equal(scanAssetPath(1, { assetUrl: '/v1/x-core/3d-scans/1/assets/raw_mesh.ply' }), '/api/v1/x-core/3d-scans/1/assets/raw_mesh.ply');
   for (const path of ['/v1/x-core/3d-scans/2/assets/mesh.stl', 'https://other.invalid/mesh.stl',
     '/v1/x-core/3d-scans/1/assets/../mesh.stl', '/v1/x-core/3d-scans/1/assets/%2e%2e/mesh.stl']) {
     assert.equal(scanAssetPath(1, { assetUrl: path }), null);
   }
+});
+
+test('diagnostic mesh path is exact, scoped, and cannot enable measurements', () => {
+  const descriptor = { assetUrl: '/v1/x-core/3d-scans/1/diagnostic-mesh', diagnosticOnly: true,
+    format: 'obj', sha256: 'a'.repeat(64), measurementCapability: 'visualization_only' };
+  assert.equal(scanAssetPath(1, descriptor), '/api/v1/x-core/3d-scans/1/diagnostic-mesh');
+  assert.equal(resolveScanAssetCapability(descriptor).canMeasure, false);
+  assert.equal(scanAssetPath(2, descriptor), null);
+  assert.equal(scanAssetPath(1, { ...descriptor, diagnosticOnly: false }), null);
+  assert.equal(scanAssetPath(1, { ...descriptor, assetUrl: `${descriptor.assetUrl}/../assets/mesh.obj` }), null);
 });
 
 test('bounded download rejects both declared and streaming oversized files', async () => {

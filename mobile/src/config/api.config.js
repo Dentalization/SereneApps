@@ -18,7 +18,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 // Change this to your computer's local IP when testing on physical device
-const LOCAL_IP = '192.168.1.12'; // Auto-detected by setup script
+const LOCAL_IP = '192.168.1.2'; // Active computer LAN IP
 
 // Auto-detect environment
 const isSimulator = Constants.isDevice === false;
@@ -36,8 +36,8 @@ const envAiUrl =
   expoExtra.aiProxyUrl;
 
 const localBackendUrl = isSimulator
-  ? 'http://localhost:3000/api'
-  : `http://${LOCAL_IP}:3000/api`;
+  ? 'http://localhost:4000/api'
+  : `http://${LOCAL_IP}:4000/api`;
 
 // API Configuration
 export const API_CONFIG = {
