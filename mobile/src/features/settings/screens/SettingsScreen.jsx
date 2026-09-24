@@ -48,6 +48,7 @@ const SettingsScreen = ({ navigation }) => {
   const handleLogout = () => {
     dispatch(logout());
     setSnackbar({ visible: true, message: 'Anda keluar dari SereneApps.' });
+    navigation.navigate('Login');
   };
 
   const quickActions = [

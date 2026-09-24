@@ -123,7 +123,10 @@ const Scan3DMeshViewer = ({
     triggerSegmentation,
   } = useToothInstances(studyId, { enabled: showTeeth && scanStatus === 'ready' });
 
-  const assetDescriptor = statusData?.assets?.mesh || {};
+  const diagnosticMode = scanStatus === 'failed'
+    && statusData?.qualityAssessment?.status === 'insufficient'
+    && Boolean(statusData?.diagnosticMesh);
+  const assetDescriptor = statusData?.assets?.mesh || (diagnosticMode ? statusData.diagnosticMesh : null) || {};
   const assetSafety = resolveScanAssetCapability(assetDescriptor);
   const assetUrlFromStatus = scanAssetPath(studyId, assetDescriptor);
   const assetSha = assetDescriptor.sha256 || assetDescriptor.checksum?.sha256 || null;
@@ -142,15 +145,16 @@ const Scan3DMeshViewer = ({
       if (!studyId) return;
       try {
         const token = getAccessToken();
-        const res = await fetch(`/v1/x-core/3d-scans/${studyId}/status`, {
+        const res = await fetch(`/api/v1/x-core/3d-scans/${encodeURIComponent(studyId)}/status`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        if (!res.headers.get('Content-Type')?.includes('application/json')) throw new Error('Server mengirim halaman HTML, bukan status scan. Periksa jalur API /api dan layanan backend.');
         if (!res.ok) throw new Error(`Status aset tidak tersedia (${res.status})`);
         if (isMounted) {
           const data = await res.json();
           setStatusData(data);
           setScanStatus(data.status);
-          if (data.status === 'processing' || data.status === 'queued') {
+          if (['created', 'pending_capture', 'uploaded', 'processing', 'queued'].includes(data.status)) {
             timer = setTimeout(checkStatus, 2000);
           }
         }
@@ -192,7 +196,7 @@ const Scan3DMeshViewer = ({
   const handleRetry = async () => {
     try {
       const token = getAccessToken();
-      const res = await fetch(`/v1/x-core/3d-scans/${studyId}/retry`, {
+      const res = await fetch(`/api/v1/x-core/3d-scans/${encodeURIComponent(studyId)}/retry`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({}),
@@ -250,7 +254,7 @@ const Scan3DMeshViewer = ({
   // 5. VTK 3D Mesh Loader
   // ---------------------------------------------------------------------------
   const initVtkViewer = useCallback(async () => {
-    if (!containerRef.current || scanStatus !== 'ready' || !studyId) return;
+    if (!containerRef.current || (scanStatus !== 'ready' && !diagnosticMode) || !studyId) return;
     loadAbortRef.current?.abort();
     const controller = new AbortController();
     loadAbortRef.current = controller;
@@ -284,7 +288,7 @@ const Scan3DMeshViewer = ({
       const authHeaders = { Authorization: `Bearer ${token}` };
 
       if (!assetUrlFromStatus) throw new Error('Aset mesh terotorisasi belum tersedia pada manifest scan.');
-      const assetFormat = assetUrlFromStatus.split('.').pop().toLowerCase();
+      const assetFormat = assetDescriptor.format || assetUrlFromStatus.split('.').pop().toLowerCase();
       const response = await fetch(assetUrlFromStatus, { headers: authHeaders, signal: controller.signal, redirect: 'error' });
       if (!response.ok) throw new Error(`Aset 3D tidak dapat dimuat (${response.status})`);
       const buffer = await readBoundedAsset(response);
@@ -406,10 +410,10 @@ const Scan3DMeshViewer = ({
       setAssetError(err.message || 'Gagal memuat aset 3D mesh');
       setIsLoadingAsset(false);
     }
-  }, [studyId, scanStatus, assetUrlFromStatus, assetSha]);
+  }, [studyId, scanStatus, diagnosticMode, assetUrlFromStatus, assetSha, assetDescriptor.format]);
 
   useEffect(() => {
-    if (scanStatus === 'ready') {
+    if (scanStatus === 'ready' || diagnosticMode) {
       initVtkViewer();
     }
     return () => {
@@ -429,14 +433,14 @@ const Scan3DMeshViewer = ({
         vtkRef.current = null;
       }
     };
-  }, [scanStatus, initVtkViewer]);
+  }, [scanStatus, diagnosticMode, initVtkViewer]);
 
   // ---------------------------------------------------------------------------
   // 6. VTK pick handler (fires on left-click when a measurement tool is active)
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const vtk = vtkRef.current;
-    if (!vtk || measState.tool === TOOLS.NONE || (measState.tool === TOOLS.DISTANCE && !assetSafety.canMeasure)) return;
+    if (!vtk || diagnosticMode || measState.tool === TOOLS.NONE || (measState.tool === TOOLS.DISTANCE && !assetSafety.canMeasure)) return;
 
     const { interactor, renderer, renderWindow, picker } = vtk;
 
@@ -471,7 +475,7 @@ const Scan3DMeshViewer = ({
 
     const sub = interactor.onLeftButtonPress(onLeftPress);
     return () => { try { sub.unsubscribe?.(); } catch (_) {} };
-  }, [measState.tool, viewerEpoch, assetSafety.canMeasure]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [measState.tool, viewerEpoch, assetSafety.canMeasure, diagnosticMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const subscribeToRender = useCallback((listener) => vtkRef.current?.interactor.onRenderEvent(listener), [viewerEpoch]);
 
@@ -552,13 +556,19 @@ const Scan3DMeshViewer = ({
   const engine = metrics?.engine || metadata?.reconstructionEngine || statusData?.job?.reconstructionEngine || 'Tidak tersedia';
   const qualityScore = lidra?.qualityScore;
   const qualityLabel = typeof qualityScore === 'number' ? `${qualityScore}% (heuristik akuisisi)` : 'Tidak tersedia';
+  const geometryQuality = statusData?.qualityAssessment || metadata?.qualityAssessment;
+  const geometryInsufficient = geometryQuality?.status === 'insufficient'
+    || statusData?.job?.failureCode === 'RECONSTRUCTION_GEOMETRY_INSUFFICIENT';
 
   // ---------------------------------------------------------------------------
-  // Render State 1: Processing / Queued
+  // Render State 1: Capture / Queued / Processing
   // ---------------------------------------------------------------------------
-  if (scanStatus === 'processing' || scanStatus === 'queued' || scanStatus === 'created' || scanStatus === 'uploaded') {
+  if (['created', 'pending_capture', 'uploaded', 'queued', 'processing'].includes(scanStatus)) {
     const progress = statusData?.progressPercent ?? 0;
     const stage = statusData?.currentStage || (scanStatus === 'processing' ? 'surface_reconstruction' : 'queued');
+    const waitingForVideo = scanStatus === 'created' || scanStatus === 'pending_capture';
+    const waitingForQueue = scanStatus === 'uploaded';
+    const isReconstructing = scanStatus === 'processing' || scanStatus === 'queued';
 
     return (
       <div className="relative h-full w-full bg-slate-950 flex flex-col items-center justify-center p-6 text-white select-none">
@@ -574,7 +584,7 @@ const Scan3DMeshViewer = ({
 
         <div className="max-w-md w-full bg-slate-900/90 border border-cyan-500/20 rounded-3xl p-8 shadow-2xl backdrop-blur-xl text-center space-y-6">
           <div className="relative inline-flex items-center justify-center">
-            <div className="w-20 h-20 rounded-full border-4 border-cyan-500/20 border-t-cyan-400 animate-spin" />
+            <div className={`w-20 h-20 rounded-full border-4 border-cyan-500/20 border-t-cyan-400 ${isReconstructing ? 'animate-spin' : ''}`} />
             <div className="absolute inset-0 flex items-center justify-center">
               <AppIcon name="Cpu" size={32} className="text-cyan-400 animate-pulse" />
             </div>
@@ -582,14 +592,14 @@ const Scan3DMeshViewer = ({
 
           <div>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-400/30 text-cyan-300 text-xs font-semibold uppercase tracking-wider mb-2">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-              Rekonstruksi 3D Berjalan
+              <span className={`w-2 h-2 rounded-full bg-cyan-400 ${isReconstructing ? 'animate-ping' : ''}`} />
+              {waitingForVideo ? 'Menunggu Rekaman Video' : (waitingForQueue ? 'Video Diterima' : 'Rekonstruksi 3D Berjalan')}
             </span>
             <h3 className="text-xl font-bold text-white tracking-tight">{patientName}</h3>
             <p className="text-xs text-slate-400 font-mono mt-0.5">{scanIdentifier}</p>
           </div>
 
-          <div className="space-y-2 text-left">
+          {isReconstructing && <div className="space-y-2 text-left">
             <div className="flex justify-between text-xs text-slate-300">
               <span className="font-semibold capitalize text-cyan-200">{stage.replace(/_/g, ' ')}</span>
               <span className="font-mono text-cyan-400 font-bold">{progress}%</span>
@@ -600,9 +610,9 @@ const Scan3DMeshViewer = ({
                 style={{ width: `${progress}%` }}
               />
             </div>
-          </div>
+          </div>}
 
-          <div className="grid grid-cols-2 gap-3 text-left">
+          {isReconstructing && <div className="grid grid-cols-2 gap-3 text-left">
             <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
               <div className="text-[10px] text-slate-400 uppercase font-semibold">Engine</div>
               <div className="text-xs font-bold text-cyan-300 truncate mt-0.5">{engine}</div>
@@ -611,10 +621,14 @@ const Scan3DMeshViewer = ({
               <div className="text-[10px] text-slate-400 uppercase font-semibold">Skor Kualitas LIDRA</div>
               <div className="text-xs font-bold text-emerald-400 mt-0.5">{qualityLabel}</div>
             </div>
-          </div>
+          </div>}
 
           <p className="text-[11px] text-slate-400 italic">
-            Model 3D sedang diekstrak dan disaring geometrinya. Halaman ini akan memuat model secara otomatis begitu proses selesai.
+            {waitingForVideo
+              ? 'Belum ada video yang siap dianalisis. Rekam dan unggah video dari aplikasi dokter gigi.'
+              : (waitingForQueue
+                ? 'Video telah diterima. Pemrosesan belum dimulai.'
+                : 'Model 3D sedang diekstrak dan disaring geometrinya. Halaman ini akan memuat model secara otomatis begitu proses selesai.')}
           </p>
         </div>
       </div>
@@ -624,7 +638,7 @@ const Scan3DMeshViewer = ({
   // ---------------------------------------------------------------------------
   // Render State 2: Failed
   // ---------------------------------------------------------------------------
-  if (scanStatus === 'failed' || scanStatus === 'unavailable') {
+  if ((scanStatus === 'failed' && !diagnosticMode) || scanStatus === 'unavailable') {
     return (
       <div className="relative h-full w-full bg-slate-950 flex flex-col items-center justify-center p-6 text-white select-none">
         <div className="absolute top-4 left-4 z-20">
@@ -643,24 +657,30 @@ const Scan3DMeshViewer = ({
           </div>
 
           <div>
-            <h3 className="text-lg font-bold text-white">Rekonstruksi 3D Belum Berhasil</h3>
+            <h3 className="text-lg font-bold text-white">{scanStatus === 'unavailable' ? 'Status Scan Tidak Tersedia' : (geometryInsufficient ? 'Mesh Belum Memadai' : 'Rekonstruksi 3D Belum Berhasil')}</h3>
             <p className="text-xs text-rose-300 mt-1">
               {assetError || statusData?.failureReason || metadata?.failureReason || 'Pemrosesan gagal. Periksa ketersediaan engine dan laporan scan.'}
             </p>
           </div>
 
-          <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-left text-xs text-slate-400 space-y-1">
+          {geometryInsufficient && <div className="bg-slate-950/70 border border-amber-500/20 rounded-xl p-3 text-left text-xs text-slate-300 space-y-1">
+            <div>Frame terdaftar: {geometryQuality?.registeredFrames ?? '—'} · Vertex: {geometryQuality?.vertexCount ?? '—'} · Face: {geometryQuality?.faceCount ?? '—'}</div>
+            <div>Cakupan gigi belum dapat diverifikasi. Aset percobaan ini tidak dipublikasikan sebagai mesh siap pakai.</div>
+          </div>}
+          {scanStatus === 'failed' && !geometryInsufficient && <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-left text-xs text-slate-400 space-y-1">
             <div>• Pastikan video mencakup lengkung gigi secara perlahan.</div>
             <div>• Hindari pencahayaan terlalu gelap atau gerakan buram.</div>
-          </div>
+          </div>}
 
-          <button
-            onClick={handleRetry}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-cyan-600/20"
-          >
-            <AppIcon name="RefreshCw" size={14} />
-            <span>Coba Lagi Rekonstruksi 3D</span>
-          </button>
+          {scanStatus === 'failed' && statusData?.status === 'failed' && statusData?.job?.recoverable !== false && (
+            <button
+              onClick={handleRetry}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-cyan-600/20"
+            >
+              <AppIcon name="RefreshCw" size={14} />
+              <span>Coba Lagi Rekonstruksi 3D</span>
+            </button>
+          )}
         </div>
       </div>
     );
@@ -676,8 +696,13 @@ const Scan3DMeshViewer = ({
       {/* 3D WebGL Canvas */}
       <div ref={containerRef} className="absolute inset-0 w-full h-full z-0" />
 
+      {diagnosticMode && <div className="absolute top-20 left-4 right-4 z-20 pointer-events-none max-w-xl rounded-xl border border-amber-400/50 bg-slate-950/90 px-4 py-3 text-amber-100 shadow-xl">
+        <div className="text-sm font-bold">Mesh diagnostik — belum merekonstruksi gigi</div>
+        <div className="mt-1 text-xs">Frame: {statusData?.qualityAssessment?.registeredFrames ?? '—'} · Vertex: {statusData?.qualityAssessment?.vertexCount ?? '—'} · Face: {statusData?.qualityAssessment?.faceCount ?? '—'}. Bentuk ini hanya untuk menelusuri kegagalan, bukan pengukuran atau diagnosis.</div>
+      </div>}
+
       {/* Measurement + Annotation Overlay */}
-      {!isLoadingAsset && (
+      {!isLoadingAsset && !diagnosticMode && (
         <Scan3DAnnotationOverlay
           subscribeToRender={subscribeToRender}
           measurements={visibleMeasurements}
@@ -794,13 +819,13 @@ const Scan3DMeshViewer = ({
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-white">{patientName}</span>
               <span className="px-2 py-0.5 bg-gradient-to-r from-cyan-600 to-indigo-600 text-white rounded text-[10px] font-bold uppercase tracking-wider">
-                3D Scan Mesh
+                {diagnosticMode ? 'Mesh Diagnostik' : 'Kandidat Mesh 3D'}
               </span>
             </div>
             <div className="text-[10px] text-slate-400 font-mono flex items-center gap-2 mt-0.5">
               <span>{scanIdentifier}</span>
               <span>•</span>
-              <span className="text-amber-300 font-semibold">Eksperimental · {assetSafety.capability} · skala {assetSafety.scaleStatus}</span>
+              <span className="text-amber-300 font-semibold">Eksperimental · cakupan gigi belum diverifikasi · {assetSafety.capability} · skala {assetSafety.scaleStatus}</span>
               {measState.measurements.length > 0 && (
                 <>
                   <span>•</span>
@@ -934,7 +959,7 @@ const Scan3DMeshViewer = ({
         </div>
 
         {/* Measurement & Annotation Toolbar */}
-        {!isLoadingAsset && (
+        {!isLoadingAsset && !diagnosticMode && (
           <Scan3DMeasurementToolbar
             canMeasure={assetSafety.canMeasure}
             activeTool={measState.tool}
@@ -1122,7 +1147,7 @@ const Scan3DMeshViewer = ({
           </div>
 
           {/* Download Mesh Asset */}
-          <div className="pt-4 border-t border-slate-800">
+          {!diagnosticMode && <div className="pt-4 border-t border-slate-800">
             <button
               onClick={handleDownload}
               disabled={!assetUrlFromStatus}
@@ -1131,7 +1156,7 @@ const Scan3DMeshViewer = ({
               <AppIcon name="Download" size={14} />
               <span>Unduh Aset Eksperimental Asli</span>
             </button>
-          </div>
+          </div>}
         </aside>
       )}
     </div>

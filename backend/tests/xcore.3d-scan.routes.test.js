@@ -91,16 +91,22 @@ test('isolated DB: patient ownership, duplicate reuse, upload inspection and fai
       assert.equal((await request(`/scans/${scan.id}/queue`, { engine: 'photogrammetry_v1' })).status, 422);
       const queued = await request(`/scans/${scan.id}/queue`, {}); assert.equal(queued.status, 200); assert.equal(queued.json.scan.status, 'queued');
       assert.equal(queued.json.job.leaseToken, undefined);
-      // This is a mocked engine result for transaction/asset authorization testing only.
-      // It is never submitted to geometry validation or claimed as a real reconstruction.
+      // Controlled synthetic mesh metadata exercises only transaction and asset
+      // authorization; its gate pass is not dental or reconstruction validation.
       let engineCalls = 0;
       const worker = createScanWorker(prisma, async (_study, { outputDir }) => {
         engineCalls += 1;
         await fs.mkdir(outputDir, { recursive: true });
         const file = path.join(outputDir, 'mesh.obj');
-        await fs.writeFile(file, '# controlled test fixture, not patient geometry\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n');
-        return { success: true, assets: { mesh: { fileName: 'mesh.obj', storagePath: path.relative(privateScanDirectory(_study), file), checksum: await sha256File(file) } },
-          provenance: { geometrySource: 'image_derived', synthetic: false, testFixture: true }, metrics: {}, lidra: {}, performance: {} };
+        const lines = ['# controlled test fixture (synthetic), not patient geometry'];
+        for (let y = 0; y < 11; y += 1) for (let x = 0; x < 11; x += 1) lines.push(`v ${x} ${y} 0`);
+        for (let y = 0; y < 10; y += 1) for (let x = 0; x < 10; x += 1) {
+          const a = y * 11 + x + 1; lines.push(`f ${a} ${a + 1} ${a + 11}`, `f ${a + 1} ${a + 12} ${a + 11}`);
+        }
+        await fs.writeFile(file, `${lines.join('\n')}\n`);
+        return { success: true, assets: { mesh: { fileName: 'mesh.obj', storagePath: path.relative(privateScanDirectory(_study), file), checksum: await sha256File(file), vertexCount: 121, faceCount: 200 } },
+          provenance: { geometrySource: 'image_derived', synthetic: false, testFixture: true },
+          metrics: { registeredFrames: 3, vertexCount: 121, faceCount: 200, testFixture: true }, lidra: {}, performance: {} };
       });
       const queuedStudy = await prisma.imagingStudy.findUnique({ where: { id: BigInt(scan.id) } });
       const processed = await Promise.all([worker.processStudy(queuedStudy), worker.processStudy(queuedStudy)]);

@@ -26,7 +26,7 @@ export class PythonServiceEngine extends BaseReconstructionEngine {
       description: 'Computes feature matches, relative camera pose and triangulated geometry from video. Arbitrary scale; no full-arch or clinical validation.' });
   }
 
-  async process({ study, studyDir, options = {}, scanScope = 'full' }) {
+  async process({ study, studyDir, options = {}, scanScope = 'full', lidraReport }) {
     const started = performance.now();
     const video = study.metadata?.video;
     const videoPath = await confinedExistingFile(studyDir, video?.storagePath || video?.fileName || 'raw_video.mp4');
@@ -55,12 +55,22 @@ export class PythonServiceEngine extends BaseReconstructionEngine {
       });
     }
     const inspectedHash = video?.checksum || video?.sha256;
+    const frameIdentity = frames => Array.isArray(frames) && frames.length >= 2
+      && frames.every(frame => Number.isInteger(frame.frameIndex) && /^[a-f0-9]{64}$/.test(frame.sha256 || ''))
+      ? JSON.stringify(frames.map(frame => [frame.frameIndex, frame.sha256])) : null;
     if (!inspectedHash || metadata.input?.sha256 !== inspectedHash
         || await sha256File(videoPath) !== inspectedHash
         || metadata.geometrySource !== 'image_derived' || !metadata.engineVersion
         || !metadata.coordinateSystem || !metadata.configuration || !metadata.reproducibility) {
       throw Object.assign(new Error('Reconstruction input or execution provenance mismatch'), {
         code: 'RECONSTRUCTION_PROVENANCE_MISMATCH', retryable: false,
+      });
+    }
+    if (lidraReport && (lidraReport.videoMetadata?.sha256 !== inspectedHash
+        || !frameIdentity(lidraReport.selectedFrames)
+        || frameIdentity(metadata.selectedFrames) !== frameIdentity(lidraReport.selectedFrames))) {
+      throw Object.assign(new Error('Reconstruction frames do not match measured acquisition'), {
+        code: 'ACQUISITION_FRAME_MISMATCH', retryable: false,
       });
     }
     const wrap = async (asset) => {

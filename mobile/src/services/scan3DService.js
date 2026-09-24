@@ -6,6 +6,36 @@ import api from './api';
  */
 
 /**
+ * Safely format an API error into a user-friendly Indonesian message.
+ * Prevents raw Axios/stack trace from leaking to the UI.
+ */
+const resolveErrorMessage = (error, defaultMsg) => {
+  if (error?.response?.data?.error) {
+    return error.response.data.error;
+  }
+  if (error?.response?.data?.message) {
+    return error.response.data.message;
+  }
+  if (error?.code === 'ERR_NETWORK' || error?.message === 'Network Error' || !error?.response) {
+    return 'Tidak dapat terhubung ke server backend. Pastikan ponsel dan komputer terhubung pada jaringan yang sama.';
+  }
+  if (error?.code === 'ECONNABORTED' || error?.message?.includes?.('timeout')) {
+    return 'Waktu koneksi ke server habis (timeout). Silakan periksa jaringan dan coba lagi.';
+  }
+  return error?.message || defaultMsg;
+};
+
+/**
+ * Log operational service errors to console without triggering React Native dev RedBox.
+ */
+const logServiceWarning = (action, error) => {
+  const errMsg = error?.response?.data?.error || error?.message || String(error);
+  if (__DEV__) {
+    console.warn(`[scan3DService] ${action} handled issue: ${errMsg}`);
+  }
+};
+
+/**
  * Fetch accessible patients for 3D scanning.
  * @param {string} [search=''] - Search term for patient name, phone, or MRN.
  * @returns {Promise<{success: boolean, patients: Array, message?: string}>}
@@ -19,11 +49,11 @@ export const fetchScanPatients = async (search = '') => {
       patients: response.data?.patients || [],
     };
   } catch (error) {
-    console.error('[scan3DService] fetchScanPatients error:', error);
+    logServiceWarning('fetchScanPatients', error);
     return {
       success: false,
       patients: [],
-      message: error.response?.data?.error || error.message || 'Gagal memuat daftar pasien',
+      message: resolveErrorMessage(error, 'Gagal memuat daftar pasien'),
     };
   }
 };
@@ -41,12 +71,12 @@ export const createScanPatient = async (patientData) => {
       patient: response.data?.patient,
     };
   } catch (error) {
-    console.error('[scan3DService] createScanPatient error:', error);
+    logServiceWarning('createScanPatient', error);
     const errData = error.response?.data;
     return {
       success: false,
       code: errData?.code || 'PATIENT_CREATE_FAILED',
-      message: errData?.error || error.message || 'Gagal menambahkan pasien baru',
+      message: resolveErrorMessage(error, 'Gagal menambahkan pasien baru'),
     };
   }
 };
@@ -64,11 +94,10 @@ export const create3DScan = async (scanData) => {
       scan: response.data?.scan,
     };
   } catch (error) {
-    console.error('[scan3DService] create3DScan error:', error);
-    const errData = error.response?.data;
+    logServiceWarning('create3DScan', error);
     return {
       success: false,
-      message: errData?.error || error.message || 'Gagal membuat sesi 3D scan',
+      message: resolveErrorMessage(error, 'Gagal membuat sesi 3D scan'),
     };
   }
 };
@@ -86,11 +115,10 @@ export const fetch3DScan = async (scanId) => {
       scan: response.data?.scan,
     };
   } catch (error) {
-    console.error('[scan3DService] fetch3DScan error:', error);
-    const errData = error.response?.data;
+    logServiceWarning('fetch3DScan', error);
     return {
       success: false,
-      message: errData?.error || error.message || 'Gagal memuat detail sesi 3D scan',
+      message: resolveErrorMessage(error, 'Gagal memuat detail sesi 3D scan'),
     };
   }
 };
@@ -142,11 +170,10 @@ export const upload3DScanVideo = async (scanId, videoUri, metadata = {}) => {
       message: response.data?.message,
     };
   } catch (error) {
-    console.error('[scan3DService] upload3DScanVideo error:', error);
-    const errData = error.response?.data;
+    logServiceWarning('upload3DScanVideo', error);
     return {
       success: false,
-      message: errData?.error || error.message || 'Gagal mengunggah video 3D scan',
+      message: resolveErrorMessage(error, 'Gagal mengunggah video 3D scan'),
     };
   }
 };
@@ -167,11 +194,10 @@ export const queue3DScan = async (scanId, options = {}) => {
       message: response.data?.message,
     };
   } catch (error) {
-    console.error('[scan3DService] queue3DScan error:', error);
-    const errData = error.response?.data;
+    logServiceWarning('queue3DScan', error);
     return {
       success: false,
-      message: errData?.error || error.message || 'Gagal memulai antrean rekonstruksi',
+      message: resolveErrorMessage(error, 'Gagal memulai antrean rekonstruksi'),
     };
   }
 };
@@ -189,11 +215,10 @@ export const fetch3DScanStatus = async (scanId) => {
       ...response.data,
     };
   } catch (error) {
-    console.error('[scan3DService] fetch3DScanStatus error:', error);
-    const errData = error.response?.data;
+    logServiceWarning('fetch3DScanStatus', error);
     return {
       success: false,
-      message: errData?.error || error.message || 'Gagal memuat status rekonstruksi',
+      message: resolveErrorMessage(error, 'Gagal memuat status rekonstruksi'),
     };
   }
 };
@@ -214,11 +239,10 @@ export const retry3DScan = async (scanId, options = {}) => {
       message: response.data?.message,
     };
   } catch (error) {
-    console.error('[scan3DService] retry3DScan error:', error);
-    const errData = error.response?.data;
+    logServiceWarning('retry3DScan', error);
     return {
       success: false,
-      message: errData?.error || error.message || 'Gagal menjadwalkan ulang rekonstruksi',
+      message: resolveErrorMessage(error, 'Gagal menjadwalkan ulang rekonstruksi'),
     };
   }
 };
@@ -236,12 +260,11 @@ export const fetch3DScanEngines = async () => {
       defaultEngine: response.data?.defaultEngine,
     };
   } catch (error) {
-    console.error('[scan3DService] fetch3DScanEngines error:', error);
-    const errData = error.response?.data;
+    logServiceWarning('fetch3DScanEngines', error);
     return {
       success: false,
       engines: [],
-      message: errData?.error || error.message || 'Gagal memuat daftar engine rekonstruksi',
+      message: resolveErrorMessage(error, 'Gagal memuat daftar engine rekonstruksi'),
     };
   }
 };
@@ -259,11 +282,10 @@ export const fetch3DScanLidraReport = async (scanId) => {
       lidra: response.data?.lidra,
     };
   } catch (error) {
-    console.error('[scan3DService] fetch3DScanLidraReport error:', error);
-    const errData = error.response?.data;
+    logServiceWarning('fetch3DScanLidraReport', error);
     return {
       success: false,
-      message: errData?.error || error.message || 'Gagal memuat laporan akuisisi LIDRA',
+      message: resolveErrorMessage(error, 'Gagal memuat laporan akuisisi LIDRA'),
     };
   }
 };

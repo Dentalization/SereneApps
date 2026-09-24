@@ -1,8 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { reconstructionEngineRegistry } from './engines/reconstructionEngineRegistry.js';
+import { scanServiceHeaders } from './engines/pythonServiceEngine.js';
 import { resolveExperimentConfiguration } from './experimentConfiguration.js';
-import { publicScanMetadata, publicJob, scanEvent } from './scanIntegrity.js';
+import { publicScanState, publicJob, scanEvent } from './scanIntegrity.js';
 
 import { auditedScanUpdate } from './scanAudit.js';
 const prisma = new PrismaClient();
@@ -34,6 +35,8 @@ export function createScanQueue(client, registry = reconstructionEngineRegistry)
     if (metadata.storageVersion !== 'private_v1' || !metadata.video?.decodeVerified || !metadata.videoFileName || !/^[a-f0-9]{64}$/.test(metadata.checksum || '')) {
       throw problem(422, 'Upload a video verified by the server before reconstruction', 'VIDEO_NOT_VERIFIED');
     }
+    try { scanServiceHeaders(); }
+    catch (error) { throw problem(503, error.message, error.code || 'SCAN_SERVICE_NOT_CONFIGURED'); }
     const attempts = Number(previous.attempts || 0);
     if (attempts >= MAX_SCAN_ATTEMPTS) throw problem(409, 'Reconstruction attempt limit reached; upload a new recording', 'RETRY_LIMIT_REACHED');
     if (previous.nextAttemptAt && Date.parse(previous.nextAttemptAt) > Date.now()) throw problem(409, 'Retry backoff has not elapsed', 'RETRY_BACKOFF');
@@ -41,7 +44,8 @@ export function createScanQueue(client, registry = reconstructionEngineRegistry)
       startedAt: null, completedAt: null, failedAt: null, attempts, maxAttempts: MAX_SCAN_ATTEMPTS,
       progressPercent: 5, currentStage: 'queued', reconstructionEngine: engine, failureReason: null,
       leaseToken: null, leaseExpiresAt: null, logs: scanEvent(previous, attempts ? 'processing_retried' : 'processing_queued') };
-    const updatedMetadata = { ...metadata, experimentConfiguration: structuredClone(configuration), processingJob: job, assets: null, confidence: null };
+    const updatedMetadata = { ...metadata, experimentConfiguration: structuredClone(configuration), processingJob: job,
+      assets: null, diagnosticAssets: null, qualityAssessment: null, confidence: null };
     const result = await auditedScanUpdate(client, scan, { id, status: scan.status, metadata: { equals: scan.metadata } }, { status: 'queued', metadata: updatedMetadata }, attempts ? 'processing_retried' : 'processing_queued');
     if (!result.count) throw problem(409, 'Scan changed concurrently; refresh its status', 'SCAN_CONFLICT');
     return { scan: { ...scan, status: 'queued', metadata: updatedMetadata }, job: publicJob(job) };
@@ -61,11 +65,12 @@ export const retryScan = queue.retry;
 export async function getScanJobStatus(scanId) {
   const scan = await prisma.imagingStudy.findFirst({ where: { id: BigInt(scanId), modality: '3D_SCAN' } });
   if (!scan) throw problem(404, 'Scan session not found');
-  const metadata = publicScanMetadata(scan.metadata || {});
+  const { status, metadata } = publicScanState(scan);
   const job = metadata.processingJob || { status: scan.status, progressPercent: 0, currentStage: scan.status, logs: [] };
-  return { scanId: scan.id.toString(), scanIdentifier: scan.folderName, status: scan.status,
-    progressPercent: job.progressPercent || 0, currentStage: job.currentStage || scan.status, job,
-    assets: metadata.assets, metrics: metadata.metrics || null, lidra: metadata.lidra || null, confidence: null, cameraTrajectory: metadata.cameraTrajectory || [],
+  return { scanId: scan.id.toString(), scanIdentifier: scan.folderName, status,
+    progressPercent: job.progressPercent || 0, currentStage: job.currentStage || status, job,
+    assets: metadata.assets, diagnosticMesh: metadata.diagnosticMesh || null, metrics: metadata.metrics || null, lidra: metadata.lidra || null, confidence: null, cameraTrajectory: metadata.cameraTrajectory || [],
     capabilities: metadata.capabilities, provenance: metadata.provenance, performance: metadata.performance || null,
+    qualityAssessment: metadata.qualityAssessment || null,
     video: metadata.video || null, failureReason: job.failureReason || null, updatedAt: scan.updatedAt.toISOString() };
 }

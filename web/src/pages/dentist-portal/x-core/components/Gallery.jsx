@@ -8,6 +8,7 @@ import { buildImagingUrl, buildStudyAssetParams } from '../utils/imagingUrl';
 import { useToast } from '../../../../contexts/ToastContext';
 import { useAuth } from '../../../../contexts/AuthContext';
 import AssignStudyPatientModal from './AssignStudyPatientModal';
+import { formatGalleryStudy, scan3DGalleryState } from './scan3DGalleryState.mjs';
 
 async function batchFetch(items, asyncFn, concurrency = 5) {
     const results = [];
@@ -110,34 +111,37 @@ function normalizeStudySeriesState(study) {
     };
 }
 
-async function fetchStudySeries(study) {
-    if (study?.modality === '3D_SCAN') {
-        const isReady = study.status === 'ready';
-        const isProcessing = study.status === 'processing' || study.status === 'queued' || study.status === 'created' || study.status === 'uploaded';
-        const isFailed = study.status === 'failed';
-        const series = [{
+function expand3DScanStudy(study) {
+    const scanState = scan3DGalleryState(study);
+    const series = [{
             series_uid: `3d-mesh-${study.id}`,
-            series_description: study.metadata?.scanScope ? `3D Dental Scan (${study.metadata.scanScope.toUpperCase()})` : '3D Dental Scan Mesh',
-            title: study.metadata?.scanScope ? `3D Dental Scan (${study.metadata.scanScope.toUpperCase()})` : '3D Dental Scan Mesh',
+            series_description: study.metadata?.scanScope ? `3D Dental Scan (${study.metadata.scanScope.toUpperCase()})` : '3D Dental Scan',
+            title: study.metadata?.scanScope ? `3D Dental Scan (${study.metadata.scanScope.toUpperCase()})` : '3D Dental Scan',
             modality: '3D_SCAN',
-            type: '3D Mesh',
-            num_slices: 1,
-            instances_count: study.metadata?.metrics?.vertexCount || 1,
-            thumbnail_url: `/v1/x-core/3d-scans/${study.id}/assets/preview.png`,
-            status: isReady ? 'ready' : (isFailed ? 'failed' : 'converting'),
-            conversionStage: isProcessing ? (study.metadata?.processingJob?.currentStage || 'reconstructing') : null,
-            conversionProgress: isProcessing ? (study.metadata?.processingJob?.progressPercent || 45) : null,
+            type: scanState.seriesType,
+            num_slices: scanState.isReady ? 1 : 0,
+            instances_count: scanState.isReady ? (study.metadata?.metrics?.vertexCount || 0) : 0,
+            thumbnail_url: scanState.previewUrl,
+            status: scanState.seriesStatus,
+            conversionStage: scanState.isProcessing ? (study.metadata?.processingJob?.currentStage || study.status) : null,
+            conversionProgress: scanState.isProcessing ? (study.metadata?.processingJob?.progressPercent ?? 0) : null,
             confidence: study.metadata?.confidence,
             engine: study.metadata?.metrics?.engine || study.metadata?.reconstructionEngine,
-        }];
-        return normalizeStudySeriesState({
-            ...study,
-            series,
-            totalSeries: 1,
-            scanning: isProcessing,
-            seriesLoadState: SERIES_LOAD_STATE.READY,
-            seriesLoadError: isFailed ? (study.metadata?.failureReason || 'Reconstruction failed') : null,
-        });
+    }];
+    return normalizeStudySeriesState({
+        ...study,
+        series,
+        totalSeries: 1,
+        scanning: scanState.isProcessing,
+        seriesLoadState: SERIES_LOAD_STATE.READY,
+        seriesLoadError: scanState.failureReason,
+        seriesCacheUpdatedAt: Date.now(),
+    });
+}
+
+async function fetchStudySeries(study) {
+    if (study?.modality === '3D_SCAN') {
+        return expand3DScanStudy(study);
     }
 
     const studyKey = getStudyKey(study);
@@ -302,7 +306,7 @@ const Gallery = ({
     };
 
     const fetchSeriesForStudies = async (studies, options = {}) => {
-        const { showSpinner = true } = options;
+        const { showSpinner = true, preserveCurrentScans = false } = options;
         if (showSpinner) setFetchingSeries(true);
         const results = await batchFetch(studies, fetchStudySeries);
         const studiesWithSeriesData = results.map((r, i) =>
@@ -316,11 +320,19 @@ const Gallery = ({
                     seriesLoadError: IMAGING_SERVICE_OFFLINE_MESSAGE
                 })
         );
-        setStudiesWithSeries(studiesWithSeriesData);
-        if (onStudiesLoaded) onStudiesLoaded(studiesWithSeriesData);
+        const currentScans = new Map((studiesRef.current || [])
+            .filter((study) => study.modality === '3D_SCAN')
+            .map((study) => [String(study.id), study]));
+        const updatedStudies = preserveCurrentScans
+            ? studiesWithSeriesData.map((study) => study.modality === '3D_SCAN'
+                ? (currentScans.get(String(study.id)) || study)
+                : study)
+            : studiesWithSeriesData;
+        setStudiesWithSeries(updatedStudies);
+        if (onStudiesLoaded) onStudiesLoaded(updatedStudies);
         if (showSpinner) setFetchingSeries(false);
         restoreScrollPosition();
-        return studiesWithSeriesData;
+        return updatedStudies;
     };
 
     const handleRetrySeriesLoad = async () => {
@@ -343,7 +355,7 @@ const Gallery = ({
                 restoreScrollPosition();
 
                 if (shouldRevalidateCachedStudies(normalizedCache)) {
-                    fetchSeriesForStudies(normalizedCache, { showSpinner: false }).catch((err) => {
+                    fetchSeriesForStudies(normalizedCache, { showSpinner: false, preserveCurrentScans: true }).catch((err) => {
                         console.error('[Gallery] Background revalidation failed:', err);
                     });
                 }
@@ -365,27 +377,7 @@ const Gallery = ({
                 const text = await response.text();
                 try {
                     const data = JSON.parse(text);
-                    const formattedStudies = data.map(study => {
-                        const patientAssigned = study.patientId !== null && study.patientId !== undefined;
-                        return {
-                            ...study,
-                            patientAssigned,
-                            // Use the DICOM label or folder name as the study title until a patient is assigned.
-                            patientName: study.metadata?.PatientName
-                                ? study.metadata.PatientName.replace(/\^/g, ' ').trim()
-                                : (study.originalName && study.originalName !== study.folderName && study.originalName !== 'Upload'
-                                    ? study.originalName
-                                    : (study.patient?.name || 'Unassigned study')),
-                            realPatientId: study.patientId,
-                            patientIdDisplay: patientAssigned
-                                ? (study.metadata?.PatientID || `P-${study.patientId}`)
-                                : 'Not linked to patient',
-                            originalName: study.originalName || study.folderName || 'Unknown',
-                            statusDisplay: study.modality === '3D_SCAN'
-                                ? (study.status === 'ready' ? '3D Ready' : (study.status === 'failed' ? 'Failed' : 'Processing'))
-                                : ((study.status || 'Unknown').charAt(0).toUpperCase() + (study.status || 'unknown').slice(1))
-                        };
-                    });
+                    const formattedStudies = data.map(formatGalleryStudy);
                     setStudies(formattedStudies);
 
                     // Fetch series information for each study
@@ -415,6 +407,75 @@ const Gallery = ({
     useEffect(() => {
         studiesRef.current = studiesWithSeries;
     }, [studiesWithSeries]);
+
+    const scanStudyIds = useMemo(() => studiesWithSeries
+        .filter((study) => study.modality === '3D_SCAN')
+        .map((study) => String(study.id))
+        .sort()
+        .join(','), [studiesWithSeries]);
+
+    // 3D scans live in the Node study store, not the Python DICOM progress stream.
+    // Re-read the authorized study list so retries and failures replace cached cards.
+    useEffect(() => {
+        if (!scanStudyIds) return undefined;
+        let cancelled = false;
+        const refreshScans = async () => {
+            try {
+                const response = await fetch(studiesEndpoint, {
+                    headers: { Authorization: `Bearer ${getAccessToken()}` },
+                });
+                if (!response.ok) throw new Error(`Study status request failed (${response.status})`);
+                const records = await response.json();
+                if (!Array.isArray(records)) throw new Error('Invalid study status response');
+                if (cancelled) return;
+                const latestScans = new Map(records
+                    .filter((record) => record.modality === '3D_SCAN')
+                    .map((record) => [String(record.id), formatGalleryStudy(record)]));
+                setStudiesWithSeries((current) => {
+                    let changed = false;
+                    const next = current.flatMap((study) => {
+                        if (study.modality !== '3D_SCAN') return [study];
+                        const latest = latestScans.get(String(study.id));
+                        if (!latest) {
+                            changed = true;
+                            return [];
+                        }
+                        if (latest.updatedAt === study.updatedAt
+                            && latest.status === study.status
+                            && String(latest.patientId) === String(study.patientId)
+                            && !study.scanStatusUnavailable) return [study];
+                        changed = true;
+                        return [expand3DScanStudy(latest)];
+                    });
+                    if (changed && onStudiesLoadedRef.current) onStudiesLoadedRef.current(next);
+                    return changed ? next : current;
+                });
+                setStudies((current) => {
+                    let changed = false;
+                    const next = current.flatMap((study) => {
+                        if (study.modality !== '3D_SCAN') return [study];
+                        const latest = latestScans.get(String(study.id));
+                        if (!latest) { changed = true; return []; }
+                        if (latest.updatedAt === study.updatedAt
+                            && latest.status === study.status
+                            && String(latest.patientId) === String(study.patientId)) return [study];
+                        changed = true;
+                        return [latest];
+                    });
+                    return changed ? next : current;
+                });
+            } catch (error) {
+                console.warn('[Gallery] 3D scan status refresh failed:', error);
+                if (cancelled) return;
+                setStudiesWithSeries((current) => current.map((study) => study.modality === '3D_SCAN'
+                    ? expand3DScanStudy({ ...study, scanStatusUnavailable: true, statusDisplay: 'Status Unavailable' })
+                    : study));
+            }
+        };
+        if (cachedStudies) refreshScans();
+        const interval = setInterval(refreshScans, 12000);
+        return () => { cancelled = true; clearInterval(interval); };
+    }, [scanStudyIds, studiesEndpoint]);
 
     useEffect(() => {
         if (!latestEvent?.studyId) return;
@@ -481,7 +542,9 @@ const Gallery = ({
     // Fallback live progress while disconnected from the WebSocket.
     useEffect(() => {
         if (connectionStatus === 'connected') return undefined;
-        const convertingStudies = studiesRef.current.filter(hasIncompleteSeries);
+        const convertingStudies = studiesRef.current.filter(
+            (study) => study.modality !== '3D_SCAN' && hasIncompleteSeries(study)
+        );
 
         if (convertingStudies.length === 0) return undefined;
 
@@ -592,7 +655,7 @@ const Gallery = ({
             const thumbnailPath = series.thumbnail_url || `/thumbnail/${study.folderName || study.id}/${series.series_uid}`;
             const is3DScan = study.modality === '3D_SCAN' || series.modality === '3D_SCAN';
             const thumbnailUrl = is3DScan
-                ? (series.thumbnail_url || `/v1/x-core/3d-scans/${study.id}/assets/preview.png`)
+                ? (series.thumbnail_url || `/api/v1/x-core/3d-scans/${encodeURIComponent(study.id)}/assets/preview.png`)
                 : buildImagingUrl(thumbnailPath, buildStudyAssetParams(study));
 
             return {
@@ -619,7 +682,7 @@ const Gallery = ({
 
     const getStudyThumbnail = (study) => {
         if (study.modality === '3D_SCAN') {
-            return `/v1/x-core/3d-scans/${study.id}/assets/preview.png`;
+            return scan3DGalleryState(study).previewUrl;
         }
         const seriesList = study.series || [];
         const panSeries = seriesList.find(s => s.classification === '2D');
@@ -955,6 +1018,10 @@ const Gallery = ({
                                     )}
                                 </div>
 
+                                {selectedStudy.modality === '3D_SCAN' && (
+                                    <p className="mt-2 text-xs text-secondary">{selectedStudy.originalName}</p>
+                                )}
+
                                 {/* Extended DICOM & Acquisition Metadata Panel */}
                                 {selectedStudy.metadata && (
                                     <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 bg-primary/5 rounded-2xl border border-primary/10 p-4 animate-fade-in max-w-4xl">
@@ -1044,7 +1111,7 @@ const Gallery = ({
                         <div className="flex items-center justify-between">
                             <h3 className="text-xs font-bold uppercase tracking-wider text-muted flex items-center gap-2">
                                 <AppIcon name="FolderOpen" size={14} />
-                                <span>{hasAssignedPatient(selectedStudy) ? 'Hasil Pemindaian Pasien' : 'Study Scans'} ({selectedStudy.series?.length || 0})</span>
+                                <span>{selectedStudy.modality === '3D_SCAN' ? 'Status Pemindaian 3D' : (hasAssignedPatient(selectedStudy) ? 'Hasil Pemindaian Pasien' : 'Study Scans')} ({selectedStudy.series?.length || 0})</span>
                             </h3>
                         </div>
 
@@ -1054,10 +1121,12 @@ const Gallery = ({
                                 const isReady = series.status === 'ready';
                                 const isConverting = series.status === 'converting' || series.status === 'pending';
                                 const isFailed = series.status === 'failed';
+                                const isUnavailable = series.status === 'unavailable';
+                                const scanState = is3DScan ? scan3DGalleryState(selectedStudy) : null;
                                 const canOpen = isReady || is3DScan;
                                 const thumbnailPath = series.thumbnail_url || `/thumbnail/${selectedStudy.folderName || selectedStudy.id}/${series.series_uid}`;
                                 const thumbnailUrl = is3DScan
-                                    ? (series.thumbnail_url || `/v1/x-core/3d-scans/${selectedStudy.id}/assets/preview.png`)
+                                    ? (series.thumbnail_url || `/api/v1/x-core/3d-scans/${encodeURIComponent(selectedStudy.id)}/assets/preview.png`)
                                     : buildImagingUrl(thumbnailPath, buildStudyAssetParams(selectedStudy));
                                 const is3D = series.type === '3D Volume' || series.classification === '3D' || is3DScan;
 
@@ -1074,7 +1143,7 @@ const Gallery = ({
                                         <div className="space-y-4">
                                             {/* Thumbnail / Scan cover */}
                                             <div className="aspect-video bg-gray-900 flex items-center justify-center relative overflow-hidden">
-                                                {isReady || is3DScan ? (
+                                                {isReady ? (
                                                     <img
                                                         src={thumbnailUrl}
                                                         alt={series.title}
@@ -1083,21 +1152,28 @@ const Gallery = ({
                                                             e.target.style.display = 'none';
                                                         }}
                                                     />
+                                                ) : isFailed || isUnavailable ? (
+                                                    <div className="absolute inset-0 bg-red-950/60 flex flex-col items-center justify-center gap-2 px-5 text-center text-white">
+                                                        <AppIcon name="AlertCircle" size={28} className="text-red-300" />
+                                                        <span className="text-xs font-semibold">{isUnavailable ? 'Status scan tidak tersedia' : (scanState?.isInsufficient ? 'Mesh belum memadai' : 'Rekonstruksi gagal')}</span>
+                                                    </div>
                                                 ) : (
                                                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                                                        <AppIcon name="Loader2" size={32} className="text-accent animate-spin" />
+                                                        {scanState?.isCapturePending
+                                                            ? <span className="text-xs font-semibold text-white">Menunggu rekaman video</span>
+                                                            : <AppIcon name="Loader2" size={32} className="text-accent animate-spin" />}
                                                     </div>
                                                 )}
 
                                                 {/* Modality Tag */}
                                                 <span className={`absolute top-3 left-3 px-2.5 py-1 text-white text-[10px] font-bold uppercase rounded-md backdrop-blur-md flex items-center gap-1 ${getModalityBadgeClass(series.modality)}`}>
                                                     <AppIcon name={is3D ? 'Box' : 'Image'} size={12} />
-                                                    {series.modality === 'CBCT' ? '3D CBCT' : series.modality === '3D_SCAN' ? '3D Scan Mesh' : series.modality === 'Panoramic' ? 'Panoramik' : series.modality === 'Cephalometric' ? 'Sefalometri' : series.modality}
+                                                    {series.modality === 'CBCT' ? '3D CBCT' : series.modality === '3D_SCAN' ? (isReady ? 'Mesh 3D Eksperimental' : 'Rekaman Scan 3D') : series.modality === 'Panoramic' ? 'Panoramik' : series.modality === 'Cephalometric' ? 'Sefalometri' : series.modality}
                                                 </span>
 
                                                 {/* Modality raw description */}
                                                 <span className="absolute top-3 right-3 px-2 py-0.5 bg-black/55 text-white text-[10px] rounded-md backdrop-blur-md font-medium">
-                                                    {series.modality === '3D_SCAN' ? 'STL/OBJ' : series.modality}
+                                                    {series.modality === '3D_SCAN' ? (isReady ? 'STL/OBJ' : 'VIDEO') : series.modality}
                                                 </span>
 
                                                 {/* Inherited Series-level Access Badge */}
@@ -1118,8 +1194,12 @@ const Gallery = ({
                                                     {series.title || (is3DScan ? 'Dental 3D Surface Mesh' : is3D ? 'Volume 3D CBCT' : `Scan 2D ${series.modality}`)}
                                                 </h4>
                                                 <p className="text-xs text-secondary leading-relaxed">
-                                                    {is3DScan ? 'Rekonstruksi Permukaan Gigi 3D' : is3D ? '3D CBCT Volumetric Scan' : `2D ${series.modality} Scan`}
+                                                    {is3DScan ? (isReady ? 'Mesh eksperimental; cakupan gigi belum diverifikasi' : (isUnavailable ? 'Hubungan ke server perlu diperiksa' : (isFailed ? 'Belum ada mesh yang dapat dilihat' : (scanState?.isCapturePending ? 'Menunggu unggahan video' : 'Video sedang diproses')))) : is3D ? '3D CBCT Volumetric Scan' : `2D ${series.modality} Scan`}
                                                 </p>
+
+                                                {(isFailed || isUnavailable) && is3DScan && (
+                                                    <p role="alert" className="text-xs text-red-600 leading-relaxed">{scanState?.failureReason}</p>
+                                                )}
 
                                                 {/* Series Metadata row */}
                                                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-secondary font-medium pt-1 border-t border-primary/5">
@@ -1146,7 +1226,7 @@ const Gallery = ({
                                                     )}
                                                 </div>
 
-                                                {isConverting && (
+                                                {isConverting && (!is3DScan || scanState?.isProcessing) && (
                                                     <div className="pt-3 space-y-1.5">
                                                         <div className="flex justify-between text-[10px] text-accent font-semibold uppercase tracking-wider">
                                                             <span>{series.conversionStage?.replace('_', ' ') || 'Memproses Rekonstruksi'}</span>
@@ -1174,7 +1254,7 @@ const Gallery = ({
                                                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-hover text-white rounded-xl text-xs font-semibold transition shadow-sm hover:shadow-accent/20"
                                                 >
                                                     <AppIcon name="ExternalLink" size={14} />
-                                                    <span>{is3DScan ? 'Buka Viewer 3D Scan' : 'Buka Viewer'}</span>
+                                                    <span>{is3DScan ? (isReady ? 'Buka Viewer 3D Scan' : (isFailed ? 'Lihat Kegagalan Scan' : 'Lihat Status Scan')) : 'Buka Viewer'}</span>
                                                 </button>
                                             ) : (
                                                 <div className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary/5 border border-primary/10 text-muted rounded-xl text-xs font-semibold italic cursor-not-allowed">
@@ -1423,7 +1503,8 @@ const Gallery = ({
                                             </div>
                                         ) : seriesCards.map(card => {
                                             const isReady = card.status === 'ready';
-                                            const isConverting = card.status === 'converting' || card.status === 'pending';
+                                            const isFailed = card.status === 'failed';
+                                            const isUnavailable = card.status === 'unavailable';
                                             const isCompareSelected = selectedCompareIds.includes(card.id);
 
                                             return (
@@ -1464,6 +1545,11 @@ const Gallery = ({
                                                                     <AppIcon name={card.type === '3D Volume' ? 'Box' : 'Image'} size={48} className="text-gray-700" />
                                                                 </div>
                                                             </>
+                                                        ) : isFailed || isUnavailable ? (
+                                                            <div className="absolute inset-0 bg-red-950/60 flex flex-col items-center justify-center gap-2 text-white">
+                                                                <AppIcon name="AlertCircle" size={24} className="text-red-300" />
+                                                                <span className="text-xs font-semibold">{isUnavailable ? 'Status tidak tersedia' : 'Rekonstruksi gagal'}</span>
+                                                            </div>
                                                         ) : (
                                                             <div className="absolute inset-0 bg-black/60 flex items-center justify-center px-6">
                                                                 <div className="flex flex-col items-center gap-3 w-full">

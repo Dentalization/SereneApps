@@ -41,9 +41,11 @@ export async function runReconstruction(study, options = {}) {
   const log = (stage, message) => logs.push({ timestamp: new Date().toISOString(), stage, level: 'info', message });
   log('pipeline_start', 'Starting experimental video reconstruction');
   const lidra = await runLidraAcquisition(study, runOptions);
-  if (lidra.status !== 'ready' || !lidra.selectedFrames?.length) {
+  if (lidra.status !== 'ready' || !Array.isArray(lidra.selectedFrames) || lidra.selectedFrames.length < 2) {
     throw Object.assign(new Error(`Acquisition ${lidra.status}: ${lidra.qualityDecision?.reason || 'No usable frames'}`), {
-      code: 'ACQUISITION_UNAVAILABLE', retryable: false,
+      code: lidra.failureCode || (lidra.status === 'rejected' ? 'CAPTURE_QUALITY_REJECTED' : 'ACQUISITION_UNAVAILABLE'),
+      retryable: lidra.status !== 'rejected' &&
+        ['ACQUISITION_SERVICE_UNAVAILABLE', 'ACQUISITION_TIMEOUT'].includes(lidra.failureCode),
     });
   }
   log('acquisition_complete', `Measured ${lidra.selectedFrames.length} selected video frames; anatomical coverage unavailable`);

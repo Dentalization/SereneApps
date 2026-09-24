@@ -12,6 +12,7 @@ import time
 import numpy as np
 import json
 import tempfile
+from pathlib import Path
 from io import BytesIO
 from collections import OrderedDict
 from contextlib import asynccontextmanager
@@ -39,6 +40,38 @@ from services.tooth_segmentation_service import (
     run_tooth_segmentation_pipeline,
     load_tooth_instances,
 )
+
+
+def _load_local_scan_service_environment(env_file=None):
+    """Share only scan secrets/storage with a standalone local Python process."""
+    keys = {"SCAN3D_SERVICE_TOKEN", "SCAN3D_STORAGE_ROOT"}
+    if keys.issubset(os.environ):
+        return
+    source = Path(env_file) if env_file is not None else Path(__file__).resolve().parents[1] / ".env"
+    try:
+        lines = source.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        return
+    values = {}
+    for line in lines:
+        key, separator, raw_value = line.strip().partition("=")
+        key = key.removeprefix("export ").strip()
+        if not separator or key not in keys:
+            continue
+        value = raw_value.strip()
+        if value.startswith(("'", '"')):
+            closing = value.find(value[0], 1)
+            if closing < 0:
+                continue
+            value = value[1:closing]
+        else:
+            value = value.partition("#")[0].strip()
+        values[key] = value
+    for key, value in values.items():
+        os.environ.setdefault(key, value)
+
+
+_load_local_scan_service_environment()
 
 
 @asynccontextmanager

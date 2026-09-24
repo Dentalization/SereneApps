@@ -52,6 +52,7 @@ import {
     get3DScanStatus,
     retry3DScan,
     get3DScanAsset,
+    get3DScanDiagnosticMesh,
     get3DScanEngines,
     get3DScanLidraReport,
     get3DScanToothInstances,
@@ -114,6 +115,7 @@ router.post('/3d-scans/:id/queue', requireRoles(['dentist']), express.json(), en
 router.get('/3d-scans/:id/status', requireRoles(['dentist']), get3DScanStatus);
 router.post('/3d-scans/:id/retry', requireRoles(['dentist']), express.json(), retry3DScan);
 router.get('/3d-scans/:id/assets/:fileName', requireRoles(['dentist']), get3DScanAsset);
+router.get('/3d-scans/:id/diagnostic-mesh', requireRoles(['dentist']), get3DScanDiagnosticMesh);
 // Phase 12 — Tooth Segmentation & FDI
 router.get('/3d-scans/:id/tooth-instances', requireRoles(['dentist']), get3DScanToothInstances);
 router.post('/3d-scans/:id/tooth-instances/segment', requireRoles(['dentist']), express.json(), trigger3DScanSegmentation);

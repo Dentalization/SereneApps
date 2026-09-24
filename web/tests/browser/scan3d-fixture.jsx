@@ -9,8 +9,8 @@ const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new 
 let downloads = 0;
 const nativeFetch = window.fetch.bind(window);
 window.fetch = async (input, options) => {
-  if (String(input) === '/v1/x-core/3d-scans/software-fixture/status') return Response.json({scanId:'software-fixture',status:'ready',assets:{mesh:{assetUrl:'/v1/x-core/3d-scans/software-fixture/assets/mesh.stl',sha256:hash,measurementCapability:'visualization_only',clinicalStatus:'experimental',units:'arbitrary',scale:{status:'unvalidated'},provenance:{synthetic:true}}}});
-  if (String(input) === '/v1/x-core/3d-scans/software-fixture/assets/mesh.stl') {
+  if (String(input) === '/api/v1/x-core/3d-scans/software-fixture/status') return Response.json({scanId:'software-fixture',status:'ready',assets:{mesh:{assetUrl:'/v1/x-core/3d-scans/software-fixture/assets/mesh.stl',sha256:hash,measurementCapability:'visualization_only',clinicalStatus:'experimental',units:'arbitrary',scale:{status:'unvalidated'},provenance:{synthetic:true}}}});
+  if (String(input) === '/api/v1/x-core/3d-scans/software-fixture/assets/mesh.stl') {
     downloads++;
     document.getElementById('downloads').textContent = `Mesh downloads: ${downloads}`;
     return new Response(model);

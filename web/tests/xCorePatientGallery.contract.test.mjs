@@ -10,13 +10,14 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 test('X-Core upload keeps patient optional and Gallery exposes later assignment', () => {
   const uploader = read('src/pages/dentist-portal/x-core/components/Uploader.jsx');
   const gallery = read('src/pages/dentist-portal/x-core/components/Gallery.jsx');
+  const galleryState = read('src/pages/dentist-portal/x-core/components/scan3DGalleryState.mjs');
   const assignment = read('src/pages/dentist-portal/x-core/components/AssignStudyPatientModal.jsx');
 
   assert.match(uploader, /if \(files\.length === 0\) return/);
   assert.match(uploader, /if \(selectedPatient\?\.id\)/);
   assert.match(uploader, />\s*Optional\s*</);
   assert.match(uploader, /disabled=\{files\.length === 0\}/);
-  assert.match(gallery, /Not linked to patient/);
+  assert.match(galleryState, /Not linked to patient/);
   assert.match(gallery, /setPatientAssignTarget\(study\)/);
   assert.match(assignment, /hasCurrentPatient \? 'Change Patient' : 'Assign Patient'/);
 });

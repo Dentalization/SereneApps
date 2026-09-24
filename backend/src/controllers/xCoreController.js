@@ -1,4 +1,4 @@
-import { publicScanMetadata } from '../services/scan3D/scanIntegrity.js';
+import { publicScanState } from '../services/scan3D/scanIntegrity.js';
 import { Prisma, PrismaClient } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
@@ -142,7 +142,11 @@ async function requireOwnedStudy(studyId, userId) {
 
 function decorateStudyForResponse(study, accessScope = 'owner') {
     const { dentistShares, dentist, ...rest } = study;
-    if (study.modality === '3D_SCAN') rest.metadata = publicScanMetadata(study.metadata || {});
+    if (study.modality === '3D_SCAN') {
+        const publicState = publicScanState(study);
+        rest.status = publicState.status;
+        rest.metadata = publicState.metadata;
+    }
     return {
         ...rest,
         ownerDentist: dentist

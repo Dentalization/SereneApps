@@ -221,7 +221,17 @@ const DashboardScreen = () => {
         </View>
 
         <View style={styles.profileRow}>
-          <View style={styles.profileInfo}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              if (!user) {
+                navigation.navigate('SettingsTab', { screen: 'Login' });
+              } else {
+                navigation.navigate('SettingsTab', { screen: 'Profile' });
+              }
+            }}
+            style={styles.profileInfo}
+          >
             <View style={styles.avatarContainer}>
               {avatarUrl ? (
                 <Avatar.Image size={52} source={{ uri: avatarUrl }} style={styles.avatarShadow} />
@@ -237,14 +247,28 @@ const DashboardScreen = () => {
             </View>
             <View style={{ marginLeft: 14 }}>
               <Text style={styles.greetingText}>Halo, {user?.name ? user.name.split(' ')[0] : 'Tamu'}</Text>
-              <Text style={styles.subGreetingText}>Siap merawat gigimu hari ini?</Text>
+              <Text style={styles.subGreetingText}>
+                {!user ? 'Ketuk untuk Masuk akun' : 'Siap merawat gigimu hari ini?'}
+              </Text>
             </View>
-          </View>
-
-          <TouchableOpacity activeOpacity={0.7} onPress={handleNotificationPress} style={styles.iconButton}>
-            <MaterialCommunityIcons name="bell-badge-outline" size={24} color="white" />
-            {unreadCount > 0 && <View style={styles.notifDot} />}
           </TouchableOpacity>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {!user && (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate('SettingsTab', { screen: 'Login' })}
+                style={styles.loginPillButton}
+              >
+                <MaterialCommunityIcons name="login" size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
+                <Text style={styles.loginPillText}>Masuk</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity activeOpacity={0.7} onPress={handleNotificationPress} style={styles.iconButton}>
+              <MaterialCommunityIcons name="bell-badge-outline" size={24} color="white" />
+              {unreadCount > 0 && <View style={styles.notifDot} />}
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -422,6 +446,21 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.9)',
     marginTop: 2,
     fontWeight: '500',
+  },
+  loginPillButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  loginPillText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
   iconButton: {
     width: 44, height: 44,

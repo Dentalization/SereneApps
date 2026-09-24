@@ -108,7 +108,7 @@ if (__DEV__) {
   };
 }
 
-// Suppress specific warnings
+// Suppress specific warnings & operational logs from triggering full-screen dev popups
 LogBox.ignoreLogs([
   'SafeAreaView has been deprecated',
   'Require cycle:',
@@ -118,6 +118,10 @@ LogBox.ignoreLogs([
   'Object is not a constructor',
   'myConversationsRead',
   'Invalid Access Token',
+  // Operational network errors handled gracefully in UI
+  'AxiosError',
+  'Network Error',
+  '[scan3DService]',
 ]);
 
 // Lazy load to catch import errors

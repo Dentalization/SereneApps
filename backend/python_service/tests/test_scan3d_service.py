@@ -30,6 +30,30 @@ def raw_request(token, body):
 
 
 class ScanServiceTests(unittest.TestCase):
+    def test_local_scan_environment_fallback_preserves_explicit_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env_file = Path(tmp) / '.env'
+            env_file.write_text('SCAN3D_SERVICE_TOKEN="local-test-token"\n'
+                                'export SCAN3D_STORAGE_ROOT="/private/test scan storage"\n'
+                                'DATABASE_URL=must-not-be-loaded\n')
+            with patch.dict(os.environ, {}, clear=True):
+                main._load_local_scan_service_environment(env_file)
+                self.assertEqual(os.environ['SCAN3D_SERVICE_TOKEN'], 'local-test-token')
+                self.assertEqual(os.environ['SCAN3D_STORAGE_ROOT'], '/private/test scan storage')
+                self.assertNotIn('DATABASE_URL', os.environ)
+                main._scan_service_authorize(request('local-test-token'))
+            with patch.dict(os.environ, {'SCAN3D_SERVICE_TOKEN': 'explicit-token',
+                                      'SCAN3D_STORAGE_ROOT': '/explicit/storage'}, clear=True):
+                main._load_local_scan_service_environment(env_file)
+                self.assertEqual(os.environ['SCAN3D_SERVICE_TOKEN'], 'explicit-token')
+                self.assertEqual(os.environ['SCAN3D_STORAGE_ROOT'], '/explicit/storage')
+            with patch.dict(os.environ, {'SCAN3D_SERVICE_TOKEN': ''}, clear=True):
+                main._load_local_scan_service_environment(env_file)
+                self.assertEqual(os.environ['SCAN3D_SERVICE_TOKEN'], '')
+                with self.assertRaises(HTTPException) as result:
+                    main._scan_service_authorize(request('local-test-token'))
+                self.assertEqual(result.exception.status_code, 503)
+
     def test_thumbnail_slice_count_rejects_non_numeric_metadata(self):
         self.assertEqual(main._metadata_slice_count({'num_slices': [1, 2]}), 1)
         self.assertEqual(main._metadata_slice_count({'num_slices': '12'}), 12)
