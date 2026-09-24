@@ -188,7 +188,10 @@ def scale_accuracy(config):
 def evaluate(config):
     paths = [config.get("reconstructionPath"), config.get("referencePath"), config.get("provenancePath")]
     if not all(paths) or not all(Path(p).is_file() for p in paths):
-        return {"status": DATASET_UNAVAILABLE, "metrics": None, "reason": "Real reconstruction, provenance and reference files required", "processingVersion": VERSION}
+        return {"status": DATASET_UNAVAILABLE, "metrics": None, "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+                "missingInputs": [name for name, value in zip(("reconstruction", "referenceGeometry", "provenance"), paths) if not value or not Path(value).is_file()],
+                "referenceStatus": "REFERENCE_GEOMETRY_UNAVAILABLE" if not paths[1] or not Path(paths[1]).is_file() else "supplied_not_reviewed",
+                "reason": "Real reconstruction, provenance and reference files required", "processingVersion": VERSION}
     provenance = json.loads(Path(config["provenancePath"]).read_text())
     require_research_source(provenance, config["reconstructionPath"])
     if config.get("units") not in ("mm", "m", "um") or config.get("referenceUnits") != config["units"]:
@@ -199,13 +202,15 @@ def evaluate(config):
         raise ValueError("Registered geometry must already have documented physical scale; a configuration cannot relabel arbitrary units")
     if not provenance.get("scale", {}).get("evidence"):
         raise ValueError("Asset scale calibration provenance is missing")
+    if config["scaleCalibration"]["evidence"] != provenance["scale"]["evidence"]:
+        raise ValueError("Validation scale evidence must match the registered asset calibration")
     if config.get("surfaceSelection") != "whole_supplied_mesh":
         raise ValueError("Only whole_supplied_mesh is supported; prepare and version any ROI meshes explicitly")
     for field in ("scanId", "referenceId", "captureProtocol", "coordinateSystem", "inclusionCriteria", "exclusionCriteria", "referenceSource"):
         if field not in config or config[field] in (None, ""):
             raise ValueError(f"Explicit {field} required")
     for field in ("source", "generationMethod", "device", "resolution"):
-        if field not in config["referenceSource"]:
+        if not isinstance(config["referenceSource"], dict) or config["referenceSource"].get(field) in (None, ""):
             raise ValueError(f"Reference provenance requires {field}; use documented unavailable for unknowns")
     source, reference = load_mesh(paths[0]), load_mesh(paths[1])
     count, seed = int(config.get("surfaceSamples", 5000)), int(config.get("seed", 0))
@@ -226,8 +231,8 @@ def evaluate(config):
 
 def repeatability(config):
     scans = config.get("scans", [])
-    if len(scans) < 2 or any(not Path(scan.get("reconstructionPath", "")).is_file() for scan in scans):
-        return {"status": DATASET_UNAVAILABLE, "metrics": None, "reason": "At least two real repeated captures required"}
+    if len(scans) < 2 or any(not Path(scan.get(key) or "").is_file() for scan in scans for key in ("reconstructionPath", "provenancePath")):
+        return {"status": DATASET_UNAVAILABLE, "metrics": None, "dataStatus": "REPEATED_CAPTURE_DATA_UNAVAILABLE", "reason": "At least two real repeated captures required"}
     for field in ("objectId", "device", "operator", "captureProtocol"):
         values = [scan.get(field) for scan in scans]
         if any(not value for value in values) or len(set(values)) != 1:

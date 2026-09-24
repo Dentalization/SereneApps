@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1",
-  "datasetStatus": "DATASET_UNAVAILABLE",
+  "datasetStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
   "principle": "IMPLEMENTED != EXPERIMENTALLY VALIDATED != CLINICALLY VALIDATED",
   "phases": [
     {
@@ -12,11 +12,14 @@
       "evidence": [
         "mobile/__tests__/mobile-dentist-role.test.js"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "Token/storage and role timing could mount protected effects",
       "enhancementApplied": "Session expiry reaches Redux; server-verified role guard before effects; navigation identity isolation",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "software_implementation; controlled_fixtures_labelled_separately",
+      "blocker": "Real representative captures and independent validation evidence unavailable"
     },
     {
       "phase": 2,
@@ -27,11 +30,14 @@
       "evidence": [
         "backend/tests/xcore.3d-scan.routes.test.js"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "Global discovery and ambiguous identity/ownership exposed patient links",
       "enhancementApplied": "Canonical patient resolution, scoped discovery, UUID scan IDs, ownership and clinic checks",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "software_implementation; controlled_fixtures_labelled_separately",
+      "blocker": "Real representative captures and independent validation evidence unavailable"
     },
     {
       "phase": 3,
@@ -42,11 +48,14 @@
       "evidence": [
         "mobile/__tests__/scan-capture-provenance.test.js"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "Requested FPS/resolution and stale timer presented as observed values",
       "enhancementApplied": "Monotonic capture timing, interruption cleanup, requested versus measured metadata",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "software_implementation; controlled_fixtures_labelled_separately",
+      "blocker": "Real representative captures and independent validation evidence unavailable"
     },
     {
       "phase": 4,
@@ -57,11 +66,14 @@
       "evidence": [
         "backend/tests/scan3d.integrity.test.js"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "File extension/MIME and public paths trusted",
       "enhancementApplied": "Private storage, bounded upload, ffprobe and full decode, checksum and confinement",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "software_implementation; controlled_fixtures_labelled_separately",
+      "blocker": "Real representative captures and independent validation evidence unavailable"
     },
     {
       "phase": 5,
@@ -72,11 +84,14 @@
       "evidence": [
         "backend/tests/scan3d.integrity.test.js"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "Concurrent claims, stale worker writes and retry inflation possible",
       "enhancementApplied": "Atomic audited claims, lease fencing, heartbeat, bounded retry/backoff, timeout, queue pagination",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "software_implementation; controlled_fixtures_labelled_separately",
+      "blocker": "Real representative captures and independent validation evidence unavailable"
     },
     {
       "phase": 6,
@@ -87,11 +102,14 @@
       "evidence": [
         "backend/python_service/tests/test_scan3d_research.py"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "Placeholder frames, quality scores and coverage misrepresented",
       "enhancementApplied": "Measured sharpness/exposure/redundancy on actual frames; coverage and confidence unavailable",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "software_implementation; controlled_fixtures_labelled_separately",
+      "blocker": "Real representative captures and independent validation evidence unavailable"
     },
     {
       "phase": 7,
@@ -102,11 +120,14 @@
       "evidence": [
         "backend/tests/scan3d.engines.test.js"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "Named research engines delegated to procedural fallback",
       "enhancementApplied": "Explicit unavailable scaffold descriptors; no silent fallback; OpenCV sparse SfM only runnable research engine",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "software_implementation; controlled_fixtures_labelled_separately",
+      "blocker": "Real representative captures and independent validation evidence unavailable"
     },
     {
       "phase": 8,
@@ -117,11 +138,14 @@
       "evidence": [
         "backend/python_service/tests/test_scan3d_research.py"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "Procedural arch independent of video",
       "enhancementApplied": "Image-feature matching, essential matrix, triangulated sparse geometry and actual estimated poses",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "real_input_image_derived_experimental",
+      "blocker": "Real representative captures and independent validation evidence unavailable"
     },
     {
       "phase": 9,
@@ -132,11 +156,14 @@
       "evidence": [
         "backend/tests/scan3d.engines.test.js"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "Anatomical deformation could conceal geometric error",
       "enhancementApplied": "Identity by default; finite/index checks and explicit crop utility; preserve source",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "software_implementation; controlled_fixtures_labelled_separately",
+      "blocker": "Real representative captures and independent validation evidence unavailable"
     },
     {
       "phase": 10,
@@ -147,11 +174,14 @@
       "evidence": [
         "web/tests/scan3DAssetSafety.test.mjs"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "Initialization failure, unverified assets and geometry reload on style changes",
       "enhancementApplied": "Existing viewer repaired; authorized manifest assets, checksum, bounded loads and disposal",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "software_implementation; controlled_fixtures_labelled_separately",
+      "blocker": "Real representative captures and independent validation evidence unavailable"
     },
     {
       "phase": 11,
@@ -162,11 +192,14 @@
       "evidence": [
         "web/tests/xCore3DScanViewer.test.mjs"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "Arbitrary coordinates labelled mm; annotations not asset-version scoped",
       "enhancementApplied": "Visualization-only gating; coordinates preserved; annotations keyed to user/scan/checksum",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "software_implementation; controlled_fixtures_labelled_separately",
+      "blocker": "Real representative captures and independent validation evidence unavailable"
     },
     {
       "phase": 12,
@@ -177,11 +210,14 @@
       "evidence": [
         "backend/python_service/tests/test_scan3d_service.py"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "Procedural heuristic could appear as AI with uncalibrated confidence",
       "enhancementApplied": "Endpoints fail explicitly; provenance contract; no inferred FDI or fake confidence",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "no_output_prerequisite_gate",
+      "blocker": "Real representative captures and independent validation evidence unavailable"
     },
     {
       "phase": 13,
@@ -190,13 +226,21 @@
       "realOrSimulated": "real software; software fixtures separately labelled",
       "testStatus": "software verification only; see evidence",
       "evidence": [
-        "backend/python_service/tests/test_scan3d_research.py"
+        "backend/python_service/tests/test_scan3d_research.py",
+        "backend/python_service/tests/test_scan3d_calibration.py"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "No defensible validation path or empirical dataset",
-      "enhancementApplied": "Rigid registration, surface distances, repeatability, physical-scale/provenance gates and immutable reports",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "enhancementApplied": "Rigid registration, surface distances, repeatability, physical-scale/provenance gates and immutable reports; explicit independent scale derivation with raw-to-derived transform, parent hashes and no capability promotion",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "software_implementation; controlled_fixtures_labelled_separately",
+      "blocker": "Real representative captures and independent validation evidence unavailable",
+      "subphases": {
+        "13A": "implemented_infrastructure_with_software_tests",
+        "13B": "blocked_dataset_unavailable"
+      }
     },
     {
       "phase": 14,
@@ -207,11 +251,14 @@
       "evidence": [
         "backend/python_service/tests/test_scan3d_research.py"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "Dataset availability and ML suitability unestablished",
       "enhancementApplied": "Read-only manifest/QC, explicit threshold derivation, raw preservation, no automatic training",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "RAW_DICOM_UNAVAILABLE_CURRENT_ENVIRONMENT",
+      "realOrSynthetic": "software_implementation; controlled_fixtures_labelled_separately",
+      "blocker": "Historical B001 benchmark exists; configured raw directory is missing in current environment"
     },
     {
       "phase": 15,
@@ -222,11 +269,14 @@
       "evidence": [
         "reports/scan3d/pipeline-fixture-profile.json"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "Unmeasured latency and fabricated performance could be confused",
       "enhancementApplied": "Actual controlled software timing/CPU/RSS/asset size report; no engine ranking",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "software_implementation; controlled_fixtures_labelled_separately",
+      "blocker": "Real representative captures and independent validation evidence unavailable"
     },
     {
       "phase": 16,
@@ -237,11 +287,14 @@
       "evidence": [
         "reports/scan3d/viewer-fixture-profile.json"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "Style changes rebuilt geometry; measurement coordinates vulnerable",
       "enhancementApplied": "Separate actor styling, cancellation, bounded telemetry and controlled parser/browser checks",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "software_implementation; controlled_fixtures_labelled_separately",
+      "blocker": "Real representative captures and independent validation evidence unavailable"
     },
     {
       "phase": 17,
@@ -252,11 +305,14 @@
       "evidence": [
         "backend/python_service/tests/test_scan3d_service.py"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "Real segmentation and validated data flow absent",
       "enhancementApplied": "Gate remains closed; no fabricated AI findings, FDI or scan-to-CDSS output",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "no_output_prerequisite_gate",
+      "blocker": "Stable segmentation/FDI and validated evidence flow not available"
     },
     {
       "phase": 18,
@@ -267,11 +323,22 @@
       "evidence": [
         "backend/tests/scan3d.integrity.test.js"
       ],
-      "researchStatus": "DATASET_UNAVAILABLE",
-      "clinicalStatus": "blocked",
+      "researchStatus": "infrastructure_software_verified; empirical_validation_unavailable",
+      "clinicalStatus": "not_evaluated",
       "risk": "Public asset exposure, weak provenance, misleading claims",
       "enhancementApplied": "Private authenticated assets, audited transitions, immutable provenance, explicit experimental status",
-      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report",
+      "dataStatus": "SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE",
+      "realOrSynthetic": "software_implementation; controlled_fixtures_labelled_separately",
+      "blocker": "Real representative captures and independent validation evidence unavailable"
     }
-  ]
+  ],
+  "auditedRevision": "69e0a48a8e20724a9bfa5e4cae2db1e58e60f271",
+  "historicalCBCTEvidence": "present",
+  "rawDICOMStatus": "RAW_DICOM_UNAVAILABLE_CURRENT_ENVIRONMENT",
+  "mostImportantEngineeringBlocker": {
+    "problem": "No traceable independent physical-scale derivation between arbitrary-scale SfM and physical validation",
+    "addressedBy": "research.calibration; offline explicit evidence-linked uniform scale, original retained",
+    "remaining": "Real calibration evidence, landmark uncertainty and suitable capture/reference cohort required"
+  }
 }

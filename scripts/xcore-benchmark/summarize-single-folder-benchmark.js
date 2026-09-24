@@ -24,6 +24,19 @@ function formatStats(arr, scale = 1, unit = '') {
     return `${avg.toFixed(2)} ± ${sd.toFixed(2)}${unit}`;
 }
 
+export function summarizeObserved(values, scale = 1) {
+    const observed = values.filter(value => typeof value === 'number' && Number.isFinite(value));
+    if (!observed.length) return { avg: null, sd: null, observations: 0 };
+    const scaled = observed.map(value => value * scale);
+    const avg = mean(scaled);
+    return { avg, sd: scaled.length > 1 ? stdDev(scaled, avg) : null, observations: scaled.length };
+}
+
+export function observedAgreement(matches, observations) {
+    return observations > 0 ? matches / observations * 100 : null;
+}
+const formatNumber = value => Number.isFinite(value) ? value.toFixed(2) : 'unavailable';
+
 function run() {
     const resultsDir = path.join(__dirname, 'results');
     const csvPath = path.join(resultsDir, 'benchmark-runs.csv');
@@ -101,19 +114,17 @@ function run() {
     }
 
     const memoryMb = peakRssValues.map(v => v / (1024 * 1024));
-    const agreementRate = totalClassificationCount > 0 
-        ? (classificationAgreementCount / totalClassificationCount) * 100 
-        : 100.0; // Assume 100% if no classification logs (default CBCT is 3D)
+    const agreementRate = observedAgreement(classificationAgreementCount, totalClassificationCount);
 
     // Calculate averages and stdDevs
     const stats = {
-        upload: { avg: mean(uploadLatencies) / 1000, sd: stdDev(uploadLatencies, mean(uploadLatencies)) / 1000 },
-        conversion: { avg: mean(conversionLatencies) / 1000, sd: stdDev(conversionLatencies, mean(conversionLatencies)) / 1000 },
-        axial: { avg: mean(axialLatencies), sd: stdDev(axialLatencies, mean(axialLatencies)) },
-        coronal: { avg: mean(coronalLatencies), sd: stdDev(coronalLatencies, mean(coronalLatencies)) },
-        sagittal: { avg: mean(sagittalLatencies), sd: stdDev(sagittalLatencies, mean(sagittalLatencies)) },
-        memory: { avg: mean(memoryMb), sd: stdDev(memoryMb, mean(memoryMb)) },
-        agreement: agreementRate
+        upload: summarizeObserved(uploadLatencies, 1 / 1000),
+        conversion: summarizeObserved(conversionLatencies, 1 / 1000),
+        axial: summarizeObserved(axialLatencies), coronal: summarizeObserved(coronalLatencies),
+        sagittal: summarizeObserved(sagittalLatencies), memory: summarizeObserved(memoryMb),
+        agreement: agreementRate,
+        agreementBasis: 'Series UID naming heuristic, not independent clinical ground truth',
+        classificationObservations: totalClassificationCount,
     };
 
     // LaTeX snippet formatting
@@ -125,13 +136,13 @@ function run() {
 \\hline
 \\textbf{Evaluation Metric} & \\textbf{Experimental Result (Mean $\\pm$ SD)} \\\\
 \\hline
-Data Volume Ingest (Upload) Latency (s) & ${stats.upload.avg.toFixed(2)} $\\pm$ ${stats.upload.sd.toFixed(2)} \\\\
-3D Volume Preparation (MONAI Pipeline) Latency (s) & ${stats.conversion.avg.toFixed(2)} $\\pm$ ${stats.conversion.sd.toFixed(2)} \\\\
-Axial Slice Rendering Latency (ms) & ${stats.axial.avg.toFixed(2)} $\\pm$ ${stats.axial.sd.toFixed(2)} \\\\
-Coronal Slice Rendering Latency (ms) & ${stats.coronal.avg.toFixed(2)} $\\pm$ ${stats.coronal.sd.toFixed(2)} \\\\
-Sagittal Slice Rendering Latency (ms) & ${stats.sagittal.avg.toFixed(2)} $\\pm$ ${stats.sagittal.sd.toFixed(2)} \\\\
-Peak Volume Processing RSS Memory (MB) & ${stats.memory.avg.toFixed(2)} $\\pm$ ${stats.memory.sd.toFixed(2)} \\\\
-Strict 3D Classification Agreement (\\%) & ${stats.agreement.toFixed(1)}\\% \\\\
+Data Volume Ingest (Upload) Latency (s) & ${formatNumber(stats.upload.avg)} $\\pm$ ${formatNumber(stats.upload.sd)} \\\\
+3D Volume Preparation (MONAI Pipeline) Latency (s) & ${formatNumber(stats.conversion.avg)} $\\pm$ ${formatNumber(stats.conversion.sd)} \\\\
+Axial Slice Rendering Latency (ms) & ${formatNumber(stats.axial.avg)} $\\pm$ ${formatNumber(stats.axial.sd)} \\\\
+Coronal Slice Rendering Latency (ms) & ${formatNumber(stats.coronal.avg)} $\\pm$ ${formatNumber(stats.coronal.sd)} \\\\
+Sagittal Slice Rendering Latency (ms) & ${formatNumber(stats.sagittal.avg)} $\\pm$ ${formatNumber(stats.sagittal.sd)} \\\\
+Peak Volume Processing RSS Memory (MiB) & ${formatNumber(stats.memory.avg)} $\\pm$ ${formatNumber(stats.memory.sd)} \\\\
+Series-name heuristic classification agreement (\\%) & ${formatNumber(stats.agreement)}\\% \\\\
 \\hline
 \\end{tabular}
 \\label{tab:table_iv_performance_benchmark}
@@ -144,17 +155,17 @@ Strict 3D Classification Agreement (\\%) & ${stats.agreement.toFixed(1)}\\% \\\\
 * **Run ID:** \`${latestRunId}\`
 * **Iterations:** ${runRows.length} successful runs
 * **Representative Case:** \`${runRows[0].case_id}\`
-* **Total File Size:** ${(parseFloat(runRows[0].file_size_bytes) / (1024 * 1024)).toFixed(2)} MB
+* **Total File Size:** ${(parseFloat(runRows[0].file_size_bytes) / (1024 * 1024)).toFixed(2)} MiB (binary megabytes)
 * **File Count:** ${runRows[0].file_count} files (reconstructed recursively)
 
 ## Performance Metrics (Mean ± SD)
-* **Data Ingest (Upload) Latency:** ${stats.upload.avg.toFixed(2)} ± ${stats.upload.sd.toFixed(2)} seconds
-* **3D Volume Preparation Latency:** ${stats.conversion.avg.toFixed(2)} ± ${stats.conversion.sd.toFixed(2)} seconds
-* **Axial Slice Rendering Latency:** ${stats.axial.avg.toFixed(2)} ± ${stats.axial.sd.toFixed(2)} ms
-* **Coronal Slice Rendering Latency:** ${stats.coronal.avg.toFixed(2)} ± ${stats.coronal.sd.toFixed(2)} ms
-* **Sagittal Slice Rendering Latency:** ${stats.sagittal.avg.toFixed(2)} ± ${stats.sagittal.sd.toFixed(2)} ms
-* **Peak Volume Processing RSS Memory:** ${stats.memory.avg.toFixed(2)} ± ${stats.memory.sd.toFixed(2)} MB
-* **Strict 3D Classification Agreement:** ${stats.agreement.toFixed(1)}%
+* **Data Ingest (Upload) Latency:** ${formatNumber(stats.upload.avg)} ± ${formatNumber(stats.upload.sd)} seconds
+* **3D Volume Preparation Latency:** ${formatNumber(stats.conversion.avg)} ± ${formatNumber(stats.conversion.sd)} seconds
+* **Axial Slice Rendering Latency:** ${formatNumber(stats.axial.avg)} ± ${formatNumber(stats.axial.sd)} ms
+* **Coronal Slice Rendering Latency:** ${formatNumber(stats.coronal.avg)} ± ${formatNumber(stats.coronal.sd)} ms
+* **Sagittal Slice Rendering Latency:** ${formatNumber(stats.sagittal.avg)} ± ${formatNumber(stats.sagittal.sd)} ms
+* **Peak Volume Processing RSS Memory:** ${formatNumber(stats.memory.avg)} ± ${formatNumber(stats.memory.sd)} MiB
+* **Series-name heuristic classification agreement:** ${formatNumber(stats.agreement)}%
 
 ## LaTeX Table IV
 \`\`\`latex
@@ -162,11 +173,11 @@ ${latexSnippet}
 \`\`\`
 
 ## Academic Narrative Paragraph
-This repeated-run prototype benchmark using one complete representative CBCT study folder demonstrates the robust performance of the X-Core system. 
-Data ingest and folder structure parsing completed with a mean ingestion latency of ${stats.upload.avg.toFixed(2)}s ± ${stats.upload.sd.toFixed(2)}s. 
-Under the standard isotropic voxel resampling configuration, the MONAI-based 3D Volume Preparation Pipeline required ${stats.conversion.avg.toFixed(2)}s ± ${stats.conversion.sd.toFixed(2)}s to yield compressed VTK structured volumes. 
-Multi-planar reconstruction (MPR) slice streaming achieved sub-100ms latencies across all orthogonal planes, specifically: Axial slice rendering required ${stats.axial.avg.toFixed(2)}ms ± ${stats.axial.sd.toFixed(2)}ms, Coronal slice rendering required ${stats.coronal.avg.toFixed(2)}ms ± ${stats.coronal.sd.toFixed(2)}ms, and Sagittal slice rendering required ${stats.sagittal.avg.toFixed(2)}ms ± ${stats.sagittal.sd.toFixed(2)}ms. 
-The peak memory utilization during volume interpolation was well-bounded at ${stats.memory.avg.toFixed(2)} MB ± ${stats.memory.sd.toFixed(2)} MB RSS, and the classification classifier registered ${stats.agreement.toFixed(1)}% agreement on the modality. 
+This repeated-run prototype benchmark using one complete representative CBCT study folder records software performance observations for X-Core on one historical case; it does not establish smartphone reconstruction or clinical validity.
+Data ingest and folder structure parsing completed with a mean ingestion latency of ${formatNumber(stats.upload.avg)}s ± ${formatNumber(stats.upload.sd)}s.
+Under the standard isotropic voxel resampling configuration, the MONAI-based 3D Volume Preparation Pipeline required ${formatNumber(stats.conversion.avg)}s ± ${formatNumber(stats.conversion.sd)}s to yield compressed VTK structured volumes.
+Multi-planar reconstruction (MPR) slice streaming timings were: Axial slice rendering required ${formatNumber(stats.axial.avg)}ms ± ${formatNumber(stats.axial.sd)}ms, Coronal slice rendering required ${formatNumber(stats.coronal.avg)}ms ± ${formatNumber(stats.coronal.sd)}ms, and Sagittal slice rendering required ${formatNumber(stats.sagittal.avg)}ms ± ${formatNumber(stats.sagittal.sd)}ms.
+The peak memory utilization during volume interpolation was recorded at ${formatNumber(stats.memory.avg)} MB ± ${formatNumber(stats.memory.sd)} MiB RSS, and the classifier registered ${formatNumber(stats.agreement)}% agreement against a series-name heuristic, not independently verified ground truth.
 After each iteration, the automatic cleanup sweeps completely deallocated the study assets from the PostgreSQL database and backend uploads directory without affecting the local source folder.
 `;
 
@@ -178,4 +189,4 @@ After each iteration, the automatic cleanup sweeps completely deallocated the st
     console.log(summaryMd);
 }
 
-run();
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) run();

@@ -6,6 +6,9 @@ import { platform, arch, release } from 'node:os';
 import { createMeasurementsState, setTool, handlePick, TOOLS } from '../src/pages/dentist-portal/x-core/components/3D/scan3DMeasurements.mjs';
 const require = createRequire(import.meta.url);
 const vtkSTLReader = require('@kitware/vtk.js/IO/Geometry/STLReader').default;
+const outputFlag = process.argv.indexOf('--output');
+if (outputFlag >= 0 && !process.argv[outputFlag + 1]) throw new Error('--output requires a new report path');
+const output = outputFlag >= 0 ? process.argv[outputFlag + 1] : new URL('../../reports/scan3d/viewer-fixture-profile.json', import.meta.url);
 const results = [];
 for (const faces of [1000, 25000, 100000, 500000]) {
   const bytes = Buffer.alloc(84 + faces * 50);
@@ -41,5 +44,5 @@ for (const count of [1,100,1000]) {
 const report={status:'software_verification_only',datasetStatus:'DATASET_UNAVAILABLE',timestamp:new Date().toISOString(),
   environment:{node:process.version,platform:platform(),arch:arch(),release:release()},results,stateTimings,
   limitations:['No smartphone or clinical geometry','No browser rendering, FPS, GPU memory or camera interaction measurement','Single runs without statistical inference','No maximum supported mesh size established']};
-writeFileSync(new URL('../../reports/scan3d/viewer-fixture-profile.json',import.meta.url),JSON.stringify(report,null,2)+'\n');
+writeFileSync(output,JSON.stringify(report,null,2)+'\n', { flag: 'wx' });
 console.log(JSON.stringify(report,null,2));

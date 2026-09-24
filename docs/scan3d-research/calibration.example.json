@@ -1,0 +1,19 @@
+{
+  "reconstructionPath": null,
+  "provenancePath": null,
+  "independentMeasurement": {
+    "source": "independent_physical_measurement",
+    "usedValidationReference": false,
+    "measurementId": null,
+    "device": null,
+    "measuredAt": null,
+    "reviewer": null,
+    "landmarkDefinition": null,
+    "evidencePath": null,
+    "evidenceSha256": null,
+    "vertexIndices": null,
+    "distance": null,
+    "uncertainty": null,
+    "units": "mm"
+  }
+}
