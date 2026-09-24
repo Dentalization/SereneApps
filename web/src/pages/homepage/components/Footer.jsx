@@ -53,10 +53,10 @@ const Footer = () => {
   ];
 
   const certifications = [
-    { name: "HIPAA Compliant", icon: "Shield" },
-    { name: "FDA Registered", icon: "Award" },
-    { name: "ISO 27001", icon: "Lock" },
-    { name: "SOC 2 Type II", icon: "CheckCircle" }
+    { name: "HIPAA review pending", icon: "Shield" },
+    { name: "Regulatory review pending", icon: "Award" },
+    { name: "ISO 27001 review pending", icon: "Lock" },
+    { name: "SOC 2 review pending", icon: "CheckCircle" }
   ];
 
   return (

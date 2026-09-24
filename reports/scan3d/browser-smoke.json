@@ -1,0 +1,26 @@
+{
+  "fixture": "explicit synthetic single triangle; actual X-Core component",
+  "scope": "software_verification_only",
+  "datasetStatus": "DATASET_UNAVAILABLE",
+  "observations": {
+    "rendered": true,
+    "styleChangeDownloadCount": 1,
+    "pointAnnotation": true,
+    "rotation": true,
+    "zoom": true,
+    "consoleErrorsObserved": 0,
+    "loadMs": 138.0,
+    "pickMs": 2.3,
+    "cpuInputToRenderMs": 1.0,
+    "heapBytes": 37299791
+  },
+  "fps": null,
+  "gpuMemory": null,
+  "clinicalValidation": false,
+  "limitations": [
+    "Single observations; no statistical benchmark",
+    "No authenticated real-patient E2E",
+    "No native smartphone capture",
+    "No high-poly camera interaction benchmark"
+  ]
+}

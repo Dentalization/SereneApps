@@ -34,29 +34,29 @@ const ResearchHero = () => {
             </div>
             
             <h1 className="text-5xl lg:text-7xl font-bold text-white leading-tight tracking-tight">
-              Evidence-Based <br/>
+              Research in Progress <br/>
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-accent">
                 Dental Intelligence
               </span>
             </h1>
             
             <p className="text-lg lg:text-xl text-slate-300 leading-relaxed max-w-xl">
-              We don't just build algorithms; we validate them. Explore the peer-reviewed studies and clinical trials that power Serene AI's diagnostic engine.
+              Explore external research and the evidence required to evaluate experimental software. Project-owned validation datasets and clinical outcomes are unavailable.
             </p>
 
             {/* Key Metrics Row */}
             <div className="grid grid-cols-3 gap-6 py-4 border-y border-white/10">
               <div>
-                <div className="text-3xl font-bold text-white mb-1">96.2%</div>
+                <div className="text-3xl font-bold text-white mb-1">Pending</div>
                 <div className="text-xs text-slate-400 uppercase tracking-wider">Caries Accuracy</div>
               </div>
               <div>
-                <div className="text-3xl font-bold text-white mb-1">15+</div>
-                <div className="text-xs text-slate-400 uppercase tracking-wider">Published Papers</div>
+                <div className="text-3xl font-bold text-white mb-1">External</div>
+                <div className="text-xs text-slate-400 uppercase tracking-wider">References</div>
               </div>
               <div>
-                <div className="text-3xl font-bold text-white mb-1">10k+</div>
-                <div className="text-xs text-slate-400 uppercase tracking-wider">Cases Validated</div>
+                <div className="text-3xl font-bold text-white mb-1">Unavailable</div>
+                <div className="text-xs text-slate-400 uppercase tracking-wider">Validation Data</div>
               </div>
             </div>
 
@@ -86,11 +86,12 @@ const ResearchHero = () => {
             
             <div className="relative bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl ring-1 ring-white/10">
               
+              <p className="text-sm text-amber-200 mb-4">Illustrative static chart — not measured model performance.</p>
               {/* Card Header */}
               <div className="flex items-center justify-between mb-8">
                 <div>
                   <h3 className="text-xl font-bold text-white">Clinical Performance</h3>
-                  <p className="text-sm text-slate-400">Multi-center Validation Study (n=2,847)</p>
+                  <p className="text-sm text-slate-400">Research dataset unavailable</p>
                 </div>
                 <div className="h-10 w-10 bg-slate-800 rounded-full flex items-center justify-center border border-white/10">
                   <Icon name="Activity" size={20} className="text-accent" />
@@ -103,10 +104,10 @@ const ResearchHero = () => {
                 <div className="group">
                   <div className="flex justify-between items-end mb-2">
                     <span className="text-slate-300 text-sm font-medium">Caries Detection (Sensitivity)</span>
-                    <span className="text-white font-bold text-lg">96.2%</span>
+                    <span className="text-white font-bold text-lg">Pending</span>
                   </div>
                   <div className="w-full bg-slate-700/50 rounded-full h-2.5 overflow-hidden">
-                    <div className="bg-gradient-to-r from-blue-500 to-accent h-2.5 rounded-full w-[96.2%] shadow-[0_0_10px_rgba(139,92,246,0.5)]"></div>
+                    <div className="bg-gradient-to-r from-blue-500 to-accent h-2.5 rounded-full w-0 shadow-[0_0_10px_rgba(139,92,246,0.5)]"></div>
                   </div>
                 </div>
 
@@ -114,10 +115,10 @@ const ResearchHero = () => {
                 <div className="group">
                   <div className="flex justify-between items-end mb-2">
                     <span className="text-slate-300 text-sm font-medium">Periodontal Staging</span>
-                    <span className="text-white font-bold text-lg">94.0%</span>
+                    <span className="text-white font-bold text-lg">Pending</span>
                   </div>
                   <div className="w-full bg-slate-700/50 rounded-full h-2.5 overflow-hidden">
-                    <div className="bg-gradient-to-r from-blue-500 to-accent h-2.5 rounded-full w-[94%]"></div>
+                    <div className="bg-gradient-to-r from-blue-500 to-accent h-2.5 rounded-full w-0"></div>
                   </div>
                 </div>
 
@@ -125,10 +126,10 @@ const ResearchHero = () => {
                 <div className="group">
                   <div className="flex justify-between items-end mb-2">
                     <span className="text-slate-300 text-sm font-medium">Pathology Screening</span>
-                    <span className="text-white font-bold text-lg">91.5%</span>
+                    <span className="text-white font-bold text-lg">Pending</span>
                   </div>
                   <div className="w-full bg-slate-700/50 rounded-full h-2.5 overflow-hidden">
-                    <div className="bg-gradient-to-r from-blue-500 to-accent h-2.5 rounded-full w-[91.5%]"></div>
+                    <div className="bg-gradient-to-r from-blue-500 to-accent h-2.5 rounded-full w-0"></div>
                   </div>
                 </div>
               </div>
@@ -137,9 +138,9 @@ const ResearchHero = () => {
               <div className="mt-8 pt-6 border-t border-white/10 flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span className="text-xs text-slate-400">Peer-Reviewed • J. Dent. Res 2023</span>
+                  <span className="text-xs text-slate-400">Project-specific evaluation pending</span>
                 </div>
-                <span className="text-xs font-mono text-accent/80">p &lt; 0.001</span>
+                <span className="text-xs font-mono text-accent/80">Not evaluated</span>
               </div>
             </div>
 
@@ -149,8 +150,8 @@ const ResearchHero = () => {
                 <Icon name="CheckCircle" size={24} className="text-green-400" />
               </div>
               <div>
-                <p className="text-white font-bold text-sm">FDA Cleared</p>
-                <p className="text-slate-400 text-xs">Class II Software</p>
+                <p className="text-white font-bold text-sm">Evaluation Pending</p>
+                <p className="text-slate-400 text-xs">No authorization claimed</p>
               </div>
             </div>
           </div>

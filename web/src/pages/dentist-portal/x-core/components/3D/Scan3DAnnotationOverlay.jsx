@@ -23,25 +23,30 @@ const Scan3DAnnotationOverlay = memo(function Scan3DAnnotationOverlay({
   onRenameMeasurement,
   onMoveMeasurementLabel,
   containerRef,           // ref to the VTK container div (for bounds)
+  subscribeToRender,
 }) {
   const overlayRef = useRef(null);
-  // Force re-render on each animation frame so screen projections stay fresh
+  // Reproject only when VTK renders or annotation state changes, never at idle.
   const [tick, setTick] = useState(0);
   const rafRef = useRef(null);
 
   useEffect(() => {
-    let running = true;
-    const loop = () => {
-      if (!running) return;
-      setTick(t => t + 1);
-      rafRef.current = requestAnimationFrame(loop);
+    if (measurements.length === 0 && !pendingPick) return undefined;
+    const invalidate = () => {
+      if (rafRef.current !== null) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        setTick(t => t + 1);
+      });
     };
-    rafRef.current = requestAnimationFrame(loop);
+    const subscription = subscribeToRender?.(invalidate);
+    invalidate();
     return () => {
-      running = false;
+      subscription?.unsubscribe?.();
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     };
-  }, []);
+  }, [subscribeToRender, measurements.length > 0, !!pendingPick]);
 
   // Project a world point to screen coords relative to the overlay div
   const project = useCallback((worldPt) => {

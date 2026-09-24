@@ -11,13 +11,14 @@ import {
 class ReconstructionEngineRegistry {
   constructor() {
     this.engines = new Map();
-    this.defaultEngineName = 'photogrammetry_v1';
+    this.defaultEngineName = 'opencv_sparse_sfm';
     this.registerDefaults();
   }
 
   registerDefaults() {
     this.register(new PhotogrammetryNativeEngine());
     this.register(new PythonServiceEngine());
+    this.register(new PythonServiceEngine('python_reconstruction_service'));
     this.register(new ColmapEngine());
     this.register(new Dust3rEngine());
     this.register(new Mast3rEngine());
@@ -36,7 +37,7 @@ class ReconstructionEngineRegistry {
   }
 
   /**
-   * Retrieves an engine by name, falling back to the default engine if not found.
+   * Retrieves exactly the requested engine. Missing implementations fail closed.
    */
   get(engineName) {
     if (!engineName) {
@@ -44,8 +45,9 @@ class ReconstructionEngineRegistry {
     }
     const engine = this.engines.get(engineName);
     if (!engine) {
-      console.warn(`[EngineRegistry] Engine '${engineName}' not found. Falling back to '${this.defaultEngineName}'.`);
-      return this.engines.get(this.defaultEngineName);
+      throw Object.assign(new Error(`Unknown reconstruction engine: ${engineName}`), {
+        code: 'UNKNOWN_ENGINE', status: 400, retryable: false,
+      });
     }
     return engine;
   }

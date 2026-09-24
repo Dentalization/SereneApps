@@ -63,6 +63,7 @@ import { startCommunicationsRetentionWorker } from './services/communications/re
 import { validateAttachmentStorageConfiguration } from './services/communications/attachmentStorageService.js';
 import { startWebhookWorker } from './services/webhooks/webhookQueue.js';
 import { startScan3DWorker } from './services/scan3D/scan3DWorker.js';
+import { denyPublicScanUploads, isPrivateScanProxyPath } from './services/scan3D/scanPublicAccess.js';
 import { startReconcileScheduler } from './services/payments/reconcileJob.js';
 import { errorHandler } from './utils/error-codes.js';
 import swaggerUi from 'swagger-ui-express';
@@ -150,6 +151,7 @@ app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '512kb' }));
 
 app.use('/py-api', async (req, res) => {
   const proxyPath = req.originalUrl.replace(/^\/py-api/, '') || '/';
+  if (isPrivateScanProxyPath(proxyPath)) return res.status(404).json({ error: { code: 'scan_proxy_disabled', message: 'Use the authenticated 3D scan API.' } });
   const isDeepDental = isDeepDentalApiPath(proxyPath);
 
   // Distinguish between DeepDental AI and X-Core Streamer targets
@@ -301,6 +303,7 @@ app.use('/uploads/verified-cases', (_req, res) => {
 });
 
 // Serve static files from uploads directory for non-clinical legacy assets.
+app.use('/uploads/x-core/:folder', denyPublicScanUploads);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Swagger API Documentation

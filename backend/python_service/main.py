@@ -33,7 +33,7 @@ from services.vti_converter import (
     log_python_event,
     notify_backend_callback,
 )
-from services.reconstruction_service import process_3d_scan_reconstruction
+from services.reconstruction_service import process_3d_scan_reconstruction, ReconstructionUnavailable
 from services.lidra_service import analyze_video_acquisition
 from services.tooth_segmentation_service import (
     run_tooth_segmentation_pipeline,
@@ -49,6 +49,17 @@ async def _app_lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="X-Core Intelligent Streamer", lifespan=_app_lifespan)
+
+
+@app.middleware("http")
+async def protect_scan_assets(request: Request, call_next):
+    # Legacy generic routes must not bypass the Node scan ownership/asset registry.
+    route = request.url.path
+    for _ in range(3):
+        route = urllib_parse.unquote(route)
+    if "scan-3d-" in route.lower() or any(part == ".." for part in route.replace("\\", "/").split("/")):
+        return Response(status_code=403, content="Use the authenticated scan asset API")
+    return await call_next(request)
 
 # Add GZip compression for large JSON responses (like volume data)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
@@ -387,6 +398,12 @@ def _stream_vti_file(request: Request, file_path: str, filename: str, head_only:
 
 
 def _authorize_study_access(study_id: str, share_token: str | None = None) -> dict | None:
+    # Smartphone assets are served only through the authorized Node scan registry.
+    from pathlib import Path
+    root = Path(UPLOAD_DIR).resolve()
+    candidate = (root / study_id).resolve()
+    if study_id.upper().startswith("SCAN-3D-") or not candidate.is_relative_to(root) or candidate == root:
+        raise HTTPException(status_code=403, detail="Use the authorized scan asset endpoint")
     if not share_token:
         return None
     return _validate_share_token(study_id, share_token)
@@ -2040,70 +2057,90 @@ def get_structured_report(study_id: str, share_token: str | None = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _scan_service_authorize(request: Request):
+    import hmac
+    token = os.environ.get("SCAN3D_SERVICE_TOKEN", "")
+    if not token:
+        raise HTTPException(status_code=503, detail="Scan processing service is not configured")
+    supplied = request.headers.get("authorization", "")
+    if not hmac.compare_digest(supplied, f"Bearer {token}"):
+        raise HTTPException(status_code=401, detail="Scan service authorization required")
+
+
+def _scan_paths(body: dict):
+    from pathlib import Path
+    import re
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Expected scan request object")
+    root = Path(os.environ.get("SCAN3D_STORAGE_ROOT", str(Path(__file__).resolve().parents[1] / "private" / "3d-scans"))).resolve()
+    folder = body.get("folderName", "")
+    if not isinstance(folder, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", folder):
+        raise HTTPException(status_code=400, detail="Invalid scan folder")
+    study = (root / folder).resolve()
+    if not study.is_relative_to(root):
+        raise HTTPException(status_code=400, detail="Invalid scan path")
+    video = Path(body.get("videoPath") or study / "raw_video.mp4").resolve()
+    if not video.is_relative_to(study) or not video.is_file():
+        raise HTTPException(status_code=400, detail="Scan video is missing or outside private storage")
+    output = Path(body.get("outputDir") or "").resolve()
+    attempts = (study / "attempts").resolve()
+    if not output.is_relative_to(attempts) or output == attempts:
+        raise HTTPException(status_code=400, detail="An isolated attempt output directory is required")
+    return str(output), str(video)
+
+
+def _run_scan_exclusively(study_dir, video_path, scan_scope, configuration):
+    # A disconnected HTTP caller cannot cancel native OpenCV work. Hold an OS lock
+    # until that work exits so a recovered lease cannot compute this scan concurrently.
+    import fcntl
+    from pathlib import Path
+    lock_path = Path(video_path).parent / ".reconstruction.lock"
+    with lock_path.open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise HTTPException(status_code=409, detail="An earlier scan attempt is still computing")
+        try:
+            return process_3d_scan_reconstruction(study_dir=study_dir, scan_scope=scan_scope,
+                video_path=video_path, configuration=configuration)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
 @app.post("/reconstruct/3d-scan")
 async def reconstruct_3d_scan(request: Request):
-    """
-    Receives request to reconstruct 3D surface mesh from continuous smartphone RGB scan video.
-    """
+    """Internal service endpoint: experimental sparse video reconstruction."""
+    _scan_service_authorize(request)
+    body = await request.json()
+    study_dir, video_path = _scan_paths(body)
     try:
-        body = await request.json()
-        folder_name = body.get("folderName")
-        scan_scope = body.get("scanScope", "full")
-        video_path = body.get("videoPath")
-
-        if not folder_name:
-            raise HTTPException(status_code=400, detail="folderName is required")
-
-        study_dir = os.path.join(UPLOAD_DIR, folder_name)
-        if not os.path.exists(study_dir):
-            os.makedirs(study_dir, exist_ok=True)
-
-        if not video_path:
-            video_path = os.path.join(study_dir, "raw_video.mp4")
-
-        result = process_3d_scan_reconstruction(
-            study_dir=study_dir,
-            scan_scope=scan_scope,
-            video_path=video_path if os.path.exists(video_path) else None,
-        )
-        return result
-    except Exception as e:
-        print(f"[3D Reconstruct] Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return await asyncio.to_thread(_run_scan_exclusively,
+            study_dir=study_dir, scan_scope=body.get("scanScope", "full"),
+            video_path=video_path, configuration=body.get("configuration"))
+    except HTTPException:
+        raise
+    except (ReconstructionUnavailable, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except Exception as error:
+        print(f"[3D Reconstruct] {type(error).__name__}: {error}")
+        raise HTTPException(status_code=500, detail="Scan reconstruction failed")
 
 
 @app.post("/lidra/analyze")
 async def lidra_analyze(request: Request):
-    """
-    LIDRA: Dental-Aware Acquisition Intelligence Layer.
-    Analyzes raw video for motion blur, exposure/brightness, redundancy filtering,
-    arch coverage tracking, and useful keyframe selection.
-    """
+    """Internal measured acquisition endpoint. Anatomical coverage is unavailable."""
+    _scan_service_authorize(request)
+    body = await request.json()
+    study_dir, video_path = _scan_paths(body)
     try:
-        body = await request.json()
-        folder_name = body.get("folderName")
-        scan_scope = body.get("scanScope", "full")
-        video_path = body.get("videoPath")
-
-        if not folder_name:
-            raise HTTPException(status_code=400, detail="folderName is required")
-
-        study_dir = os.path.join(UPLOAD_DIR, folder_name)
-        if not os.path.exists(study_dir):
-            os.makedirs(study_dir, exist_ok=True)
-
-        if not video_path:
-            video_path = os.path.join(study_dir, "raw_video.mp4")
-
-        result = analyze_video_acquisition(
-            video_path=video_path if os.path.exists(video_path) else None,
-            study_dir=study_dir,
-            scan_scope=scan_scope,
-        )
-        return result
-    except Exception as e:
-        print(f"[LIDRA Analyze] Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return await asyncio.to_thread(analyze_video_acquisition,
+            video_path=video_path, study_dir=study_dir, scan_scope=body.get("scanScope", "full"),
+            configuration=(body.get("configuration") or {}).get("frameSampling"))
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except Exception as error:
+        print(f"[LIDRA Analyze] {type(error).__name__}: {error}")
+        raise HTTPException(status_code=500, detail="Acquisition analysis failed")
 
 
 @app.post("/segment/tooth-instances")
@@ -2113,83 +2150,22 @@ async def segment_tooth_instances(request: Request):
     Reads mesh.obj from study_dir, runs geometric heuristic segmentation,
     persists tooth_instances.json, and returns the result.
     """
-    try:
-        body = await request.json()
-        folder_name = body.get("folderName")
-        scan_id = body.get("scanId", "")
-        patient_id = body.get("patientId", "")
-
-        if not folder_name:
-            raise HTTPException(status_code=400, detail="folderName is required")
-
-        study_dir = os.path.join(UPLOAD_DIR, folder_name)
-        if not os.path.exists(study_dir):
-            raise HTTPException(status_code=404, detail=f"Study directory not found: {folder_name}")
-
-        # Try to read existing mesh vertices from OBJ
-        obj_path = os.path.join(study_dir, "mesh.obj")
-        vertices: list[list[float]] = []
-        faces: list[list[int]] = []
-
-        if os.path.exists(obj_path):
-            with open(obj_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    parts = line.strip().split()
-                    if not parts:
-                        continue
-                    if parts[0] == "v" and len(parts) >= 4:
-                        try:
-                            vertices.append([float(parts[1]), float(parts[2]), float(parts[3])])
-                        except ValueError:
-                            pass
-                    elif parts[0] == "f" and len(parts) >= 4:
-                        try:
-                            # Handle f v//vn notation
-                            idx = [int(p.split("/")[0]) for p in parts[1:4]]
-                            faces.append(idx)
-                        except ValueError:
-                            pass
-
-        if not vertices:
-            # Fallback: generate synthetic arch vertices for segmentation
-            from services.reconstruction_service import generate_dental_mesh_data
-            mesh_data = generate_dental_mesh_data("full")
-            vertices = mesh_data.get("vertices", []) if False else []  # signal absence
-            # Still proceed — segmentation will return empty list
-
-        result = run_tooth_segmentation_pipeline(
-            study_dir=study_dir,
-            vertices=vertices,
-            faces=faces,
-            arch_params=None,
-            scan_id=scan_id or folder_name,
-            patient_id=patient_id,
-        )
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"[ToothSeg] Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    _scan_service_authorize(request)
+    raise HTTPException(status_code=409, detail={
+        "code": "SEGMENTATION_VALIDATION_REQUIRED",
+        "message": "The existing anatomical bucket heuristic cannot segment uncalibrated smartphone geometry",
+        "method": "geometric_heuristic_v1", "model": None, "confidence": None,
+        "clinicalIntelligence": "blocked",
+    })
 
 
 @app.get("/segment/tooth-instances/{folder_name}")
-async def get_tooth_instances(folder_name: str):
-    """
-    Phase 12 — Return cached tooth_instances.json for a study.
-    Returns 404 if segmentation has not run yet.
-    """
-    study_dir = os.path.join(UPLOAD_DIR, folder_name)
-    if not os.path.exists(study_dir):
-        raise HTTPException(status_code=404, detail=f"Study not found: {folder_name}")
-
-    cached = load_tooth_instances(study_dir)
-    if cached is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Tooth instances not yet computed. POST to /segment/tooth-instances to trigger."
-        )
-    return cached
+async def get_tooth_instances(folder_name: str, request: Request):
+    _scan_service_authorize(request)
+    raise HTTPException(status_code=409, detail={
+        "code": "SEGMENTATION_VALIDATION_REQUIRED",
+        "message": "Legacy procedural tooth instances are not accepted as smartphone segmentation",
+    })
 
 
 if __name__ == "__main__":

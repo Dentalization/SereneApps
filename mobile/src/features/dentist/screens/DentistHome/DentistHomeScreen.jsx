@@ -6,6 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DentistRoleGuard from '../../components/DentistRoleGuard';
 import { logout } from '../../../../store/slices/authSlice';
+import { logoutPatient } from '../../../../services/authService';
 
 const DentistHomeScreen = ({ navigation }) => {
   const theme = useTheme();
@@ -17,8 +18,9 @@ const DentistHomeScreen = ({ navigation }) => {
     navigation.navigate('DentistScanTab');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     dispatch(logout());
+    await logoutPatient();
   };
 
   const dentistName = user?.name ? `drg. ${user.name.replace(/^drg\.\s*/i, '')}` : 'drg. Dentist';
@@ -43,7 +45,7 @@ const DentistHomeScreen = ({ navigation }) => {
                   textStyle={{ color: '#15803D', fontSize: 10, fontWeight: '700' }}
                   compact
                 >
-                  Verified Dentist
+                  Akun Dokter Gigi
                 </Chip>
                 <Text variant="bodySmall" style={{ color: '#64748B' }}>
                   Dentist Mobile Portal
@@ -79,7 +81,7 @@ const DentistHomeScreen = ({ navigation }) => {
                 Smartphone Dental 3D Scan
               </Text>
               <Text variant="bodyMedium" style={{ color: 'rgba(255, 255, 255, 0.9)', lineHeight: 20, marginBottom: 20 }}>
-                Perekaman continuous RGB video gigi pasien untuk rekonstruksi 3D mesh asinkron berbasis deep learning & fotogrametri.
+                Perekaman video RGB untuk rekonstruksi 3D eksperimental. Hasil belum tervalidasi untuk pengukuran atau keputusan klinis.
               </Text>
 
               <Button

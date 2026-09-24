@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Requested scan experiment settings; observed settings are stored separately",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "1"
+    },
+    "captureProtocol": {
+      "type": "string"
+    },
+    "capture": {
+      "type": "object",
+      "description": "Requested capture settings; never proof of device output"
+    },
+    "cameraIntrinsics": {
+      "type": "object",
+      "required": [
+        "fx",
+        "fy",
+        "cx",
+        "cy"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "fx": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "fy": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "cx": {
+          "type": "number"
+        },
+        "cy": {
+          "type": "number"
+        }
+      }
+    },
+    "frameSampling": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": {
+          "const": "uniform"
+        },
+        "maxFrames": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 120
+        },
+        "minSharpness": {
+          "type": "number",
+          "minimum": 0
+        },
+        "minLuminance": {
+          "type": "number",
+          "minimum": 0
+        },
+        "maxLuminance": {
+          "type": "number",
+          "minimum": 0
+        },
+        "minPixelDifference": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "reconstruction": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "engine": {
+          "enum": [
+            "opencv_sparse_sfm",
+            "python_reconstruction_service"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Runtime validates bounds in reconstruction_service.DEFAULT_CONFIG",
+          "additionalProperties": false,
+          "properties": {
+            "maxViews": {
+              "type": "number"
+            },
+            "maxImageDimension": {
+              "type": "number"
+            },
+            "maxFeatures": {
+              "type": "number"
+            },
+            "ratioThreshold": {
+              "type": "number"
+            },
+            "ransacThresholdPx": {
+              "type": "number"
+            },
+            "maxReprojectionErrorPx": {
+              "type": "number"
+            },
+            "minPoints": {
+              "type": "number"
+            },
+            "minParallaxDegrees": {
+              "type": "number"
+            },
+            "maxTriangleEdgePixels": {
+              "type": "number"
+            },
+            "maxTriangleDepthRatio": {
+              "type": "number"
+            },
+            "seed": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "postProcessing": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "const": false
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "properties": {
+        "reference": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "registration": {
+          "enum": [
+            "none",
+            "rigid",
+            "rigid_icp"
+          ]
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

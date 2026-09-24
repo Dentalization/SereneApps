@@ -1208,7 +1208,7 @@ export default {
       compliance: {
         title: 'Compliance & Security',
         gdprCompliant: 'GDPR Compliant',
-        hipaaCompliant: 'HIPAA Compliant',
+        hipaaCompliant: 'HIPAA review pending',
         dataEncryption: 'Data Encryption',
         accessLogging: 'Access Logging',
         regularBackups: 'Regular Backups',
@@ -2452,7 +2452,7 @@ export default {
     compliance: {
       title: 'Compliance & Security',
       gdprCompliant: 'GDPR Compliant',
-      hipaaCompliant: 'HIPAA Compliant',
+      hipaaCompliant: 'HIPAA review pending',
       dataEncryption: 'Data Encryption',
       accessLogging: 'Access Logging',
       regularBackups: 'Regular Backups',

@@ -232,10 +232,10 @@ const en = {
         medicalDisclaimer: 'Medical Disclaimer'
       },
       certifications: {
-        hipaa: 'HIPAA Compliant',
-        fda: 'FDA Registered',
-        iso: 'ISO 27001',
-        soc: 'SOC 2 Type II'
+        hipaa: 'HIPAA review pending',
+        fda: 'Regulatory review pending',
+        iso: 'ISO 27001 review pending',
+        soc: 'SOC 2 review pending'
       },
       socials: {
         email: 'Email',
@@ -526,10 +526,10 @@ const id = {
         medicalDisclaimer: 'Disclaimer Medis'
       },
       certifications: {
-        hipaa: 'Patuh HIPAA',
-        fda: 'Terdaftar FDA',
-        iso: 'ISO 27001',
-        soc: 'SOC 2 Type II'
+        hipaa: 'Tinjauan HIPAA belum selesai',
+        fda: 'Tinjauan regulasi belum selesai',
+        iso: 'ISO 27001 review pending',
+        soc: 'SOC 2 review pending'
       },
       socials: {
         email: 'Email',

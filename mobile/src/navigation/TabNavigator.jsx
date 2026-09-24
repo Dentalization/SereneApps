@@ -105,6 +105,7 @@ const TabNavigator = () => {
   if (isDentist) {
     return (
       <Tab.Navigator
+        key={`dentist-${user?.id}`}
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: theme.colors.primary,
@@ -153,6 +154,7 @@ const TabNavigator = () => {
   // Patient Navigation Structure (Preserved exactly as existing)
   return (
     <Tab.Navigator
+      key={`patient-${user?.id || 'guest'}`}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: theme.colors.primary,

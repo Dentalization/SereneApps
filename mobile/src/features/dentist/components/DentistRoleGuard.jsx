@@ -1,9 +1,10 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, AppState } from 'react-native';
 import { Text, Button, useTheme, Card } from 'react-native-paper';
 import { useSelector } from 'react-redux';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { isDentistUser } from '../../../utils/authUtils';
+import api from '../../../services/api';
 
 /**
  * DentistRoleGuard protects screens and components that are restricted to Dentist users.
@@ -11,10 +12,42 @@ import { isDentistUser } from '../../../utils/authUtils';
  */
 const DentistRoleGuard = ({ children, navigation, fallback = null }) => {
   const theme = useTheme();
-  const user = useSelector((state) => state?.auth?.user);
-  const isDentist = isDentistUser(user);
+  const auth = useSelector((state) => state?.auth);
+  const isDentist = isDentistUser(auth?.user);
+  const sessionKey = `${auth?.user?.id || ''}:${auth?.accessToken || ''}`;
+  const [verifiedSession, setVerifiedSession] = useState(null);
+  const [checking, setChecking] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
-  if (isDentist) {
+  useEffect(() => {
+    let mounted = true;
+    let generation = 0;
+    const verify = async () => {
+      const current = ++generation;
+      setVerifiedSession(null);
+      if (!isDentist || auth?.authLevel !== 'full_account' || !auth?.accessToken) return;
+      setChecking(true);
+      try {
+        // Persisted roles and restored navigation are not authentication evidence.
+        const { data } = await api.get('/auth/me');
+        const user = data?.user || data;
+        if (mounted && current === generation && isDentistUser(user)
+          && String(user?.id) === String(auth.user.id)) setVerifiedSession(sessionKey);
+      } catch (_) {
+        // Fail closed; HTTP client handles token refresh/session invalidation.
+      } finally {
+        if (mounted && current === generation) setChecking(false);
+      }
+    };
+    verify();
+    const listener = AppState.addEventListener('change', (state) => {
+      if (state === 'active') verify();
+      else { generation += 1; setVerifiedSession(null); }
+    });
+    return () => { mounted = false; generation += 1; listener.remove(); };
+  }, [sessionKey, isDentist, auth?.authLevel, attempt]);
+
+  if (isDentist && verifiedSession === sessionKey && auth?.accessToken) {
     return <>{children}</>;
   }
 
@@ -39,8 +72,12 @@ const DentistRoleGuard = ({ children, navigation, fallback = null }) => {
           </View>
 
           <Text variant="titleMedium" style={styles.title}>
-            Akses Dibatasi
+            {checking ? 'Memverifikasi Sesi Dokter' : 'Akses Dibatasi'}
           </Text>
+
+          {isDentist && !checking && (
+            <Button onPress={() => setAttempt((value) => value + 1)}>Coba Verifikasi Ulang</Button>
+          )}
 
           <Text variant="bodyMedium" style={styles.description}>
             Fitur 3D Dental Scan dan modul klinis dokter gigi hanya dapat diakses oleh akun Dokter Gigi yang terverifikasi di Serene.

@@ -33,3 +33,7 @@ jest.mock('expo-file-system', () => ({
   getInfoAsync: jest.fn().mockResolvedValue({ exists: true, size: 25600000 }),
 }));
 
+
+jest.mock('expo-file-system/legacy', () => ({
+  getInfoAsync: jest.fn().mockResolvedValue({ exists: true, size: 25600000 }),
+}));

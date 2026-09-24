@@ -1,188 +1,71 @@
 import { PrismaClient } from '@prisma/client';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
+import { reconstructionEngineRegistry } from './engines/reconstructionEngineRegistry.js';
+import { resolveExperimentConfiguration } from './experimentConfiguration.js';
+import { publicScanMetadata, publicJob, scanEvent } from './scanIntegrity.js';
 
+import { auditedScanUpdate } from './scanAudit.js';
 const prisma = new PrismaClient();
+export const MAX_SCAN_ATTEMPTS = 3;
+export const DEFAULT_SCAN_ENGINE = 'opencv_sparse_sfm';
+const problem = (status, message, code) => Object.assign(new Error(message), { status, code });
 
-function parseBigIntId(value) {
-  try {
-    return BigInt(value);
-  } catch {
-    return null;
+export function createScanQueue(client, registry = reconstructionEngineRegistry) {
+  async function enqueue(scanId, options = {}) {
+    let id;
+    try { id = BigInt(scanId); } catch { throw problem(400, 'Invalid scan ID'); }
+    const scan = await client.imagingStudy.findFirst({ where: { id, modality: '3D_SCAN' } });
+    if (!scan) throw problem(404, 'Scan session not found');
+    const metadata = scan.metadata || {};
+    const previous = metadata.processingJob || {};
+    const configuration = options.configuration === undefined ? metadata.experimentConfiguration || {} : options.configuration;
+    try { resolveExperimentConfiguration(scan, configuration); }
+    catch (error) { throw problem(400, error.message, 'INVALID_EXPERIMENT_CONFIGURATION'); }
+    const engine = options.engine || configuration.reconstruction?.engine || previous.reconstructionEngine || DEFAULT_SCAN_ENGINE;
+    const descriptor = registry.list().find(item => item.name === engine);
+    if (!descriptor || descriptor.isAvailable === false || ['simulation', 'scaffold', 'blocked'].includes(descriptor.implementationStatus)
+        || descriptor.synthetic === true || descriptor.isSynthetic === true) {
+      throw problem(422, 'Selected reconstruction engine is unavailable for real captures', 'ENGINE_UNAVAILABLE');
+    }
+    if (['queued', 'processing', 'ready'].includes(scan.status) && (!options.engine || engine === previous.reconstructionEngine) && (options.configuration === undefined || JSON.stringify(configuration) === JSON.stringify(metadata.experimentConfiguration || {}))) {
+      return { scan, job: publicJob(previous), idempotent: true };
+    }
+    if (!['uploaded', 'failed'].includes(scan.status)) throw problem(409, `Cannot enqueue scan in '${scan.status}' status`);
+    if (metadata.storageVersion !== 'private_v1' || !metadata.video?.decodeVerified || !metadata.videoFileName || !/^[a-f0-9]{64}$/.test(metadata.checksum || '')) {
+      throw problem(422, 'Upload a video verified by the server before reconstruction', 'VIDEO_NOT_VERIFIED');
+    }
+    const attempts = Number(previous.attempts || 0);
+    if (attempts >= MAX_SCAN_ATTEMPTS) throw problem(409, 'Reconstruction attempt limit reached; upload a new recording', 'RETRY_LIMIT_REACHED');
+    if (previous.nextAttemptAt && Date.parse(previous.nextAttemptAt) > Date.now()) throw problem(409, 'Retry backoff has not elapsed', 'RETRY_BACKOFF');
+    const job = { ...previous, jobId: previous.jobId || `job-3d-${randomUUID()}`, status: 'queued', queuedAt: new Date().toISOString(),
+      startedAt: null, completedAt: null, failedAt: null, attempts, maxAttempts: MAX_SCAN_ATTEMPTS,
+      progressPercent: 5, currentStage: 'queued', reconstructionEngine: engine, failureReason: null,
+      leaseToken: null, leaseExpiresAt: null, logs: scanEvent(previous, attempts ? 'processing_retried' : 'processing_queued') };
+    const updatedMetadata = { ...metadata, experimentConfiguration: structuredClone(configuration), processingJob: job, assets: null, confidence: null };
+    const result = await auditedScanUpdate(client, scan, { id, status: scan.status, metadata: { equals: scan.metadata } }, { status: 'queued', metadata: updatedMetadata }, attempts ? 'processing_retried' : 'processing_queued');
+    if (!result.count) throw problem(409, 'Scan changed concurrently; refresh its status', 'SCAN_CONFLICT');
+    return { scan: { ...scan, status: 'queued', metadata: updatedMetadata }, job: publicJob(job) };
   }
+  async function retry(scanId, options = {}) {
+    const scan = await client.imagingStudy.findFirst({ where: { id: BigInt(scanId), modality: '3D_SCAN' } });
+    if (!scan) throw problem(404, 'Scan session not found');
+    if (scan.status !== 'failed') throw problem(409, 'Only failed scans can be retried');
+    return enqueue(scanId, options);
+  }
+  return { enqueue, retry };
 }
+const queue = createScanQueue(prisma);
+export const enqueueScan = queue.enqueue;
+export const retryScan = queue.retry;
 
-/**
- * Enqueues an uploaded 3D scan session for asynchronous reconstruction.
- */
-export async function enqueueScan(scanId, options = {}) {
-  const parsedId = parseBigIntId(scanId);
-  if (!parsedId) {
-    const error = new Error('Invalid scan ID');
-    error.status = 400;
-    throw error;
-  }
-
-  const scan = await prisma.imagingStudy.findFirst({
-    where: { id: parsedId, modality: '3D_SCAN' },
-  });
-
-  if (!scan) {
-    const error = new Error('Scan session not found');
-    error.status = 404;
-    throw error;
-  }
-
-  // Only allow enqueuing from valid prior states (uploaded, failed, or captured)
-  const allowedStatuses = ['uploaded', 'captured', 'failed', 'created', 'pending_capture'];
-  if (!allowedStatuses.includes(scan.status)) {
-    const error = new Error(`Cannot enqueue scan in '${scan.status}' status`);
-    error.status = 400;
-    throw error;
-  }
-
-  const currentMetadata = (typeof scan.metadata === 'object' && scan.metadata) ? scan.metadata : {};
-  const currentJob = currentMetadata.processingJob || {};
-  const existingAttempts = currentJob.attempts || 0;
-
-  const jobId = currentJob.jobId || `job-3d-${Date.now()}-${randomUUID().slice(0, 8)}`;
-  const engine = options.engine || currentMetadata.reconstructionEngine || 'photogrammetry_v1';
-
-  const processingJob = {
-    jobId,
-    status: 'queued',
-    queuedAt: new Date().toISOString(),
-    startedAt: null,
-    completedAt: null,
-    failedAt: null,
-    attempts: existingAttempts,
-    maxAttempts: options.maxAttempts || 3,
-    progressPercent: 5,
-    currentStage: 'queued',
-    reconstructionEngine: engine,
-    failureReason: null,
-    logs: [
-      ...(currentJob.logs || []),
-      {
-        timestamp: new Date().toISOString(),
-        stage: 'queue',
-        level: 'info',
-        message: `Scan placed in asynchronous reconstruction queue with engine [${engine}]`,
-      },
-    ],
-  };
-
-  const updatedMetadata = {
-    ...currentMetadata,
-    processingJob,
-  };
-
-  const updatedScan = await prisma.imagingStudy.update({
-    where: { id: scan.id },
-    data: {
-      status: 'queued',
-      metadata: updatedMetadata,
-    },
-    include: {
-      patient: {
-        select: { id: true, name: true, phone_number: true, email: true },
-      },
-    },
-  });
-
-  return {
-    scan: updatedScan,
-    job: processingJob,
-  };
-}
-
-/**
- * Retrieves the asynchronous processing status, progress, stage, and logs for a scan.
- */
 export async function getScanJobStatus(scanId) {
-  const parsedId = parseBigIntId(scanId);
-  if (!parsedId) {
-    const error = new Error('Invalid scan ID');
-    error.status = 400;
-    throw error;
-  }
-
-  const scan = await prisma.imagingStudy.findFirst({
-    where: { id: parsedId, modality: '3D_SCAN' },
-    select: {
-      id: true,
-      folderName: true,
-      status: true,
-      metadata: true,
-      sizeInBytes: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
-
-  if (!scan) {
-    const error = new Error('Scan session not found');
-    error.status = 404;
-    throw error;
-  }
-
-  const metadata = (typeof scan.metadata === 'object' && scan.metadata) ? scan.metadata : {};
-  const processingJob = metadata.processingJob || {
-    status: scan.status,
-    progressPercent: scan.status === 'ready' ? 100 : scan.status === 'queued' ? 5 : 0,
-    currentStage: scan.status,
-    logs: [],
-  };
-
-  return {
-    scanId: scan.id.toString(),
-    scanIdentifier: scan.folderName,
-    status: scan.status,
-    progressPercent: processingJob.progressPercent || 0,
-    currentStage: processingJob.currentStage || scan.status,
-    job: processingJob,
-    assets: metadata.assets || null,
-    lidra: metadata.lidra || null,
-    confidence: metadata.confidence || null,
-    cameraTrajectory: metadata.cameraTrajectory || [],
-    video: metadata.video || null,
-    failureReason: processingJob.failureReason || metadata.failureReason || null,
-    updatedAt: scan.updatedAt.toISOString(),
-  };
-}
-
-/**
- * Retries a failed scan reconstruction.
- */
-export async function retryScan(scanId, options = {}) {
-  const parsedId = parseBigIntId(scanId);
-  if (!parsedId) {
-    const error = new Error('Invalid scan ID');
-    error.status = 400;
-    throw error;
-  }
-
-  const scan = await prisma.imagingStudy.findFirst({
-    where: { id: parsedId, modality: '3D_SCAN' },
-  });
-
-  if (!scan) {
-    const error = new Error('Scan session not found');
-    error.status = 404;
-    throw error;
-  }
-
-  if (scan.status !== 'failed') {
-    const error = new Error(`Only failed scans can be retried. Current status is '${scan.status}'`);
-    error.status = 400;
-    throw error;
-  }
-
-  const currentMetadata = (typeof scan.metadata === 'object' && scan.metadata) ? scan.metadata : {};
-  const currentJob = currentMetadata.processingJob || {};
-  const attempts = (currentJob.attempts || 0) + 1;
-
-  return await enqueueScan(scan.id, {
-    ...options,
-    maxAttempts: (currentJob.maxAttempts || 3) + 1,
-  });
+  const scan = await prisma.imagingStudy.findFirst({ where: { id: BigInt(scanId), modality: '3D_SCAN' } });
+  if (!scan) throw problem(404, 'Scan session not found');
+  const metadata = publicScanMetadata(scan.metadata || {});
+  const job = metadata.processingJob || { status: scan.status, progressPercent: 0, currentStage: scan.status, logs: [] };
+  return { scanId: scan.id.toString(), scanIdentifier: scan.folderName, status: scan.status,
+    progressPercent: job.progressPercent || 0, currentStage: job.currentStage || scan.status, job,
+    assets: metadata.assets, metrics: metadata.metrics || null, lidra: metadata.lidra || null, confidence: null, cameraTrajectory: metadata.cameraTrajectory || [],
+    capabilities: metadata.capabilities, provenance: metadata.provenance, performance: metadata.performance || null,
+    video: metadata.video || null, failureReason: job.failureReason || null, updatedAt: scan.updatedAt.toISOString() };
 }

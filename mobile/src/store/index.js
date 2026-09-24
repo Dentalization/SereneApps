@@ -11,7 +11,8 @@ import {
   REGISTER,
 } from 'redux-persist';
 
-import authReducer from './slices/authSlice';
+import authReducer, { logout, tokenRefreshed } from './slices/authSlice';
+import { configureAuthSessionHandlers } from '../services/authSessionEvents';
 import cartReducer from './slices/cartSlice';
 import aiReducer from './slices/aiSlice';
 import settingsReducer from './slices/settingsSlice';
@@ -43,3 +44,7 @@ export const store = configureStore({
 });
 
 export const persistor = persistStore(store);
+configureAuthSessionHandlers({
+  expired: () => store.dispatch(logout()),
+  refreshed: (token) => store.dispatch(tokenRefreshed(token)),
+});

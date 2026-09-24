@@ -119,7 +119,7 @@ const IntegrationSection = () => {
           <div className="mt-12 flex flex-col md:flex-row items-center justify-center gap-6">
             <div className="flex items-center gap-2 px-4 py-2 bg-green-900/30 border border-green-500/30 rounded-full">
               <Icon name="Shield" size={16} className="text-green-400" />
-              <span className="text-xs font-bold text-green-300 uppercase tracking-wide">HIPAA Compliant & Encrypted</span>
+              <span className="text-xs font-bold text-green-300 uppercase tracking-wide">Security review pending</span>
             </div>
             <div className="flex items-center gap-2 px-4 py-2 bg-blue-900/30 border border-blue-500/30 rounded-full">
               <Icon name="Server" size={16} className="text-blue-400" />

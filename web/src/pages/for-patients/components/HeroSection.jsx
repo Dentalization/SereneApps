@@ -68,7 +68,7 @@ const HeroSection = () => {
             <div className="pt-6 flex flex-wrap justify-center lg:justify-start gap-6 text-sm font-medium text-slate-500 dark:text-slate-400">
               <div className="flex items-center gap-2">
                 <Icon name="ShieldCheck" size={18} className="text-green-500" />
-                <span>HIPAA Compliant</span>
+                <span>Privacy Controls Under Review</span>
               </div>
               <div className="flex items-center gap-2">
                 <Icon name="Lock" size={18} className="text-blue-500" />
@@ -76,7 +76,7 @@ const HeroSection = () => {
               </div>
               <div className="flex items-center gap-2">
                 <Icon name="Activity" size={18} className="text-pink-500" />
-                <span>Clinically Validated</span>
+                <span>Clinical Evaluation Pending</span>
               </div>
             </div>
           </div>

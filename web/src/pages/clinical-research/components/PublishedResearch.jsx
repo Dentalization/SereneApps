@@ -133,7 +133,7 @@ const PublishedResearch = () => {
             Peer-Reviewed Publications
           </h2>
           <p className="text-xl text-text-secondary max-w-3xl mx-auto">
-            Our research is published in leading dental and medical journals, establishing scientific credibility and advancing the field of AI-powered dental diagnostics.
+            External literature references inform research planning. These are not SereneApps validation studies; summaries and figures require verification against each original paper.
           </p>
         </div>
 

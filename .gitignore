@@ -37,6 +37,8 @@ out/
 
 # Backend specific
 backend/uploads/
+backend/private/
+research-data/
 backend/prisma/dev.db
 backend/prisma/migrations/*
 !backend/prisma/migrations/20260701000000_add_dentist_emr_records/

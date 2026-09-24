@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1",
+  "captureProtocol": "REPLACE_WITH_VERSIONED_PROTOCOL",
+  "capture": {
+    "resolution": null,
+    "fps": null,
+    "durationSec": null
+  },
+  "frameSampling": {
+    "strategy": "uniform",
+    "maxFrames": 24
+  },
+  "reconstruction": {
+    "engine": "opencv_sparse_sfm",
+    "parameters": {}
+  },
+  "postProcessing": {
+    "enabled": false
+  },
+  "validation": {
+    "reference": null,
+    "registration": "rigid_icp",
+    "metrics": []
+  }
+}

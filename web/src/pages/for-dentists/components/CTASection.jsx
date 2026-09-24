@@ -7,7 +7,7 @@ const CTASection = () => {
   const benefits = [
     { icon: 'Clock', text: '30-Day Free Trial' },
     { icon: 'CreditCard', text: 'No Credit Card Required' },
-    { icon: 'Shield', text: 'HIPAA Compliant' },
+    { icon: 'Shield', text: 'HIPAA review pending' },
     { icon: 'Headphones', text: '24/7 Priority Support' }
   ];
 

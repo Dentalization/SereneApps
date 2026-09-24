@@ -189,14 +189,8 @@ export default function ToothSegmentationOverlay({
       tooltip.style.display = 'block';
       tooltip.style.left = `${mx + 14}px`;
       tooltip.style.top = `${my - 10}px`;
-      tooltip.innerHTML = `
-        <div style="font-weight:600;font-size:13px;color:#f1f5f9">FDI ${hoveredInst.fdi}</div>
-        <div style="font-size:11px;color:#94a3b8;text-transform:capitalize;margin-top:2px">${hoveredInst.type}</div>
-        <div style="font-size:10px;color:#64748b;margin-top:3px">
-          Confidence: ${Math.round((hoveredInst.confidence || 0) * 100)}%
-        </div>
-        ${hoveredInst.experimental ? '<div style="font-size:9px;color:#f59e0b;margin-top:3px">⚠ Experimental (geometric heuristic)</div>' : ''}
-      `;
+      // Display server provenance as text; never inject untrusted labels into HTML.
+      tooltip.textContent = `FDI ${hoveredInst.fdi ?? 'unassigned'} · ${hoveredInst.type || 'unknown'} · ${hoveredInst.segmentation_method || hoveredInst.method || 'method unavailable'} · experimental, confidence uncalibrated`;
     } else {
       tooltip.style.display = 'none';
     }

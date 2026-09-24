@@ -1,0 +1,25 @@
+docs/apiendpointAI/DeepDental API.postman_collection.json:5:    "description": "REST API for DeepDental AI-powered teledentistry assistant.\n\n## Authentication\nAll endpoints require `X-API-Key` header.\n\n## Quick Start\n1. Set your `api_key` in the environment\n2. Call 'Create Session' - session_id will be auto-saved\n3. Use any Chat or Image endpoint - all data is auto-captured\n\n## Auto-Save Features\n- session_id: Auto-saved on Create Session\n- last_message_id: Auto-saved on Chat responses\n- All environment variables are validated before requests\n\n## Dentist Portal Hardening Update (2026-05-07)\nDentist portal browser traffic must use the application backend proxy. Direct Postman calls still use X-API-Key. Runtime dentist flows use role=dentist and language=id. Image reasoning uses /images/analyze; /analysis/from-detections is the formal contract for detector-output handoff.\n\nVerified Case Workspace endpoints were added on 2026-05-07 for clinical case workflows: multi-image upload, quality checks, AI-assisted findings, clinician confirmation, audit, exports, timeline linkage, and session-case linkage.",
+web/src/translations/en.js:1964:    welcomeSubtitle: 'Upload dental images and ask questions to get comprehensive AI-powered analysis and recommendations.',
+web/src/translations/en.js:2008:        subtitle: 'Upload a dental image or describe a case to get AI-powered analysis, clinical findings, and treatment recommendations.',
+mobile/src/features/ai-diagnosis/screens/AIHomeScreen.jsx:95:            }}>AI-Powered</Text>
+web/src/pages/product-platform/index.jsx:55:            <span>AI-Powered Dental Intelligence v2.4</span>
+web/src/pages/for-dentists/components/AISecondOpinionSection.jsx:10:      description: 'AI-powered second opinions backed by thousands of verified cases.',
+web/src/pages/product-platform/components/ResourcesSection.jsx:195:                Peer-Reviewed & <br />Clinically Validated
+web/src/pages/clinical-research/components/UniversityPartnerships.jsx:13:      focus: "AI-powered caries detection and treatment planning optimization",
+web/src/pages/product-platform/components/CDSSSection.jsx:166:                <span className="font-bold text-sm uppercase tracking-widest">Clinically Validated</span>
+web/src/pages/for-patients/components/MobileApps.jsx:10:      title: ' AI-Powered Scan',
+web/src/pages/clinical-research/components/PublishedResearch.jsx:136:            Our research is published in leading dental and medical journals, establishing scientific credibility and advancing the field of AI-powered dental diagnostics.
+web/src/pages/for-patients/components/MobileCameraGuide.jsx:59:            High-quality photos lead to high-accuracy results. Follow these 3 simple steps 
+web/src/pages/for-patients/components/HeroSection.jsx:39:              No appointments. No waiting rooms. Just instant, AI-powered insights about your teeth from the comfort of your home.
+web/src/pages/for-patients/components/HeroSection.jsx:79:                <span>Clinically Validated</span>
+web/src/pages/for-patients/components/EducationalContent.jsx:94:        title: 'Implants: The Gold Standard',
+web/src/pages/serene-ai/index.jsx:43:              Advanced AI-powered dental analysis with conversational intelligence. 
+web/src/pages/serene-ai/components/SplashScreen.jsx:8:  subtitle = 'AI-powered dental analysis with conversational intelligence.',
+web/src/pages/serene-ai/components/serenechat.jsx:59:          Upload a dental image or describe your concern to get AI-powered analysis with pathology detection and recommendations.
+web/src/pages/homepage/index.jsx:16:        <title>Serene AI - AI-Powered Dental Insights You Can Trust</title>
+web/src/pages/homepage/components/TrustSection.jsx:84:    { icon: 'Award', value: '98.7%', label: 'Accuracy Rate', description: 'Clinically validated' },
+web/src/pages/homepage/components/TrustSection.jsx:145:            <span>Clinically Validated Technology</span>
+web/src/pages/homepage/components/ValueProposition.jsx:87:            Serene AI delivers clinically validated value.
+web/src/pages/homepage/components/HeroSection.jsx:124:                AI-powered dental insights{' '}
+web/src/pages/dentist-portal/index.jsx:55:      title: 'High Accuracy',
+web/src/pages/dentist-portal/ai/index.jsx:2: * DeepDental Pro — AI-Powered Dental Analysis Dashboard

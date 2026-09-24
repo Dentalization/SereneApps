@@ -1,3 +1,4 @@
+import { publicScanMetadata } from '../services/scan3D/scanIntegrity.js';
 import { Prisma, PrismaClient } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
@@ -141,6 +142,7 @@ async function requireOwnedStudy(studyId, userId) {
 
 function decorateStudyForResponse(study, accessScope = 'owner') {
     const { dentistShares, dentist, ...rest } = study;
+    if (study.modality === '3D_SCAN') rest.metadata = publicScanMetadata(study.metadata || {});
     return {
         ...rest,
         ownerDentist: dentist
@@ -844,6 +846,9 @@ export const saveStudyAnnotations = async (req, res) => {
             return res.status(400).json({ error: 'Body must be an annotation array or { annotations: [] }' });
         }
 
+        if (ownership.study.modality === '3D_SCAN' && annotationsPayload.some(annotation => annotation.type === 'measurement')) {
+            return res.status(409).json({ error: 'Measurements are unavailable for unvalidated 3D scan scale', code: 'UNVALIDATED_SCAN_SCALE' });
+        }
         const defaults = Array.isArray(req.body) ? req.query : { ...req.query, ...req.body };
         const scopeSeriesUid = String(defaults.series_uid || defaults.seriesUid || annotationsPayload[0]?.series_uid || annotationsPayload[0]?.seriesUid || '');
         const scopeViewerType = String(defaults.viewer_type || defaults.viewerType || annotationsPayload[0]?.viewer_type || annotationsPayload[0]?.viewerType || '').toLowerCase();
@@ -1406,6 +1411,9 @@ export const assignStudyPatient = async (req, res) => {
             user: req.user,
             prismaClient: prisma,
         });
+        if (ownerAccess.study.modality === '3D_SCAN') {
+            return res.status(409).json({ error: 'A patient-linked 3D scan cannot be reassigned; create a new scan session.' });
+        }
         const relationship = await requireDentistPatientRelationship({
             dentistId: ownerAccess.userId,
             patientId,
