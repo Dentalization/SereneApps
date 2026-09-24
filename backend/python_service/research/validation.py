@@ -212,6 +212,13 @@ def evaluate(config):
     for field in ("source", "generationMethod", "device", "resolution"):
         if not isinstance(config["referenceSource"], dict) or config["referenceSource"].get(field) in (None, ""):
             raise ValueError(f"Reference provenance requires {field}; use documented unavailable for unknowns")
+    if config.get("sourceCoordinateSystem") != provenance.get("coordinateSystem") or not config.get("sourceCoordinateSystem"):
+        raise ValueError("Source coordinate system must match reconstruction provenance")
+    if not config.get("referenceCoordinateSystem") or config["coordinateSystem"] != config["referenceCoordinateSystem"]:
+        raise ValueError("Report coordinates must explicitly identify the reference coordinate system")
+    input_hashes = [checksum(p) for p in paths]
+    if config["referenceSource"].get("sha256") != input_hashes[1]:
+        raise ValueError("Reference checksum must match its registered research record")
     source, reference = load_mesh(paths[0]), load_mesh(paths[1])
     count, seed = int(config.get("surfaceSamples", 5000)), int(config.get("seed", 0))
     registration = config.get("registration") or {}
@@ -220,11 +227,13 @@ def evaluate(config):
     matrix, alignment = register(sample_surface(source, count, seed), reference, registration["initialTransform"],
         registration.get("method", "rigid_icp"), int(registration.get("maxIterations", 50)), float(registration.get("tolerance", 1e-7)))
     metrics = surface_metrics(transformed_mesh(source, matrix), reference, count, seed, float(config["completenessTolerance"]))
+    if input_hashes != [checksum(p) for p in paths]:
+        raise ValueError("Research inputs changed during evaluation; report rejected")
     return {"status": "computed_experimental", "scanId": config["scanId"], "referenceId": config["referenceId"],
         "engine": provenance["engine"], "engineVersion": provenance["engineVersion"], "captureProtocol": config["captureProtocol"],
         "registrationMethod": alignment["method"], "registration": alignment, "metrics": metrics, "scaleAccuracy": scale_accuracy(config),
         "units": config["units"], "coordinateSystem": config["coordinateSystem"], "configuration": config,
-        "reconstructionChecksum": checksum(paths[0]), "referenceChecksum": checksum(paths[1]),
+        "reconstructionChecksum": input_hashes[0], "referenceChecksum": input_hashes[1], "provenanceChecksum": input_hashes[2],
         "processingVersion": VERSION, "timestamp": datetime.now(timezone.utc).isoformat(), "clinicallyValidated": False,
         "precision": {"status": "unavailable", "reason": "Use repeated-scan evaluation; trueness is not precision"}}
 
@@ -248,7 +257,10 @@ def repeatability(config):
                 raise ValueError("Every repeated capture requires documented physical scale")
             params = {**config["validation"], **scan, "referencePath": other["reconstructionPath"], "referenceId": other["scanId"],
                       "referenceSource": {"source": "repeat_capture_comparator_not_truth", "device": other["device"],
-                        "generationMethod": other_provenance["engine"], "resolution": "see comparator provenance"}}
+                        "generationMethod": other_provenance["engine"], "resolution": "see comparator provenance",
+                        "sha256": checksum(other["reconstructionPath"])},
+                      "referenceCoordinateSystem": other_provenance.get("coordinateSystem"),
+                      "coordinateSystem": other_provenance.get("coordinateSystem")}
             result = evaluate(params)
             if result["status"] != "computed_experimental":
                 return {"status": DATASET_UNAVAILABLE, "metrics": None}

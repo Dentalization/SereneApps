@@ -90,6 +90,28 @@ class CalibrationTests(unittest.TestCase):
                               'referencePath': config['reconstructionPath'], 'provenancePath': str(provenance),
                               'units': 'mm', 'referenceUnits': 'mm', 'scaleCalibration': {'evidence': 'b' * 64}})
 
+    def test_validation_rejects_coordinate_and_reference_identity_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); source = self.fixture(root)
+            provenance = Path(source['provenancePath'])
+            record = json.loads(provenance.read_text())
+            record.update({'units': 'mm', 'scale': {'status': 'calibrated', 'evidence': 'a' * 64}})
+            provenance.write_text(json.dumps(record))
+            config = {'reconstructionPath': source['reconstructionPath'], 'referencePath': source['reconstructionPath'],
+                'provenancePath': str(provenance), 'units': 'mm', 'referenceUnits': 'mm',
+                'scaleCalibration': {'evidence': 'a' * 64}, 'surfaceSelection': 'whole_supplied_mesh',
+                'scanId': 'fixture', 'referenceId': 'fixture-reference', 'captureProtocol': 'software-only',
+                'coordinateSystem': 'reference_xyz', 'referenceCoordinateSystem': 'reference_xyz',
+                'sourceCoordinateSystem': 'wrong', 'inclusionCriteria': 'all', 'exclusionCriteria': 'none',
+                'referenceSource': {'source': 'fixture', 'generationMethod': 'fixture', 'device': 'none',
+                                    'resolution': 'not applicable', 'sha256': '0' * 64}}
+            with patch('research.validation.require_research_source'):
+                with self.assertRaisesRegex(ValueError, 'Source coordinate'):
+                    evaluate(config)
+                config['sourceCoordinateSystem'] = 'fixture_xyz'
+                with self.assertRaisesRegex(ValueError, 'Reference checksum'):
+                    evaluate(config)
+
     def test_historical_records_do_not_imply_current_raw_availability(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); folder = root / 'scripts/xcore-benchmark'; (folder / 'results').mkdir(parents=True)

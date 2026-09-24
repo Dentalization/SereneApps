@@ -185,7 +185,7 @@ class MoritaHandler:
             raise ValueError("Failed to obtain slice image")
 
         # Convert to JPEG for streaming
-        _, encoded_img = cv2.imencode('.jpg', pixel_array, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        _, encoded_img = cv2.imencode('.jpg', pixel_array, [cv2.IMWRITE_JPEG_QUALITY, 90])
         
         headers = {
             "X-Pixel-Spacing": str(self.metadata["pixel_spacing"]),

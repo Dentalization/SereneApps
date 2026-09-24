@@ -54,6 +54,15 @@ export class PythonServiceEngine extends BaseReconstructionEngine {
         code: 'UNVERIFIED_RECONSTRUCTION', retryable: false,
       });
     }
+    const inspectedHash = video?.checksum || video?.sha256;
+    if (!inspectedHash || metadata.input?.sha256 !== inspectedHash
+        || await sha256File(videoPath) !== inspectedHash
+        || metadata.geometrySource !== 'image_derived' || !metadata.engineVersion
+        || !metadata.coordinateSystem || !metadata.configuration || !metadata.reproducibility) {
+      throw Object.assign(new Error('Reconstruction input or execution provenance mismatch'), {
+        code: 'RECONSTRUCTION_PROVENANCE_MISMATCH', retryable: false,
+      });
+    }
     const wrap = async (asset) => {
       if (!asset) return null;
       if (path.basename(asset.fileName || '') !== asset.fileName) throw new Error('Invalid reconstruction asset filename');
@@ -61,6 +70,11 @@ export class PythonServiceEngine extends BaseReconstructionEngine {
       const stat = await fs.stat(localPath);
       if (!stat.size) throw new Error('Empty reconstruction asset');
       const checksum = await sha256File(localPath);
+      if (asset.sha256 !== checksum || asset.sizeInBytes !== stat.size) {
+        throw Object.assign(new Error('Reconstruction output checksum or size mismatch'), {
+          code: 'RECONSTRUCTION_ASSET_MISMATCH', retryable: false,
+        });
+      }
       return { fileName: asset.fileName, format: path.extname(asset.fileName).slice(1),
         sizeInBytes: stat.size, vertexCount: asset.vertexCount, faceCount: asset.faceCount, bounds: asset.bounds,
         storagePath: path.relative(await fs.realpath(studyDir), localPath), checksum, sha256: checksum, version: checksum,

@@ -14,6 +14,7 @@ from research import vtk_runtime as vtk
 from research.validation import (rigid_matrix, kabsch, transform_points, sample_surface, surface_metrics,
                                 transformed_mesh, evaluate, repeatability, require_research_source, register)
 from research.dataset import audit_dataset, dataset_layout, derive_reference
+from research.reproduce import reproduce
 from services.lidra_service import analyze_video_acquisition
 from services.reconstruction_service import triangulate_verified, process_3d_scan_reconstruction, ReconstructionUnavailable
 
@@ -149,6 +150,22 @@ class AcquisitionSoftwareTests(unittest.TestCase):
             self.assertEqual(result['metadata']['measurementCapability'], 'visualization_only')
             self.assertFalse(result['metadata']['validated'])
             self.assertTrue(all(len(a['sha256']) == 64 for a in result['assets'].values()))
+            replay = reproduce(video, {'frameSampling': {'minPixelDifference': .1},
+                               'reconstruction': {'parameters': {'maxViews': 4}}},
+                               Path(tmp) / 'repeat-output', 'synthetic_fixture')
+            replay_manifest = json.loads(Path(replay['manifest']).read_text())
+            with self.assertRaises(ValueError):
+                require_research_source(replay_manifest, Path(tmp) / 'repeat-output/mesh.obj')
+            repeat = {'assets': replay_manifest['assets']}
+            self.assertEqual({k: v['sha256'] for k, v in result['assets'].items()},
+                             {k: v['sha256'] for k, v in repeat['assets'].items()})
+            self.assertIn('maxFeatures', result['metadata']['configuration']['reconstruction']['parameters'])
+            self.assertIn('minSharpness', result['metadata']['configuration']['frameSampling'])
+            self.assertEqual(len(result['metadata']['reproducibility']['sourceSha256']), 3)
+            self.assertTrue(all('sha256' in f for f in result['metadata']['selectedFrames']))
+            with self.assertRaisesRegex(ValueError, 'already exists'):
+                process_3d_scan_reconstruction(str(Path(tmp) / 'output'), video_path=video)
+
 
     def test_invalid_configuration_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

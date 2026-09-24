@@ -68,7 +68,11 @@ export async function runReconstruction(study, options = {}) {
     engine: result.metadata.engine, engineVersion: result.metadata.engineVersion || result.metadata.version,
     geometrySource: 'image_derived', synthetic: false, units: 'arbitrary', scale: { status: 'uncalibrated' },
     coordinateSystem: result.metadata.coordinateSystem, frameExtractionVersion: lidra.version,
-    lidraVersion: lidra.version, configuration, processingTimestamp: completedAt,
+    lidraVersion: lidra.version, requestedConfiguration: configuration,
+    configuration: result.metadata.configuration, reproducibility: result.metadata.reproducibility,
+    selectedFrames: result.metadata.selectedFrames, cameraIntrinsics: result.metadata.cameraIntrinsics,
+    intrinsicsSource: result.metadata.intrinsicsSource, cameraTrajectory: result.cameraTrajectory,
+    processingTimestamp: completedAt,
     dentalProcessing: { enabled: false, version: 'identity-1', coordinateTransform: 'identity', rawPreserved: true },
     segmentationModel: null, fdiMethod: null, validation: { status: 'not_evaluated' },
   };
