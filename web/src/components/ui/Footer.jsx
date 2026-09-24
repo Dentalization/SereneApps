@@ -60,10 +60,10 @@ const Footer = () => {
   ];
 
   const certifications = [
-    { labelKey: "public.footer.certifications.hipaa", fallback: "HIPAA Compliant", icon: "Shield" },
-    { labelKey: "public.footer.certifications.fda", fallback: "FDA Registered", icon: "Award" },
-    { labelKey: "public.footer.certifications.iso", fallback: "ISO 27001", icon: "Lock" },
-    { labelKey: "public.footer.certifications.soc", fallback: "SOC 2 Type II", icon: "CheckCircle" }
+    { labelKey: "public.footer.certifications.hipaa", fallback: "HIPAA review pending", icon: "Shield" },
+    { labelKey: "public.footer.certifications.fda", fallback: "Regulatory review pending", icon: "Award" },
+    { labelKey: "public.footer.certifications.iso", fallback: "ISO 27001 review pending", icon: "Lock" },
+    { labelKey: "public.footer.certifications.soc", fallback: "SOC 2 review pending", icon: "CheckCircle" }
   ];
 
   return (

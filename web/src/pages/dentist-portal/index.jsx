@@ -52,8 +52,8 @@ const DentistPortalLanding = () => {
     },
     {
       icon: 'Target',
-      title: 'High Accuracy',
-      description: 'AI CDSS increases diagnostic accuracy by up to 95%.'
+      title: 'Reviewable Evidence',
+      description: 'Review AI-generated suggestions separately from confirmed clinical findings.'
     },
     {
       icon: 'Shield',

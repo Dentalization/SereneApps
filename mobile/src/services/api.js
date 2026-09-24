@@ -2,6 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, NativeModules } from 'react-native';
 import Constants from 'expo-constants';
+import { notifySessionExpired, notifyTokenRefreshed } from './authSessionEvents';
 
 const ENV_API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || process.env.API_BASE_URL;
 
@@ -111,7 +112,7 @@ api.interceptors.response.use(
       status === 401 || 
       (status === 403 && errorMsg.includes('expired'));
 
-    if (isTokenExpired && !originalRequest._retry) {
+    if (isTokenExpired && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true;
       console.log('[API] Token expired, attempting refresh...');
 
@@ -125,19 +126,28 @@ api.interceptors.response.use(
 
           const { accessToken } = response.data;
           await AsyncStorage.setItem('accessToken', accessToken);
+          notifyTokenRefreshed(accessToken);
           console.log('[API] Token refreshed successfully');
 
           originalRequest.headers.Authorization = `Bearer ${accessToken}`;
           return api(originalRequest);
         } else {
           console.log('[API] No refresh token available');
+          await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
+          notifySessionExpired();
         }
       } catch (refreshError) {
         // Refresh failed, logout user
         console.log('[API] Token refresh failed, clearing tokens');
         await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
+        notifySessionExpired();
         return Promise.reject(refreshError);
       }
+    }
+
+    if (isTokenExpired && originalRequest?._retry) {
+      await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
+      notifySessionExpired();
     }
 
     return Promise.reject(error);

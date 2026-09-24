@@ -125,6 +125,9 @@ export const upload3DScanVideo = async (scanId, videoUri, metadata = {}) => {
     if (metadata.fps) {
       formData.append('fps', String(metadata.fps));
     }
+    if (metadata.captureMetadata) {
+      formData.append('captureMetadata', JSON.stringify(metadata.captureMetadata));
+    }
 
     const response = await api.post(`/x-core/3d-scans/${scanId}/video`, formData, {
       headers: {
@@ -264,4 +267,3 @@ export const fetch3DScanLidraReport = async (scanId) => {
     };
   }
 };
-

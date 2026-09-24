@@ -17,6 +17,7 @@ const Scan3DMeasurementToolbar = memo(function Scan3DMeasurementToolbar({
   onSetTool,
   onUndo,
   onClearAll,
+  canMeasure = false,
 }) {
   const btnBase = 'flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-xl transition';
   const btnActive = 'bg-cyan-500 text-white shadow-md shadow-cyan-500/25';
@@ -36,8 +37,9 @@ const Scan3DMeasurementToolbar = memo(function Scan3DMeasurementToolbar({
       {/* Distance tool */}
       <button
         onClick={() => toggleTool(TOOLS.DISTANCE)}
+        disabled={!canMeasure}
         className={`${btnBase} ${activeTool === TOOLS.DISTANCE ? btnActive : btnInactive}`}
-        title="Ukur Jarak (klik 2 titik)"
+        title={canMeasure ? 'Ukur Jarak (klik 2 titik)' : 'Visualisasi saja: geometri dan skala belum tervalidasi'}
         aria-pressed={activeTool === TOOLS.DISTANCE}
       >
         <AppIcon name="Ruler" size={13} />
@@ -48,7 +50,7 @@ const Scan3DMeasurementToolbar = memo(function Scan3DMeasurementToolbar({
       <button
         onClick={() => toggleTool(TOOLS.POINT)}
         className={`${btnBase} ${activeTool === TOOLS.POINT ? btnActive : btnInactive}`}
-        title="Tandai Titik Klinis"
+        title="Tandai Titik Visual"
         aria-pressed={activeTool === TOOLS.POINT}
       >
         <AppIcon name="MapPin" size={13} />

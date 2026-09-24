@@ -1,0 +1,58 @@
+{
+  "scanId": null,
+  "referenceId": null,
+  "reconstructionPath": null,
+  "referencePath": null,
+  "provenancePath": null,
+  "captureProtocol": null,
+  "coordinateSystem": null,
+  "units": null,
+  "referenceUnits": null,
+  "scaleCalibration": {
+    "evidence": null
+  },
+  "surfaceSelection": "whole_supplied_mesh",
+  "inclusionCriteria": null,
+  "exclusionCriteria": null,
+  "referenceSource": {
+    "source": null,
+    "device": null,
+    "resolution": null,
+    "generationMethod": null,
+    "voxelSize": null
+  },
+  "surfaceSamples": 5000,
+  "seed": 0,
+  "registration": {
+    "method": "rigid_icp",
+    "initialTransform": [
+      [
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        1
+      ]
+    ],
+    "maxIterations": 50,
+    "tolerance": 1e-07
+  },
+  "completenessTolerance": null
+}

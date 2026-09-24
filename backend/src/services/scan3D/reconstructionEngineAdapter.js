@@ -1,129 +1,98 @@
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
+import path from 'node:path';
+import fs from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { runLidraAcquisition } from './lidraService.js';
 import { reconstructionEngineRegistry } from './engines/reconstructionEngineRegistry.js';
-import {
-  PhotogrammetryNativeEngine,
-} from './engines/photogrammetryNativeEngine.js';
+import { scanDirectory, confinedExistingFile, sha256File } from './scanStorage.js';
+import { PROCESSING_VERSION, resolveExperimentConfiguration } from './experimentConfiguration.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const XCORE_UPLOAD_DIR = path.join(__dirname, '../../../uploads/x-core');
-
-// Re-export helper methods for backward compatibility
-const nativeEngine = new PhotogrammetryNativeEngine();
-
-/**
- * Runs the modular 3D reconstruction pipeline:
- *  1. LIDRA: Video acquisition intelligence (blur, exposure, coverage, useful-frame selection).
- *  2. Reconstruction Engine Abstraction: Dispatches clean frames & camera metadata to the
- *     selected engine (ABot-Recon, Neuralangelo, DUSt3R, MASt3R, COLMAP, or photogrammetry).
- *  3. Fallback: Seamlessly falls back to verified native photogrammetry if external engines fail.
- */
+/** Real acquisition -> named implementation -> immutable attempt assets. No algorithm substitution. */
 export async function runReconstruction(study, options = {}) {
-  const folderName = study.folderName || `SCAN-3D-${study.id}`;
-  const studyDir = path.join(XCORE_UPLOAD_DIR, folderName);
-
-  if (!fs.existsSync(studyDir)) {
-    fs.mkdirSync(studyDir, { recursive: true });
+  const started = performance.now();
+  const cpuStart = process.cpuUsage();
+  const rssStart = process.memoryUsage().rss;
+  const requestedEngine = options.engine || study.metadata?.reconstructionEngine || reconstructionEngineRegistry.defaultEngineName;
+  const engine = reconstructionEngineRegistry.get(requestedEngine);
+  if (['scaffold', 'simulation'].includes(engine.implementationStatus) || engine.isAvailable === false) {
+    throw Object.assign(new Error(`Engine ${engine.name} cannot process real captures (${engine.implementationStatus})`), {
+      code: 'ENGINE_UNAVAILABLE', retryable: false,
+    });
   }
-
-  const scanScope = study.metadata?.scanScope || 'full';
-  const requestedEngineName = options.engine || study.metadata?.reconstructionEngine || 'photogrammetry_v1';
+  const studyDir = scanDirectory(study);
+  const attemptId = options.attemptId || randomUUID();
+  const outputDir = path.resolve(options.outputDir || path.join(studyDir, 'attempts', attemptId));
+  if (!outputDir.startsWith(`${path.resolve(studyDir)}${path.sep}`)) throw new Error('Invalid attempt directory');
+  await fs.mkdir(outputDir, { recursive: true });
+  const input = study.metadata?.video;
+  if (!input?.checksum && !input?.sha256) {
+    throw Object.assign(new Error('Video requires server inspection and checksum before processing'), {
+      code: 'VIDEO_NOT_VERIFIED', retryable: false,
+    });
+  }
+  const videoPath = await confinedExistingFile(studyDir, input.storagePath || input.fileName || 'raw_video.mp4');
+  const inputChecksum = await sha256File(videoPath);
+  if (inputChecksum !== (input.checksum || input.sha256)) {
+    throw Object.assign(new Error('Video checksum mismatch'), { code: 'VIDEO_CORRUPT', retryable: false });
+  }
+  const configuration = resolveExperimentConfiguration(study, options.configuration || study.metadata?.experimentConfiguration || {});
+  configuration.reconstruction.engine = requestedEngine;
+  const runOptions = { ...options, outputDir, attemptId, configuration };
   const logs = [];
-
-  const addLog = (stage, message, level = 'info') => {
-    logs.push({
-      timestamp: new Date().toISOString(),
-      stage,
-      level,
-      message,
+  const log = (stage, message) => logs.push({ timestamp: new Date().toISOString(), stage, level: 'info', message });
+  log('pipeline_start', 'Starting experimental video reconstruction');
+  const lidra = await runLidraAcquisition(study, runOptions);
+  if (lidra.status !== 'ready' || !lidra.selectedFrames?.length) {
+    throw Object.assign(new Error(`Acquisition ${lidra.status}: ${lidra.qualityDecision?.reason || 'No usable frames'}`), {
+      code: 'ACQUISITION_UNAVAILABLE', retryable: false,
     });
+  }
+  log('acquisition_complete', `Measured ${lidra.selectedFrames.length} selected video frames; anatomical coverage unavailable`);
+  const engineStart = performance.now();
+  const result = await engine.process({ study, studyDir, frames: lidra.selectedFrames,
+    cameraMetadata: input, scanScope: study.metadata?.scanScope || 'full', lidraReport: lidra, options: runOptions });
+  if (!result.success || result.metadata?.synthetic !== false || !result.mesh?.checksum) {
+    throw Object.assign(new Error('Unverified reconstruction result rejected'), { code: 'INVALID_RECONSTRUCTION', retryable: false });
+  }
+  if (options.signal?.aborted) throw new Error('Processing lease lost');
+  const completedAt = new Date().toISOString();
+  const capabilities = { measurementCapability: 'visualization_only', clinicalStatus: 'experimental',
+    validated: false, clinicallyValidated: false, units: 'arbitrary', scale: { status: 'unvalidated' },
+    segmentation: 'unavailable', clinicalIntelligence: 'blocked' };
+  const provenance = {
+    schemaVersion: '1', processingVersion: PROCESSING_VERSION, attemptId,
+    scanId: String(study.id), patientId: study.patientId == null ? null : String(study.patientId),
+    dentistId: study.dentistId == null ? null : String(study.dentistId),
+    clinicId: study.clinicId == null ? null : String(study.clinicId),
+    videoChecksum: inputChecksum, videoMetadata: input, captureMetadata: study.metadata?.captureMetadata || null,
+    captureTimestamp: study.metadata?.captureMetadata?.captureTimestamp || null,
+    engine: result.metadata.engine, engineVersion: result.metadata.engineVersion || result.metadata.version,
+    geometrySource: 'image_derived', synthetic: false, units: 'arbitrary', scale: { status: 'uncalibrated' },
+    coordinateSystem: result.metadata.coordinateSystem, frameExtractionVersion: lidra.version,
+    lidraVersion: lidra.version, configuration, processingTimestamp: completedAt,
+    dentalProcessing: { enabled: false, version: 'identity-1', coordinateTransform: 'identity', rawPreserved: true },
+    segmentationModel: null, fdiMethod: null, validation: { status: 'not_evaluated' },
   };
-
-  addLog('pipeline_start', `Starting 3D acquisition and reconstruction pipeline for study ${study.id}`);
-
-  // 1. PHASE 6: Execute LIDRA Acquisition Intelligence Layer
-  addLog('lidra_start', 'Executing LIDRA acquisition assessment (motion blur, exposure, coverage, frame selection)');
-  let lidraResult = null;
-  try {
-    lidraResult = await runLidraAcquisition(study, options);
-    addLog(
-      'lidra_complete',
-      `LIDRA finished: Quality Score ${lidraResult.qualityScore}%, Coverage ${lidraResult.coverage?.coverageScore || 85}%, ${lidraResult.selectedFrames?.length || 0} frames selected`
-    );
-  } catch (lidraErr) {
-    addLog('lidra_warn', `LIDRA non-fatal warning: ${lidraErr.message}. Proceeding with default frame set.`, 'warn');
-    lidraResult = {
-      qualityScore: 80,
-      motionBlur: { status: 'acceptable' },
-      exposure: { status: 'balanced' },
-      frameSelection: { selectedFramesCount: 12 },
-      coverage: { coverageScore: 80, completeness: 'sufficient' },
-      selectedFrames: [],
-    };
+  const assets = { mesh: result.mesh, ply: result.pointCloud, stl: result.stl, preview: result.preview };
+  for (const asset of Object.values(assets).filter(Boolean)) {
+    asset.provenance = { engine: provenance.engine, engineVersion: provenance.engineVersion,
+      processingVersion: PROCESSING_VERSION, videoChecksum: inputChecksum, synthetic: false, geometrySource: 'image_derived' };
   }
-
-  // 2. PHASE 7: Resolve Reconstruction Engine from Registry
-  const engine = reconstructionEngineRegistry.get(requestedEngineName);
-  addLog('engine_dispatch', `Dispatching to reconstruction engine [${engine.name}] (v${engine.version})`);
-
-  let engineResult = null;
-  try {
-    engineResult = await engine.process({
-      study,
-      frames: lidraResult.selectedFrames || [],
-      cameraMetadata: study.metadata?.video || {},
-      scanScope,
-      studyDir,
-      lidraReport: lidraResult,
-      options,
-    });
-  } catch (engineErr) {
-    addLog('engine_fallback', `Engine [${engine.name}] encountered error (${engineErr.message}). Falling back to native photogrammetry engine.`, 'warn');
-    const fallbackEngine = reconstructionEngineRegistry.getDefaultEngine();
-    engineResult = await fallbackEngine.process({
-      study,
-      frames: lidraResult.selectedFrames || [],
-      cameraMetadata: study.metadata?.video || {},
-      scanScope,
-      studyDir,
-      lidraReport: lidraResult,
-      options,
-    });
-  }
-
-  if (Array.isArray(engineResult.logs)) {
-    logs.push(...engineResult.logs);
-  }
-
-  addLog('pipeline_success', `Pipeline completed successfully using engine [${engineResult.metadata?.engine || engine.name}]`);
-
-  return {
-    success: true,
-    assets: {
-      mesh: engineResult.mesh,
-      ply: engineResult.pointCloud,
-      stl: engineResult.stl,
-      preview: engineResult.preview,
-    },
-    lidra: {
-      qualityScore: lidraResult.qualityScore,
-      motionBlur: lidraResult.motionBlur,
-      exposure: lidraResult.exposure,
-      frameSelection: lidraResult.frameSelection,
-      coverage: lidraResult.coverage,
-      selectedFramesCount: lidraResult.selectedFrames?.length || 0,
-    },
-    confidence: engineResult.confidence || 0.90,
-    cameraTrajectory: engineResult.cameraTrajectory || [],
-    metrics: {
-      ...engineResult.metadata,
-      lidraQualityScore: lidraResult.qualityScore,
-      selectedFramesCount: lidraResult.selectedFrames?.length || 0,
-    },
-    logs,
-    completedAt: new Date().toISOString(),
+  // Raw = delivered reconstruction. No automatic anatomical deformation or filtering.
+  const postProcessing = { enabled: false, version: 'identity-1', configuration: {},
+    rawAsset: result.mesh, processedAsset: null, coordinateTransform: 'identity' };
+  const cpu = process.cpuUsage(cpuStart);
+  const timings = {
+    status: 'measured', acquisitionMs: lidra.durationMs, reconstructionServiceMs: performance.now() - engineStart,
+    serverProcessingMs: performance.now() - started, nodeCpuUserMs: cpu.user / 1000, nodeCpuSystemMs: cpu.system / 1000,
+    nodeRssStartBytes: rssStart, nodeRssEndBytes: process.memoryUsage().rss,
+    memoryScope: 'Node process snapshots; not reconstruction peak memory',
+    assetBytes: Object.values(assets).filter(Boolean).reduce((n, a) => n + a.sizeInBytes, 0),
+    gpuMemoryBytes: null, pythonTimings: result.metadata.timings || null, pythonMemory: result.metadata.memory || null,
   };
+  log('reconstruction_completed', 'Real video-derived experimental geometry created; scale and accuracy remain unvalidated');
+  const manifest = { ...provenance, assets, capabilities, postProcessing, performance: timings };
+  await fs.writeFile(path.join(outputDir, 'provenance.json'), JSON.stringify(manifest, null, 2), { flag: 'wx' });
+  return { success: true, assets, lidra, confidence: null, cameraTrajectory: result.cameraTrajectory,
+    metrics: { ...result.metadata, processingVersion: PROCESSING_VERSION, performance: timings, postProcessing,
+      capabilities, provenance }, provenance, capabilities, performance: timings, logs: [...logs, ...(result.logs || [])], completedAt };
 }

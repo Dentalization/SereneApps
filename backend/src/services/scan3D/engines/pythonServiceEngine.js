@@ -1,102 +1,83 @@
-import path from 'path';
-import fs from 'fs';
+import path from 'node:path';
+import fs from 'node:fs/promises';
 import { BaseReconstructionEngine } from './baseReconstructionEngine.js';
+import { confinedExistingFile, sha256File } from '../scanStorage.js';
 
-const PY_SERVICE_BASE_URL = process.env.PY_SERVICE_BASE_URL || 'http://127.0.0.1:8000';
+export function scanServiceHeaders() {
+  const token = process.env.SCAN3D_SERVICE_TOKEN;
+  if (!token) throw Object.assign(new Error('Scan processing service authentication is not configured'), {
+    code: 'SCAN_SERVICE_NOT_CONFIGURED', retryable: false,
+  });
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+}
+
+export function scanServiceSignal(options = {}, timeoutMs = 120000) {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+}
 
 export class PythonServiceEngine extends BaseReconstructionEngine {
-  constructor() {
-    super({
-      name: 'python_reconstruction_service',
-      displayName: 'Python FastAPI Reconstruction Service',
-      version: '1.1.0',
-      description: 'Distributed Python reconstruction worker running OpenCV & NumPy surface synthesis.',
-      capabilities: ['surface_mesh', 'point_cloud', 'confidence_map'],
-      isAvailable: true,
-    });
+  constructor(name = 'opencv_sparse_sfm') {
+    super({ name, displayName: 'OpenCV sparse two-view reconstruction (experimental)',
+      version: 'opencv-sparse-sfm-1', implementationStatus: 'experimental', isAvailable: null,
+      executionBackend: 'python_opencv_cpu', outputFormats: ['obj', 'ply', 'stl', 'png'],
+      capabilities: ['sparse_point_cloud', 'experimental_surface_mesh', 'estimated_camera_poses'],
+      inputRequirements: ['verified_video', 'sufficient_texture', 'camera_translation', 'authenticated_python_service'],
+      description: 'Computes feature matches, relative camera pose and triangulated geometry from video. Arbitrary scale; no full-arch or clinical validation.' });
   }
 
-  async process({ study, frames = [], cameraMetadata = {}, scanScope = 'full', studyDir, lidraReport = null }) {
-    const startTime = Date.now();
-    const folderName = study.folderName || `SCAN-3D-${study.id}`;
-    const rawVideoPath = path.join(studyDir, 'raw_video.mp4');
-
-    const pyResp = await fetch(`${PY_SERVICE_BASE_URL}/reconstruct/3d-scan`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        studyId: study.id.toString(),
-        folderName,
-        scanScope,
-        videoPath: fs.existsSync(rawVideoPath) ? rawVideoPath : null,
-      }),
-      signal: AbortSignal.timeout(15000),
+  async process({ study, studyDir, options = {}, scanScope = 'full' }) {
+    const started = performance.now();
+    const video = study.metadata?.video;
+    const videoPath = await confinedExistingFile(studyDir, video?.storagePath || video?.fileName || 'raw_video.mp4');
+    const outputDir = path.resolve(options.outputDir || studyDir);
+    if (!outputDir.startsWith(`${path.resolve(studyDir)}${path.sep}`)) {
+      throw Object.assign(new Error('Reconstruction requires an isolated attempt directory'), { retryable: false });
+    }
+    await fs.mkdir(outputDir, { recursive: true });
+    const baseUrl = process.env.PY_SERVICE_BASE_URL || 'http://127.0.0.1:8000';
+    const response = await fetch(`${baseUrl}/reconstruct/3d-scan`, {
+      method: 'POST', headers: scanServiceHeaders(), signal: scanServiceSignal(options),
+      body: JSON.stringify({ studyId: String(study.id), folderName: study.folderName, scanScope,
+        videoPath, outputDir, attemptId: options.attemptId, configuration: options.configuration || {} }),
     });
-
-    if (!pyResp.ok) {
-      throw new Error(`Python service returned HTTP ${pyResp.status}: ${await pyResp.text()}`);
+    if (!response.ok) {
+      const err = new Error(`Reconstruction service failed (HTTP ${response.status})`);
+      err.code = response.status === 409 ? 'RECONSTRUCTION_BUSY' : 'RECONSTRUCTION_SERVICE_FAILED';
+      err.retryable = response.status === 409 || (response.status >= 500 && response.status !== 503);
+      throw err;
     }
-
-    const pyData = await pyResp.json();
-    if (!pyData.success || !pyData.assets) {
-      throw new Error('Python reconstruction service did not return valid assets');
+    const data = await response.json();
+    const metadata = data.metadata || data.metrics || {};
+    if (!data.success || !data.assets?.mesh || metadata.synthetic !== false || metadata.engine !== 'opencv_sparse_sfm') {
+      throw Object.assign(new Error('Reconstruction service returned unverified geometry provenance'), {
+        code: 'UNVERIFIED_RECONSTRUCTION', retryable: false,
+      });
     }
-
-    const objPath = path.join(studyDir, 'mesh.obj');
-    const plyPath = path.join(studyDir, 'mesh.ply');
-    const previewPath = path.join(studyDir, 'preview.png');
-
-    const qualityScore = lidraReport?.qualityScore || 85;
-    const confidence = Number(Math.min(0.98, Math.max(0.65, qualityScore / 100.0)).toFixed(2));
-
-    const cameraTrajectory = frames.map((frame, i) => {
-      const angle = (i / Math.max(1, frames.length - 1)) * Math.PI - Math.PI / 2;
-      return {
-        frameIndex: frame.frameIndex ?? i,
-        fileName: frame.fileName,
-        timestampMs: frame.timestampMs ?? i * 500,
-        pose: {
-          position: [
-            Number((Math.sin(angle) * 35.0).toFixed(2)),
-            Number((Math.cos(angle) * 35.0).toFixed(2)),
-            Number((15.0).toFixed(2)),
-          ],
-        },
+    const wrap = async (asset) => {
+      if (!asset) return null;
+      if (path.basename(asset.fileName || '') !== asset.fileName) throw new Error('Invalid reconstruction asset filename');
+      const localPath = await confinedExistingFile(outputDir, asset.fileName);
+      const stat = await fs.stat(localPath);
+      if (!stat.size) throw new Error('Empty reconstruction asset');
+      const checksum = await sha256File(localPath);
+      return { fileName: asset.fileName, format: path.extname(asset.fileName).slice(1),
+        sizeInBytes: stat.size, vertexCount: asset.vertexCount, faceCount: asset.faceCount, bounds: asset.bounds,
+        storagePath: path.relative(await fs.realpath(studyDir), localPath), checksum, sha256: checksum, version: checksum,
+        assetUrl: `/v1/x-core/3d-scans/${study.id}/assets/${encodeURIComponent(asset.fileName)}`,
+        synthetic: false, measurementCapability: 'visualization_only', clinicalStatus: 'experimental',
+        units: 'arbitrary', scale: { status: 'unvalidated', units: 'arbitrary' },
+        coordinateSystem: metadata.coordinateSystem || 'first_camera_opencv',
       };
-    });
-
-    return {
-      success: true,
-      mesh: {
-        fileName: pyData.assets.mesh.fileName || 'mesh.obj',
-        format: 'obj',
-        sizeInBytes: fs.existsSync(objPath) ? fs.statSync(objPath).size : (pyData.assets.mesh.sizeInBytes || 0),
-        vertexCount: pyData.assets.mesh.vertexCount,
-        faceCount: pyData.assets.mesh.faceCount,
-        bounds: pyData.assets.mesh.bounds,
-        assetUrl: `/v1/x-core/3d-scans/${study.id}/assets/mesh.obj`,
-      },
-      pointCloud: {
-        fileName: pyData.assets.ply.fileName || 'mesh.ply',
-        format: 'ply',
-        sizeInBytes: fs.existsSync(plyPath) ? fs.statSync(plyPath).size : (pyData.assets.ply.sizeInBytes || 0),
-        assetUrl: `/v1/x-core/3d-scans/${study.id}/assets/mesh.ply`,
-      },
-      preview: {
-        fileName: pyData.assets.preview.fileName || 'preview.png',
-        format: 'png',
-        sizeInBytes: fs.existsSync(previewPath) ? fs.statSync(previewPath).size : (pyData.assets.preview.sizeInBytes || 0),
-        assetUrl: `/v1/x-core/3d-scans/${study.id}/assets/preview.png`,
-      },
-      cameraTrajectory,
-      confidence,
-      metadata: {
-        engine: this.name,
-        version: this.version,
-        durationMs: Date.now() - startTime,
-        ...pyData.metrics,
-      },
-      logs: pyData.logs || [],
     };
+    const [mesh, pointCloud, stl, preview] = await Promise.all([
+      wrap(data.assets.mesh), wrap(data.assets.ply), wrap(data.assets.stl), wrap(data.assets.preview),
+    ]);
+    return { success: true, mesh, pointCloud, stl, preview,
+      cameraTrajectory: data.cameraTrajectory || [], confidence: null,
+      metadata: { ...metadata, engine: 'opencv_sparse_sfm', requestedAdapter: this.name,
+        implementationStatus: 'experimental', synthetic: false, validated: false, clinicallyValidated: false,
+        measurementCapability: 'visualization_only', clinicalStatus: 'experimental', units: 'arbitrary',
+        adapterDurationMs: performance.now() - started }, logs: data.logs || [] };
   }
 }

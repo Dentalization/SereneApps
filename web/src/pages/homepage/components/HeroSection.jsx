@@ -163,11 +163,11 @@ const HeroSection = () => {
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-6 pt-4 text-sm font-medium text-slate-500 dark:text-slate-400">
               <div className="flex items-center gap-2">
                 <Icon name="Shield" size={18} className="text-green-500" />
-                HIPAA Compliant
+                HIPAA review pending
               </div>
               <div className="flex items-center gap-2">
                 <Icon name="Award" size={18} className="text-purple-500" />
-                FDA Registered
+                Regulatory review pending
               </div>
               <div className="flex items-center gap-2">
                 <Icon name="Users" size={18} className="text-blue-500" />
@@ -263,7 +263,7 @@ const HeroSection = () => {
             {/* FLOATING STATS */}
             <div className="absolute -top-4 -right-4 bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 animate-bounce-slow hidden lg:block">
               <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">98.7%</div>
+                <div className="text-2xl font-bold text-blue-600">Pending</div>
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Accuracy</div>
               </div>
             </div>

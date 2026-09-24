@@ -1,7 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback, useReducer } from 'react';
 import AppIcon from '../../../../../components/AppIcon';
 import { getAccessToken } from '../../../../../utils/auth/tokenStorage';
+import { useAuth } from '../../../../../contexts/AuthContext';
+import { resolveScanAssetCapability, scanAnnotationStorageKey, scanAssetPath, readBoundedAsset } from './scan3DAssetSafety.mjs';
+import { createScanViewerTelemetry } from './scan3DViewerTelemetry.mjs';
 
+import '@kitware/vtk.js/Rendering/Profiles/Geometry';
 import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
 import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
 import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
@@ -40,10 +44,10 @@ const COLOR_PRESETS = {
 };
 
 const VIEW_PRESETS = {
-  occlusal: { name: 'Oklusal (Atas)', position: [0, 0, 85], focalPoint: [0, 10, 0], viewUp: [0, 1, 0] },
-  frontal: { name: 'Frontal (Depan)', position: [0, -85, 10], focalPoint: [0, 10, 0], viewUp: [0, 0, 1] },
-  right: { name: 'Lateral Kanan', position: [85, 0, 10], focalPoint: [0, 10, 0], viewUp: [0, 0, 1] },
-  left: { name: 'Lateral Kiri', position: [-85, 0, 10], focalPoint: [0, 10, 0], viewUp: [0, 0, 1] },
+  occlusal: { name: '+Z', position: [0, 0, 85], focalPoint: [0, 10, 0], viewUp: [0, 1, 0] },
+  frontal: { name: '−Y', position: [0, -85, 10], focalPoint: [0, 10, 0], viewUp: [0, 0, 1] },
+  right: { name: '+X', position: [85, 0, 10], focalPoint: [0, 10, 0], viewUp: [0, 0, 1] },
+  left: { name: '−X', position: [-85, 0, 10], focalPoint: [0, 10, 0], viewUp: [0, 0, 1] },
 };
 
 // ---------------------------------------------------------------------------
@@ -51,6 +55,7 @@ const VIEW_PRESETS = {
 // ---------------------------------------------------------------------------
 function measurementsReducer(state, action) {
   switch (action.type) {
+    case 'RESET': return createMeasurementsState();
     case 'SET_TOOL': return setTool(state, action.tool);
     case 'PICK': {
       const { state: next } = handlePick(state, action.worldPoint, action.textContent);
@@ -59,7 +64,7 @@ function measurementsReducer(state, action) {
     case 'UNDO': return undoMeasurement(state);
     case 'DELETE': return deleteMeasurement(state, action.id);
     case 'CLEAR': return clearAllMeasurements(state);
-    case 'HYDRATE': return hydrateMeasurements(state, action.annotations);
+    case 'HYDRATE': return { ...hydrateMeasurements(state, action.annotations), scope: action.scope };
     case 'RENAME': return renameMeasurement(state, action.id, action.label);
     case 'MOVE_LABEL': return moveMeasurementLabel(state, action.id, action.offset);
     default: return state;
@@ -78,10 +83,18 @@ const Scan3DMeshViewer = ({
   analysisCaseContext = null,
   onCaptureForCase = null,
 }) => {
+  const studyId = study?.id || study?.studyId;
+  const { user } = useAuth();
   const containerRef = useRef(null);
+  const loadAbortRef = useRef(null);
+  const colorPresetRef = useRef('enamel');
+  const telemetryRef = useRef(createScanViewerTelemetry());
+  const [telemetrySnapshot, setTelemetrySnapshot] = useState(null);
+  const [viewerEpoch, setViewerEpoch] = useState(0);
+
   const vtkRef = useRef(null);
 
-  const [scanStatus, setScanStatus] = useState(study?.status || 'ready');
+  const [scanStatus, setScanStatus] = useState('loading');
   const [statusData, setStatusData] = useState(null);
   const [loadProgress, setLoadProgress] = useState(0);
   const [isLoadingAsset, setIsLoadingAsset] = useState(false);
@@ -110,7 +123,13 @@ const Scan3DMeshViewer = ({
     triggerSegmentation,
   } = useToothInstances(studyId, { enabled: showTeeth && scanStatus === 'ready' });
 
-  const studyId = study?.id || study?.studyId;
+  const assetDescriptor = statusData?.assets?.mesh || {};
+  const assetSafety = resolveScanAssetCapability(assetDescriptor);
+  const assetUrlFromStatus = scanAssetPath(studyId, assetDescriptor);
+  const assetSha = assetDescriptor.sha256 || assetDescriptor.checksum?.sha256 || null;
+  const annotationKey = scanAnnotationStorageKey({ scanId: studyId, ownerId: user?.id, asset: assetDescriptor });
+  const measurementScope = annotationKey || `ephemeral:${studyId}:${assetSha || ''}`;
+  const visibleMeasurements = measState.scope === measurementScope ? measState.measurements.filter((item) => assetSafety.canMeasure || item.type !== 'measurement') : [];
 
   // ---------------------------------------------------------------------------
   // 1. Status Polling
@@ -126,7 +145,8 @@ const Scan3DMeshViewer = ({
         const res = await fetch(`/v1/x-core/3d-scans/${studyId}/status`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (res.ok && isMounted) {
+        if (!res.ok) throw new Error(`Status aset tidak tersedia (${res.status})`);
+        if (isMounted) {
           const data = await res.json();
           setStatusData(data);
           setScanStatus(data.status);
@@ -135,13 +155,11 @@ const Scan3DMeshViewer = ({
           }
         }
       } catch (err) {
-        console.warn('[Scan3DMeshViewer] Status poll failed:', err);
+        if (isMounted) { setAssetError(err.message); setScanStatus('unavailable'); }
       }
     };
 
-    if (scanStatus === 'processing' || scanStatus === 'queued') {
-      checkStatus();
-    }
+    checkStatus();
 
     return () => {
       isMounted = false;
@@ -149,49 +167,64 @@ const Scan3DMeshViewer = ({
     };
   }, [studyId, scanStatus]);
 
-  // ---------------------------------------------------------------------------
-  // 2. Load persisted annotations from localStorage (scan3d scope)
-  // ---------------------------------------------------------------------------
+  // Geometry checksum and user scope prevent annotations from attaching to a different asset.
   useEffect(() => {
-    if (!studyId || scanStatus !== 'ready') return;
-    const key = `xcore.annotations.${studyId}..scan3d.`;
+    measDispatch({ type: 'RESET' });
+    if (scanStatus !== 'ready') return;
+    let items = [];
     try {
-      const raw = localStorage.getItem(key);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const items = parsed?.annotations || parsed || [];
-        if (Array.isArray(items) && items.length > 0) {
-          measDispatch({ type: 'HYDRATE', annotations: items });
-        }
-      }
+      const saved = annotationKey ? JSON.parse(localStorage.getItem(annotationKey) || 'null') : null;
+      items = (saved?.annotations || []).filter((item) => assetSafety.canMeasure || item.type !== 'measurement');
     } catch (_) {}
-  }, [studyId, scanStatus]);
+    measDispatch({ type: 'HYDRATE', annotations: items, scope: measurementScope });
+  }, [annotationKey, measurementScope, scanStatus, assetSafety.canMeasure]);
 
-  // Persist to localStorage whenever measurements change
   useEffect(() => {
-    if (!studyId || measState.measurements.length === 0) return;
-    const key = `xcore.annotations.${studyId}..scan3d.`;
+    if (!annotationKey || measState.scope !== annotationKey) return;
     try {
-      localStorage.setItem(key, JSON.stringify({ annotations: measState.measurements }));
+      localStorage.setItem(annotationKey, JSON.stringify({ assetSha256: assetSha, annotations: measState.measurements }));
     } catch (_) {}
-  }, [studyId, measState.measurements]);
+  }, [annotationKey, assetSha, measState.measurements, measState.scope]);
 
   // ---------------------------------------------------------------------------
   // 3. Retry Handler
   // ---------------------------------------------------------------------------
   const handleRetry = async () => {
     try {
-      setScanStatus('queued');
       const token = getAccessToken();
       const res = await fetch(`/v1/x-core/3d-scans/${studyId}/retry`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ engine: 'photogrammetry_v1' }),
+        body: JSON.stringify({}),
       });
-      if (res.ok) setScanStatus('queued');
+      if (!res.ok) throw new Error('Rekonstruksi belum dapat dijadwalkan ulang.');
+      setScanStatus('queued');
     } catch (err) {
-      console.error('[Scan3DMeshViewer] Retry error:', err);
+      setAssetError(err.message);
+      setScanStatus('failed');
     }
+  };
+
+  const handleDownload = async () => {
+    if (!assetUrlFromStatus) return;
+    try {
+      const response = await fetch(assetUrlFromStatus, {
+        headers: { Authorization: `Bearer ${getAccessToken()}` }, redirect: 'error',
+      });
+      if (!response.ok) throw new Error('Unduhan aset tidak tersedia atau akses sesi berakhir.');
+      const buffer = await readBoundedAsset(response);
+      if (assetSha) {
+        const digest = await crypto.subtle.digest('SHA-256', buffer);
+        const actual = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('');
+        if (actual !== assetSha.toLowerCase()) throw new Error('Checksum unduhan aset tidak sesuai.');
+      }
+      const url = URL.createObjectURL(new Blob([buffer], { type: 'application/octet-stream' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `experimental_scan_${studyId}.${assetUrlFromStatus.split('.').pop()}`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { setAssetError(error.message); }
   };
 
   // ---------------------------------------------------------------------------
@@ -201,11 +234,13 @@ const Scan3DMeshViewer = ({
     if (!vtkRef.current?.renderer || !containerRef.current) return null;
     try {
       const { renderer, renderWindow } = vtkRef.current;
-      const size = renderWindow.getSize();
+      const view = renderWindow.getViews()[0];
+      const size = view.getSize();
+      const bounds = containerRef.current.getBoundingClientRect();
       // vtk.js worldToDisplay: returns [displayX, displayY, displayZ] in viewport pixels
-      const display = renderer.worldToDisplay(worldPt[0], worldPt[1], worldPt[2]);
+      const display = view.worldToDisplay(worldPt[0], worldPt[1], worldPt[2], renderer);
       // VTK display Y is bottom-origin; flip to top-origin for DOM
-      return { x: display[0], y: size[1] - display[1] };
+      return { x: display[0] * bounds.width / size[0], y: (size[1] - display[1]) * bounds.height / size[1] };
     } catch (_) {
       return null;
     }
@@ -216,10 +251,19 @@ const Scan3DMeshViewer = ({
   // ---------------------------------------------------------------------------
   const initVtkViewer = useCallback(async () => {
     if (!containerRef.current || scanStatus !== 'ready' || !studyId) return;
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
+    const telemetry = createScanViewerTelemetry();
+    telemetryRef.current = telemetry;
+    const loadStarted = telemetry.start();
 
     if (vtkRef.current) {
       try {
-        const { fullScreenRenderer, orientationWidget, actor, mapper, picker } = vtkRef.current;
+        const { fullScreenRenderer, orientationWidget, actor, mapper, picker, polyData, reader, cubeActor } = vtkRef.current;
+        reader?.delete();
+        polyData?.delete();
+        cubeActor?.delete();
         if (orientationWidget) orientationWidget.delete();
         if (actor) actor.delete();
         if (mapper) mapper.delete();
@@ -239,44 +283,29 @@ const Scan3DMeshViewer = ({
       const token = getAccessToken();
       const authHeaders = { Authorization: `Bearer ${token}` };
 
-      let assetUrl = `/v1/x-core/3d-scans/${studyId}/assets/mesh.stl`;
-      let assetFormat = 'stl';
-
-      setLoadProgress(30);
-      let response = await fetch(assetUrl, { headers: authHeaders });
-
-      if (!response.ok) {
-        assetUrl = `/v1/x-core/3d-scans/${studyId}/assets/mesh.ply`;
-        assetFormat = 'ply';
-        response = await fetch(assetUrl, { headers: authHeaders });
+      if (!assetUrlFromStatus) throw new Error('Aset mesh terotorisasi belum tersedia pada manifest scan.');
+      const assetFormat = assetUrlFromStatus.split('.').pop().toLowerCase();
+      const response = await fetch(assetUrlFromStatus, { headers: authHeaders, signal: controller.signal, redirect: 'error' });
+      if (!response.ok) throw new Error(`Aset 3D tidak dapat dimuat (${response.status})`);
+      const buffer = await readBoundedAsset(response);
+      if (controller.signal.aborted) return;
+      telemetry.record('download', loadStarted);
+      telemetry.fact('downloadBytes', buffer.byteLength);
+      telemetry.fact('format', assetFormat);
+      if (assetSha) {
+        const digest = await crypto.subtle.digest('SHA-256', buffer);
+        const actual = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('');
+        if (actual !== assetSha.toLowerCase()) throw new Error('Checksum aset berbeda dari manifest. Muat ulang status scan.');
       }
-      if (!response.ok) {
-        assetUrl = `/v1/x-core/3d-scans/${studyId}/assets/mesh.obj`;
-        assetFormat = 'obj';
-        response = await fetch(assetUrl, { headers: authHeaders });
-      }
-
-      if (!response.ok) throw new Error(`Failed to load 3D mesh asset (${response.status})`);
-
+      if (controller.signal.aborted) return;
       setLoadProgress(65);
-
-      let polyData = null;
-      if (assetFormat === 'stl') {
-        const arrayBuffer = await response.arrayBuffer();
-        const reader = vtkSTLReader.newInstance();
-        reader.parseAsArrayBuffer(arrayBuffer);
-        polyData = reader.getOutputData();
-      } else if (assetFormat === 'ply') {
-        const text = await response.text();
-        const reader = vtkPLYReader.newInstance();
-        reader.parseAsText(text);
-        polyData = reader.getOutputData();
-      } else {
-        const text = await response.text();
-        const reader = vtkOBJReader.newInstance();
-        reader.parseAsText(text);
-        polyData = reader.getOutputData();
-      }
+      const parseStarted = telemetry.start();
+      const reader = assetFormat === 'stl' ? vtkSTLReader.newInstance()
+        : assetFormat === 'ply' ? vtkPLYReader.newInstance() : vtkOBJReader.newInstance();
+      if (assetFormat === 'obj') reader.parseAsText(new TextDecoder().decode(buffer));
+      else reader.parseAsArrayBuffer(buffer);
+      const polyData = reader.getOutputData();
+      telemetry.record('parse', parseStarted);
 
       setLoadProgress(85);
 
@@ -299,7 +328,7 @@ const Scan3DMeshViewer = ({
       const actor = vtkActor.newInstance();
       actor.setMapper(mapper);
 
-      const preset = COLOR_PRESETS[colorPreset] || COLOR_PRESETS.enamel;
+      const preset = COLOR_PRESETS[colorPresetRef.current] || COLOR_PRESETS.enamel;
       actor.getProperty().setColor(...preset.rgb);
       actor.getProperty().setAmbient(0.2);
       actor.getProperty().setDiffuse(preset.diffuse);
@@ -317,12 +346,12 @@ const Scan3DMeshViewer = ({
         textColor: [0.85, 0.95, 1.0],
         resolution: 300,
       });
-      cubeActor.setXPlusFaceProperty({ text: 'R' });
-      cubeActor.setXMinusFaceProperty({ text: 'L' });
-      cubeActor.setYPlusFaceProperty({ text: 'Ling' });
-      cubeActor.setYMinusFaceProperty({ text: 'Buc' });
-      cubeActor.setZPlusFaceProperty({ text: 'Okk' });
-      cubeActor.setZMinusFaceProperty({ text: 'Ging' });
+      cubeActor.setXPlusFaceProperty({ text: '+X' });
+      cubeActor.setXMinusFaceProperty({ text: '−X' });
+      cubeActor.setYPlusFaceProperty({ text: '+Y' });
+      cubeActor.setYMinusFaceProperty({ text: '−Y' });
+      cubeActor.setZPlusFaceProperty({ text: '+Z' });
+      cubeActor.setZMinusFaceProperty({ text: '−Z' });
 
       const orientationWidget = vtkOrientationMarkerWidget.newInstance({
         actor: cubeActor,
@@ -338,22 +367,26 @@ const Scan3DMeshViewer = ({
       picker.initializePickList();
 
       renderer.resetCamera();
-      const camera = renderer.getActiveCamera();
-      camera.setPosition(0, -60, 60);
-      camera.setFocalPoint(0, 10, 0);
-      camera.setViewUp(0, 1, 1);
       renderer.resetCameraClippingRange();
+      const renderStarted = telemetry.start();
       renderWindow.render();
+      telemetry.record('initialRenderCpu', renderStarted);
+      telemetry.record('loadToFirstRender', loadStarted);
+      telemetry.fact('vertexCount', polyData.getNumberOfPoints());
+      telemetry.fact('faceCount', polyData.getNumberOfPolys?.() ?? null);
+      telemetry.fact('jsHeapUsedBytes', performance.memory?.usedJSHeapSize ?? null);
+      setTelemetrySnapshot(telemetry.snapshot());
 
       setStats({
         vertexCount: polyData.getNumberOfPoints(),
         faceCount: polyData.getNumberOfPolys
           ? polyData.getNumberOfPolys()
-          : Math.round(polyData.getNumberOfPoints() * 1.8),
+          : null,
         bounds: polyData.getBounds(),
       });
 
       vtkRef.current = {
+        polyData, reader, cubeActor,
         fullScreenRenderer,
         renderer,
         renderWindow,
@@ -364,23 +397,29 @@ const Scan3DMeshViewer = ({
         picker,
       };
 
+      setViewerEpoch((value) => value + 1);
       setLoadProgress(100);
       setIsLoadingAsset(false);
     } catch (err) {
+      if (controller.signal.aborted) return;
       console.error('[Scan3DMeshViewer] VTK init error:', err);
       setAssetError(err.message || 'Gagal memuat aset 3D mesh');
       setIsLoadingAsset(false);
     }
-  }, [studyId, scanStatus, colorPreset]);
+  }, [studyId, scanStatus, assetUrlFromStatus, assetSha]);
 
   useEffect(() => {
     if (scanStatus === 'ready') {
       initVtkViewer();
     }
     return () => {
+      loadAbortRef.current?.abort();
       if (vtkRef.current) {
         try {
-          const { fullScreenRenderer, orientationWidget, actor, mapper, picker } = vtkRef.current;
+          const { fullScreenRenderer, orientationWidget, actor, mapper, picker, polyData, reader, cubeActor } = vtkRef.current;
+          reader?.delete();
+          polyData?.delete();
+          cubeActor?.delete();
           if (orientationWidget) orientationWidget.delete();
           if (actor) actor.delete();
           if (mapper) mapper.delete();
@@ -397,7 +436,7 @@ const Scan3DMeshViewer = ({
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const vtk = vtkRef.current;
-    if (!vtk || measState.tool === TOOLS.NONE) return;
+    if (!vtk || measState.tool === TOOLS.NONE || (measState.tool === TOOLS.DISTANCE && !assetSafety.canMeasure)) return;
 
     const { interactor, renderer, renderWindow, picker } = vtk;
 
@@ -410,10 +449,12 @@ const Scan3DMeshViewer = ({
       if (!pos) return;
 
       // Perform cell pick
+      const pickStarted = telemetryRef.current.start();
       picker.pick([pos.x, pos.y, 0], renderer);
+      telemetryRef.current.record('surfacePick', pickStarted);
       const pickedPos = picker.getPickPosition();
 
-      if (!pickedPos || (pickedPos[0] === 0 && pickedPos[1] === 0 && pickedPos[2] === 0)) {
+      if (!pickedPos || picker.getCellId() < 0) {
         // Miss — no geometry hit
         return;
       }
@@ -430,7 +471,29 @@ const Scan3DMeshViewer = ({
 
     const sub = interactor.onLeftButtonPress(onLeftPress);
     return () => { try { sub.unsubscribe?.(); } catch (_) {} };
-  }, [measState.tool, vtkRef.current]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [measState.tool, viewerEpoch, assetSafety.canMeasure]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const subscribeToRender = useCallback((listener) => vtkRef.current?.interactor.onRenderEvent(listener), [viewerEpoch]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const interactor = vtkRef.current?.interactor;
+    if (!container || !interactor) return undefined;
+    let pendingInput = null;
+    const onInput = (event) => {
+      if (event.type === 'pointermove' && !event.buttons) return;
+      pendingInput ??= telemetryRef.current.start();
+    };
+    const subscription = interactor.onRenderEvent(() => {
+      if (pendingInput !== null) telemetryRef.current.record('inputToRenderCpu', pendingInput);
+      pendingInput = null;
+    });
+    for (const event of ['pointerdown', 'pointermove', 'wheel']) container.addEventListener(event, onInput, { capture: true, passive: true });
+    return () => {
+      subscription.unsubscribe();
+      for (const event of ['pointerdown', 'pointermove', 'wheel']) container.removeEventListener(event, onInput, true);
+    };
+  }, [viewerEpoch]);
 
   // ---------------------------------------------------------------------------
   // 7. Representation / color / view preset helpers
@@ -444,6 +507,7 @@ const Scan3DMeshViewer = ({
   };
 
   const handleColorChange = (key) => {
+    colorPresetRef.current = key;
     setColorPreset(key);
     if (!vtkRef.current?.actor) return;
     const p = COLOR_PRESETS[key];
@@ -460,8 +524,12 @@ const Scan3DMeshViewer = ({
     const p = VIEW_PRESETS[key];
     if (!p) return;
     const camera = vtkRef.current.renderer.getActiveCamera();
-    camera.setPosition(...p.position);
-    camera.setFocalPoint(...p.focalPoint);
+    const bounds = vtkRef.current.actor.getBounds();
+    const center = [0, 1, 2].map((axis) => (bounds[axis * 2] + bounds[axis * 2 + 1]) / 2);
+    const radius = Math.hypot(bounds[1] - bounds[0], bounds[3] - bounds[2], bounds[5] - bounds[4]);
+    const length = Math.hypot(...p.position);
+    camera.setPosition(...center.map((value, index) => value + p.position[index] / length * radius * 1.5));
+    camera.setFocalPoint(...center);
     camera.setViewUp(...p.viewUp);
     vtkRef.current.renderer.resetCameraClippingRange();
     vtkRef.current.renderWindow.render();
@@ -479,16 +547,17 @@ const Scan3DMeshViewer = ({
   const patientName = study?.patient?.name || study?.patientName || 'Pasien 3D Scan';
   const scanIdentifier = study?.folderName || study?.scanIdentifier || `SCAN-3D-${studyId}`;
   const metadata = statusData?.metadata || study?.metadata || {};
-  const metrics = metadata?.metrics || {};
+  const metrics = statusData?.metrics || metadata?.metrics || {};
   const lidra = statusData?.lidra || metadata?.lidra || {};
-  const engine = metrics?.engine || metadata?.reconstructionEngine || 'photogrammetry_v1';
-  const confidence = statusData?.confidence || metadata?.confidence || 0.92;
+  const engine = metrics?.engine || metadata?.reconstructionEngine || statusData?.job?.reconstructionEngine || 'Tidak tersedia';
+  const qualityScore = lidra?.qualityScore;
+  const qualityLabel = typeof qualityScore === 'number' ? `${qualityScore}% (heuristik akuisisi)` : 'Tidak tersedia';
 
   // ---------------------------------------------------------------------------
   // Render State 1: Processing / Queued
   // ---------------------------------------------------------------------------
   if (scanStatus === 'processing' || scanStatus === 'queued' || scanStatus === 'created' || scanStatus === 'uploaded') {
-    const progress = statusData?.progressPercent || (scanStatus === 'processing' ? 45 : 10);
+    const progress = statusData?.progressPercent ?? 0;
     const stage = statusData?.currentStage || (scanStatus === 'processing' ? 'surface_reconstruction' : 'queued');
 
     return (
@@ -540,7 +609,7 @@ const Scan3DMeshViewer = ({
             </div>
             <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
               <div className="text-[10px] text-slate-400 uppercase font-semibold">Skor Kualitas LIDRA</div>
-              <div className="text-xs font-bold text-emerald-400 mt-0.5">{lidra.qualityScore || 85}% (Tajam)</div>
+              <div className="text-xs font-bold text-emerald-400 mt-0.5">{qualityLabel}</div>
             </div>
           </div>
 
@@ -555,7 +624,7 @@ const Scan3DMeshViewer = ({
   // ---------------------------------------------------------------------------
   // Render State 2: Failed
   // ---------------------------------------------------------------------------
-  if (scanStatus === 'failed') {
+  if (scanStatus === 'failed' || scanStatus === 'unavailable') {
     return (
       <div className="relative h-full w-full bg-slate-950 flex flex-col items-center justify-center p-6 text-white select-none">
         <div className="absolute top-4 left-4 z-20">
@@ -576,7 +645,7 @@ const Scan3DMeshViewer = ({
           <div>
             <h3 className="text-lg font-bold text-white">Rekonstruksi 3D Belum Berhasil</h3>
             <p className="text-xs text-rose-300 mt-1">
-              {statusData?.failureReason || metadata?.failureReason || 'Terjadi kendala pada estimasi sudut kamera atau kejelasan video intraoral.'}
+              {assetError || statusData?.failureReason || metadata?.failureReason || 'Pemrosesan gagal. Periksa ketersediaan engine dan laporan scan.'}
             </p>
           </div>
 
@@ -600,6 +669,8 @@ const Scan3DMeshViewer = ({
   // ---------------------------------------------------------------------------
   // Render State 3: Ready (Interactive VTK 3D Canvas + Measurement overlay)
   // ---------------------------------------------------------------------------
+  if (scanStatus === 'loading') return <div className="p-6 text-slate-300">Memverifikasi status dan akses aset 3D…</div>;
+
   return (
     <div className="relative h-full w-full bg-slate-950 overflow-hidden flex flex-col select-none">
       {/* 3D WebGL Canvas */}
@@ -608,7 +679,8 @@ const Scan3DMeshViewer = ({
       {/* Measurement + Annotation Overlay */}
       {!isLoadingAsset && (
         <Scan3DAnnotationOverlay
-          measurements={measState.measurements}
+          subscribeToRender={subscribeToRender}
+          measurements={visibleMeasurements}
           pendingPick={measState.pendingPick}
           worldToScreen={worldToScreen}
           activeTool={measState.tool}
@@ -728,7 +800,7 @@ const Scan3DMeshViewer = ({
             <div className="text-[10px] text-slate-400 font-mono flex items-center gap-2 mt-0.5">
               <span>{scanIdentifier}</span>
               <span>•</span>
-              <span className="text-cyan-300 font-semibold">Akurasi: {Math.round(confidence * 100)}%</span>
+              <span className="text-amber-300 font-semibold">Eksperimental · {assetSafety.capability} · skala {assetSafety.scaleStatus}</span>
               {measState.measurements.length > 0 && (
                 <>
                   <span>•</span>
@@ -864,11 +936,12 @@ const Scan3DMeshViewer = ({
         {/* Measurement & Annotation Toolbar */}
         {!isLoadingAsset && (
           <Scan3DMeasurementToolbar
+            canMeasure={assetSafety.canMeasure}
             activeTool={measState.tool}
             canUndo={measState.undoStack.length > 0}
             hasMeasurements={measState.measurements.length > 0}
             measurementCount={measState.measurements.length}
-            onSetTool={(tool) => measDispatch({ type: 'SET_TOOL', tool })}
+            onSetTool={(tool) => { if (tool !== TOOLS.DISTANCE || assetSafety.canMeasure) measDispatch({ type: 'SET_TOOL', tool }); }}
             onUndo={() => measDispatch({ type: 'UNDO' })}
             onClearAll={() => measDispatch({ type: 'CLEAR' })}
           />
@@ -902,21 +975,32 @@ const Scan3DMeshViewer = ({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Waktu Proses:</span>
-                  <span className="font-mono text-white">{metrics?.durationMs || metrics?.processingTimeMs || 3420} ms</span>
+                  <span className="font-mono text-white">{metrics?.durationMs ?? metrics?.processingTimeMs ?? 'Tidak tersedia'} ms</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Keyframe Input:</span>
-                  <span className="font-mono text-white">{metrics?.inputFrameCount || metrics?.sampledFrames || 18} frame</span>
+                  <span className="font-mono text-white">{metrics?.inputFrameCount ?? metrics?.sampledFrames ?? 'Tidak tersedia'} frame</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Format Aset:</span>
-                  <span className="font-mono text-white">STL, PLY, OBJ</span>
+                  <span className="font-mono text-white">{telemetrySnapshot?.facts?.format || 'Tidak tersedia'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Tingkat Keyakinan:</span>
-                  <span className="font-mono text-emerald-400 font-bold">{Math.round(confidence * 100)}%</span>
+                  <span className="text-slate-400">Status Klinis:</span>
+                  <span className="font-mono text-emerald-400 font-bold">{assetSafety.clinicalStatus}</span>
                 </div>
               </div>
+            </div>
+
+            <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-xs space-y-2">
+              <button onClick={() => setTelemetrySnapshot(telemetryRef.current.snapshot())} className="text-cyan-300">Perbarui pengukuran viewer</button>
+              <p>Load: {telemetrySnapshot?.durationsMs?.loadToFirstRender?.latest?.toFixed(1) ?? 'Tidak tersedia'} ms</p>
+              <p>Render CPU: {telemetrySnapshot?.durationsMs?.initialRenderCpu?.latest?.toFixed(1) ?? 'Tidak tersedia'} ms</p>
+              <p>Pick: {telemetrySnapshot?.durationsMs?.surfacePick?.latest?.toFixed(1) ?? 'Tidak tersedia'} ms</p>
+              <p>Input ke render CPU: {telemetrySnapshot?.durationsMs?.inputToRenderCpu?.latest?.toFixed(1) ?? 'Tidak tersedia'} ms</p>
+              <p>FPS / memori GPU: tidak diukur</p>
+              <p>Heap JS: {telemetrySnapshot?.facts?.jsHeapUsedBytes ?? 'API tidak tersedia'} bytes</p>
+              <p className="text-slate-400">Durasi CPU lokal, bukan validasi klinis atau waktu selesai GPU.</p>
             </div>
 
             {/* Geometry Specs */}
@@ -925,15 +1009,15 @@ const Scan3DMeshViewer = ({
               <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span className="text-slate-400">Jumlah Vertex:</span>
-                  <span className="font-mono text-white">{stats.vertexCount || metrics?.vertexCount || 512}</span>
+                  <span className="font-mono text-white">{stats.vertexCount}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Jumlah Poligon/Face:</span>
-                  <span className="font-mono text-white">{stats.faceCount || metrics?.faceCount || 896}</span>
+                  <span className="font-mono text-white">{stats.faceCount ?? 'Tidak tersedia'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Lengkung Parabola:</span>
-                  <span className="font-mono text-cyan-300">y = -0.045*x² + 20</span>
+                  <span className="text-slate-400">Koordinat / Satuan:</span>
+                  <span className="font-mono text-cyan-300">{assetSafety.coordinateSystem} / {assetSafety.units}</span>
                 </div>
               </div>
             </div>
@@ -942,7 +1026,7 @@ const Scan3DMeshViewer = ({
             {measState.measurements.length > 0 && (
               <div className="space-y-3">
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Anotasi Klinis ({measState.measurements.length})
+                  Anotasi Visual ({measState.measurements.length})
                 </div>
                 <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2 text-xs max-h-48 overflow-y-auto">
                   {measState.measurements.map((m, i) => (
@@ -1009,7 +1093,7 @@ const Scan3DMeshViewer = ({
                           <span className="font-bold">FDI {inst.fdi}</span>
                           <span className="text-slate-500 capitalize">{inst.type}</span>
                         </div>
-                        <span className="text-[10px] text-slate-500">{Math.round((inst.confidence || 0) * 100)}%</span>
+                        <span className="text-[10px] text-slate-500">{inst.method || inst.segmentation_method || 'Metode tidak tersedia'}</span>
                       </button>
                     ))}
                   </div>
@@ -1032,21 +1116,21 @@ const Scan3DMeshViewer = ({
                 <span>Referensi Riset Eksperimental</span>
               </div>
               <p className="text-[11px] text-amber-200/80 leading-relaxed">
-                Visualisasi 3D ini dihasilkan dari rekonstruksi video smartphone untuk eksplorasi X-Core. Tidak untuk kalibrasi diagnostik definitif tanpa verifikasi radiografi CBCT / cetak fisik.
+                Aset eksperimental untuk visualisasi. Skala dan orientasi anatomi belum tervalidasi. Rendering bukan bukti akurasi; tidak untuk diagnosis atau pengukuran klinis.
               </p>
             </div>
           </div>
 
           {/* Download Mesh Asset */}
           <div className="pt-4 border-t border-slate-800">
-            <a
-              href={`/v1/x-core/3d-scans/${studyId}/assets/mesh.stl`}
-              download={`dental_scan_${scanIdentifier}.stl`}
+            <button
+              onClick={handleDownload}
+              disabled={!assetUrlFromStatus}
               className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold transition border border-slate-700"
             >
               <AppIcon name="Download" size={14} />
-              <span>Unduh File STL (CAD/CAM)</span>
-            </a>
+              <span>Unduh Aset Eksperimental Asli</span>
+            </button>
           </div>
         </aside>
       )}

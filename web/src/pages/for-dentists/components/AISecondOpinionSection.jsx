@@ -7,7 +7,7 @@ const AISecondOpinionSection = () => {
     {
       icon: 'Brain',
       title: 'Clinical Decision Support',
-      description: 'AI-powered second opinions backed by thousands of verified cases.',
+      description: 'AI-assisted suggestions that require dentist review; validation evidence is not supplied here.',
       color: 'blue'
     },
     {

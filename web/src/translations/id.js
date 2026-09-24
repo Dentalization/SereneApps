@@ -1208,7 +1208,7 @@ export default {
       compliance: {
         title: 'Kepatuhan & Keamanan',
         gdprCompliant: 'Patuh GDPR',
-        hipaaCompliant: 'Patuh HIPAA',
+        hipaaCompliant: 'Tinjauan HIPAA belum selesai',
         dataEncryption: 'Enkripsi Data',
         accessLogging: 'Pencatatan Akses',
         regularBackups: 'Backup Rutin',
@@ -2400,7 +2400,7 @@ export default {
     compliance: {
       title: 'Kepatuhan & Keamanan',
       gdprCompliant: 'Sesuai GDPR',
-      hipaaCompliant: 'Sesuai HIPAA',
+      hipaaCompliant: 'Tinjauan HIPAA belum selesai',
       dataEncryption: 'Enkripsi Data',
       accessLogging: 'Pencatatan Akses',
       regularBackups: 'Backup Rutin',

@@ -1,1009 +1,265 @@
-import path from 'path';
-import fs from 'fs';
-import crypto from 'crypto';
-import { fileURLToPath } from 'url';
+import path from 'node:path';
+import fs from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { PrismaClient } from '@prisma/client';
-import { randomUUID } from 'crypto';
 import bcrypt from 'bcrypt';
-import {
-  normalizePatientPhone,
-  withPatientIdentityTransaction,
-  findPatientByIdentity,
-} from '../services/patients/patientIdentityResolver.js';
-import { enqueueScan, getScanJobStatus, retryScan } from '../services/scan3D/scan3DQueueService.js';
+import { normalizePatientPhone, withPatientIdentityTransaction, findPatientByIdentity } from '../services/patients/patientIdentityResolver.js';
+import { enqueueScan, getScanJobStatus, retryScan, DEFAULT_SCAN_ENGINE } from '../services/scan3D/scan3DQueueService.js';
 import { processScanNow } from '../services/scan3D/scan3DWorker.js';
 import { reconstructionEngineRegistry } from '../services/scan3D/engines/reconstructionEngineRegistry.js';
+import { privateScanDirectory, scanDirectory, confinedExistingFile, registeredAsset, safeComponent, sha256File } from '../services/scan3D/scanStorage.js';
+import { inspectVideo } from '../services/scan3D/videoInspection.js';
+import { clientScanMetadata, publicScanMetadata, associatedPatientWhere, EXPERIMENTAL_CAPABILITIES } from '../services/scan3D/scanIntegrity.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const XCORE_UPLOAD_DIR = path.join(__dirname, '../../uploads/x-core');
-
+import { auditScanEvent, auditedScanUpdate } from '../services/scan3D/scanAudit.js';
 const prisma = new PrismaClient();
-
-function parseBigIntId(value) {
-  try {
-    return BigInt(value);
-  } catch {
-    return null;
-  }
+function parseId(value) { try { const id = BigInt(value); return id > 0n ? id : null; } catch { return null; } }
+const problem = (status, message, code) => Object.assign(new Error(message), { status, code });
+function respondError(res, error) {
+  if (!error.status || error.status >= 500) console.error('[xCoreScanController]', error);
+  return res.status(error.status || 500).json({ error: error.status ? error.message : 'Scan operation failed', code: error.code || 'SCAN_OPERATION_FAILED' });
+}
+function dentistId(req) { const id = parseId(req.user?.id); if (!id) throw problem(401, 'Authentication required'); return id; }
+async function clinicIdFor(id, client = prisma) {
+  const staff = await client.clinicStaff.findUnique({ where: { userId: id } });
+  if (staff) return staff.isActive && staff.role === 'dentist' ? staff.clinicProfileId : null;
+  const profile = await client.dentistProfile.findFirst({ where: { userId: id }, select: { clinic_id: true } });
+  return profile?.clinic_id || null;
+}
+async function authorizedScan(req, { write = false } = {}) {
+  const ownerId = dentistId(req);
+  const id = parseId(req.params.id);
+  if (!id) throw problem(400, 'Invalid scan ID');
+  const clinicId = write ? null : await clinicIdFor(ownerId);
+  const scope = write ? { dentistId: ownerId } : { OR: [
+    { dentistId: ownerId },
+    ...(clinicId ? [{ clinicId, dentistShares: { some: { recipientDentistId: ownerId, revokedAt: null } } }] : []),
+  ] };
+  const scan = await prisma.imagingStudy.findFirst({ where: { id, modality: '3D_SCAN', ...scope },
+    include: { patient: { select: { id: true, name: true, phone_number: true, email: true } } } });
+  if (!scan) throw problem(404, 'Scan session not found or unauthorized');
+  return scan;
+}
+export async function authorize3DScanUpload(req, res, next) {
+  try { await authorizedScan(req, { write: true }); next(); } catch (error) { respondError(res, error); }
+}
+function patientJson(patient) {
+  return { id: patient.id.toString(), name: patient.name, email: patient.email?.endsWith('@serene.local') ? null : patient.email,
+    phone: patient.phone_number, mrn: `MRN-${patient.id.toString().padStart(6, '0')}`, gender: patient.patientProfile?.gender || null,
+    createdAt: patient.createdAt?.toISOString() };
+}
+function scanJson(scan) {
+  const metadata = publicScanMetadata(scan.metadata || {});
+  return { id: scan.id.toString(), scanIdentifier: scan.folderName, patientId: scan.patientId?.toString() || null,
+    dentistId: scan.dentistId?.toString() || null, clinicId: scan.clinicId?.toString() || null, status: scan.status,
+    scanScope: metadata.scanScope || 'full', sizeInBytes: scan.sizeInBytes.toString(), createdAt: scan.createdAt.toISOString(),
+    metadata, lidra: metadata.lidra || null, confidence: null, assets: metadata.assets, video: metadata.video || null,
+    capabilities: metadata.capabilities, provenance: metadata.provenance, patient: scan.patient ? patientJson(scan.patient) : null };
+}
+function scanData(patient, ownerId, clinicId, metadata = {}, scope = 'full', draft = false) {
+  const identifier = `SCAN-3D-${randomUUID()}`;
+  return { patientId: patient.id, dentistId: ownerId, clinicId, studyDate: new Date(), modality: '3D_SCAN',
+    folderName: identifier, originalName: `Dental 3D Scan - ${patient.name}`, description: `Smartphone Dental 3D Scan (${scope.toUpperCase()})`,
+    status: 'created', sizeInBytes: 0n, metadata: { ...clientScanMetadata(metadata), scanScope: scope, scanIdentifier: identifier,
+      captureMode: 'continuous_rgb', storageVersion: 'private_v1', capabilities: EXPERIMENTAL_CAPABILITIES, clinicalStatus: 'experimental',
+      patientRegistrationDraft: draft, createdVia: 'dentist_mobile_scan', legacyStatus: 'pending_capture' } };
+}
+async function recordAssignment(tx, scan, ownerId) {
+  await auditScanEvent(tx, scan, 'scan_created', ownerId);
+  await tx.imagingStudyPatientAssignment.create({ data: { studyId: scan.id, previousPatientId: null,
+    patientId: scan.patientId, assignedByDentistId: ownerId, source: 'upload' } });
 }
 
-function serializeJson(payload) {
-  return JSON.parse(
-    JSON.stringify(payload, (key, value) =>
-      typeof value === 'bigint' ? value.toString() : value
-    )
-  );
+export async function getScanPatients(req, res) {
+  try {
+    const ownerId = dentistId(req);
+    const search = String(req.query.search || '').trim().slice(0, 100);
+    const base = associatedPatientWhere(ownerId);
+    const patients = await prisma.user.findMany({ where: { ...base, ...(search ? { AND: [{ OR: [
+      { name: { contains: search, mode: 'insensitive' } }, { phone_number: { contains: search } }, { email: { contains: search, mode: 'insensitive' } },
+    ] }] } : {}) }, include: { patientProfile: true }, orderBy: { createdAt: 'desc' }, take: Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20)) });
+    return res.json({ patients: patients.map(patientJson) });
+  } catch (error) { return respondError(res, error); }
 }
 
-/**
- * GET /v1/x-core/3d-scans/patients
- * List accessible patients for the authenticated dentist, with optional search query.
- */
-export const getScanPatients = async (req, res) => {
+export async function createScanPatient(req, res) {
   try {
-    const dentistId = parseBigIntId(req.user?.id);
-    if (!dentistId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
-    const { search = '', limit = 20 } = req.query;
-    const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
-    const searchTrimmed = String(search || '').trim().toLowerCase();
-
-    // Find patient IDs associated with this dentist from appointments or imaging studies
-    const [appointmentPatients, studyPatients] = await Promise.all([
-      prisma.appointment.findMany({
-        where: { dentistId },
-        select: { patientId: true },
-        distinct: ['patientId'],
-      }),
-      prisma.imagingStudy.findMany({
-        where: { dentistId, patientId: { not: null } },
-        select: { patientId: true },
-        distinct: ['patientId'],
-      }),
-    ]);
-
-    const associatedPatientIds = Array.from(
-      new Set(
-        [
-          ...appointmentPatients.map((a) => a.patientId),
-          ...studyPatients.map((s) => s.patientId),
-        ].filter(Boolean)
-      )
-    );
-
-    let whereClause = {
-      roles: { has: 'patient' },
-    };
-
-    if (searchTrimmed) {
-      whereClause.OR = [
-        { name: { contains: searchTrimmed, mode: 'insensitive' } },
-        { phone_number: { contains: searchTrimmed } },
-        { email: { contains: searchTrimmed, mode: 'insensitive' } },
-      ];
-    } else if (associatedPatientIds.length > 0) {
-      whereClause.id = { in: associatedPatientIds };
-    }
-
-    const patients = await prisma.user.findMany({
-      where: whereClause,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone_number: true,
-        createdAt: true,
-        patientProfile: {
-          select: {
-            dateOfBirth: true,
-            gender: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: parsedLimit,
-    });
-
-    const serialized = patients.map((p) => ({
-      id: p.id.toString(),
-      name: p.name || 'Tanpa Nama',
-      email: p.email?.endsWith('@serene.local') ? null : p.email,
-      phone: p.phone_number,
-      mrn: `MRN-${p.id.toString().padStart(6, '0')}`,
-      gender: p.patientProfile?.gender || null,
-      createdAt: p.createdAt?.toISOString(),
-    }));
-
-    return res.json({ patients: serialized });
-  } catch (error) {
-    console.error('[xCoreScanController] getScanPatients error:', error);
-    return res.status(500).json({ error: 'Failed to fetch scan patients' });
-  }
-};
-
-/**
- * POST /v1/x-core/3d-scans/patients
- * Create or resolve a patient specifically for a 3D scan session.
- */
-export const createScanPatient = async (req, res) => {
-  try {
-    const dentistId = parseBigIntId(req.user?.id);
-    if (!dentistId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
+    const ownerId = dentistId(req);
     const { name, phone, email, gender, dateOfBirth } = req.body || {};
     const normalizedName = String(name || '').trim();
     const normalizedPhone = normalizePatientPhone(phone);
     const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
-
-    if (!normalizedName) {
-      return res.status(400).json({ error: 'Nama pasien wajib diisi', code: 'PATIENT_NAME_REQUIRED' });
-    }
-
-    if (!normalizedPhone && !normalizedEmail) {
-      return res.status(400).json({ error: 'Nomor telepon pasien wajib diisi', code: 'PATIENT_PHONE_REQUIRED' });
-    }
-
-    const patient = await withPatientIdentityTransaction(prisma, async (tx) => {
-      let user = await findPatientByIdentity(tx, {
-        email: normalizedEmail,
-        phone: normalizedPhone,
-      });
-
-      if (!user) {
-        if (normalizedEmail) {
-          const emailOwner = await tx.user.findUnique({ where: { email: normalizedEmail } });
-          if (emailOwner) {
-            const conflict = new Error('Email sudah digunakan oleh akun lain');
-            conflict.status = 409;
-            conflict.code = 'EMAIL_ALREADY_USED';
-            throw conflict;
-          }
-        }
-
-        const passwordHash = await bcrypt.hash(randomUUID(), 10);
-        user = await tx.user.create({
-          data: {
-            name: normalizedName,
-            email: normalizedEmail || `patient+${randomUUID()}@serene.local`,
-            password_hash: passwordHash,
-            phone_number: normalizedPhone || null,
-            roles: ['patient'],
-            patientProfile: {
-              create: {
-                gender: gender || null,
-                dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-              },
-            },
-          },
-          include: { patientProfile: true },
-        });
-      } else {
-        const identityUpdates = {};
-        if (!user.name && normalizedName) identityUpdates.name = normalizedName;
-        if (!user.phone_number && normalizedPhone) identityUpdates.phone_number = normalizedPhone;
-        if (Object.keys(identityUpdates).length) {
-          user = await tx.user.update({
-            where: { id: user.id },
-            data: identityUpdates,
-            include: { patientProfile: true },
-          });
-        }
+    if (!normalizedName || normalizedName.length > 200) throw problem(400, 'Nama pasien wajib diisi', 'PATIENT_NAME_REQUIRED');
+    if (!normalizedPhone && !normalizedEmail) throw problem(400, 'Nomor telepon pasien wajib diisi', 'PATIENT_PHONE_REQUIRED');
+    if (normalizedPhone && !/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) throw problem(400, 'Invalid patient phone', 'INVALID_PATIENT_PHONE');
+    if (normalizedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw problem(400, 'Invalid patient email', 'INVALID_PATIENT_EMAIL');
+    if (dateOfBirth && (!Number.isFinite(Date.parse(dateOfBirth)) || Date.parse(dateOfBirth) > Date.now())) throw problem(400, 'Invalid date of birth');
+    if (gender && !['male', 'female', 'other'].includes(gender)) throw problem(400, 'Invalid patient gender');
+    const clinicId = await clinicIdFor(ownerId);
+    const patient = await withPatientIdentityTransaction(prisma, async tx => {
+      const byPhone = normalizedPhone ? await findPatientByIdentity(tx, { phone: normalizedPhone }) : null;
+      const byEmail = normalizedEmail ? await tx.user.findUnique({ where: { email: normalizedEmail }, include: { patientProfile: true } }) : null;
+      if (byPhone && byEmail && byPhone.id !== byEmail.id) throw problem(409, 'Patient identity requires reconciliation', 'PATIENT_IDENTITY_CONFLICT');
+      let user = byPhone || byEmail;
+      if (user) {
+        const accessible = await tx.user.findFirst({ where: { id: user.id, ...associatedPatientWhere(ownerId) } });
+        if (!accessible || !user.roles.includes('patient')) throw problem(409, 'Patient identity cannot be linked through this workflow', 'PATIENT_IDENTITY_CONFLICT');
+        // Canonical reuse never changes another existing patient identity.
+        return user;
       }
-
+      user = await tx.user.create({ data: { name: normalizedName, email: normalizedEmail || `patient+${randomUUID()}@serene.local`,
+        password_hash: await bcrypt.hash(randomUUID(), 10), phone_number: normalizedPhone, roles: ['patient'],
+        patientProfile: { create: { gender: gender || null, dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null } } }, include: { patientProfile: true } });
+      // Existing study/assignment models provide durable ownership; reuse this draft when capture begins.
+      const draft = await tx.imagingStudy.create({ data: scanData(user, ownerId, clinicId, {}, 'full', true) });
+      await recordAssignment(tx, draft, ownerId);
       return user;
     });
+    return res.status(201).json({ patient: patientJson(patient) });
+  } catch (error) { return respondError(res, error); }
+}
 
-    return res.status(201).json({
-      patient: {
-        id: patient.id.toString(),
-        name: patient.name,
-        email: patient.email?.endsWith('@serene.local') ? null : patient.email,
-        phone: patient.phone_number,
-        mrn: `MRN-${patient.id.toString().padStart(6, '0')}`,
-        gender: patient.patientProfile?.gender || null,
-        createdAt: patient.createdAt?.toISOString(),
-      },
-    });
-  } catch (error) {
-    if (error.status === 409 || error.code === 'EMAIL_ALREADY_USED') {
-      return res.status(409).json({ error: error.message, code: error.code });
-    }
-    console.error('[xCoreScanController] createScanPatient error:', error);
-    return res.status(500).json({ error: 'Failed to create scan patient' });
-  }
-};
-
-/**
- * POST /v1/x-core/3d-scans
- * Create a new 3D scan session record linked to a patient with status 'created'.
- */
-export const create3DScan = async (req, res) => {
+export async function create3DScan(req, res) {
   try {
-    const dentistId = parseBigIntId(req.user?.id);
-    if (!dentistId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
+    const ownerId = dentistId(req);
     const { patientId, scanScope = 'full', notes = null, metadata = {} } = req.body || {};
-    const parsedPatientId = parseBigIntId(patientId);
-
-    if (!parsedPatientId) {
-      return res.status(400).json({ error: 'patientId is required and must be valid', code: 'PATIENT_ID_REQUIRED' });
-    }
-
-    // Verify patient exists and has patient role
-    const patient = await prisma.user.findFirst({
-      where: { id: parsedPatientId, roles: { has: 'patient' } },
-      select: { id: true, name: true, phone_number: true, email: true },
-    });
-
-    if (!patient) {
-      return res.status(404).json({ error: 'Patient not found', code: 'PATIENT_NOT_FOUND' });
-    }
-
-    // Check dentist clinic affiliation
-    let uploadClinicId = null;
-    const dentistProfile = await prisma.dentistProfile.findFirst({
-      where: { userId: dentistId },
-      select: { clinic_id: true },
-    });
-    if (dentistProfile?.clinic_id) {
-      uploadClinicId = dentistProfile.clinic_id;
-    } else if (req.user?.clinicStaff?.isActive && req.user.clinicStaff.clinicProfileId) {
-      uploadClinicId = BigInt(req.user.clinicStaff.clinicProfileId);
-    }
-
-    // Generate unique scan identifier
-    const scanIdentifier = `SCAN-3D-${Date.now()}-${randomUUID().slice(0, 8)}`;
-
-    const scanStudy = await prisma.$transaction(async (tx) => {
-      const study = await tx.imagingStudy.create({
-        data: {
-          patientId: parsedPatientId,
-          dentistId,
-          clinicId: uploadClinicId,
-          studyDate: new Date(),
-          modality: '3D_SCAN',
-          folderName: scanIdentifier,
-          originalName: `Dental 3D Scan - ${patient.name}`,
-          description: `Smartphone Dental 3D Scan (${scanScope.toUpperCase()})`,
-          status: 'created',
-          sizeInBytes: 0n,
-          metadata: {
-            ...metadata,
-            scanScope,
-            scanIdentifier,
-            captureMode: 'continuous_rgb',
-            notes: notes || null,
-            createdVia: 'dentist_mobile_scan',
-            legacyStatus: 'pending_capture',
-          },
-        },
-      });
-
-      await tx.imagingStudyPatientAssignment.create({
-        data: {
-          studyId: study.id,
-          previousPatientId: null,
-          patientId: parsedPatientId,
-          assignedByDentistId: dentistId,
-          source: 'upload',
-        },
-      });
-
-      return study;
-    });
-
-    return res.status(201).json({
-      scan: {
-        id: scanStudy.id.toString(),
-        scanIdentifier: scanStudy.folderName,
-        patientId: scanStudy.patientId?.toString(),
-        dentistId: scanStudy.dentistId?.toString(),
-        clinicId: scanStudy.clinicId ? scanStudy.clinicId.toString() : null,
-        status: scanStudy.status,
-        scanScope,
-        createdAt: scanStudy.createdAt.toISOString(),
-        patient: {
-          id: patient.id.toString(),
-          name: patient.name,
-          phone: patient.phone_number,
-          email: patient.email?.endsWith('@serene.local') ? null : patient.email,
-        },
-      },
-    });
-  } catch (error) {
-    console.error('[xCoreScanController] create3DScan error:', error);
-    return res.status(500).json({ error: 'Failed to create 3D scan session' });
-  }
-};
-
-/**
- * GET /v1/x-core/3d-scans/:id
- * Retrieve details of a specific 3D scan session.
- */
-export const get3DScanDetails = async (req, res) => {
-  try {
-    const dentistId = parseBigIntId(req.user?.id);
-    if (!dentistId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
-    const scanId = parseBigIntId(req.params.id);
-    if (!scanId) {
-      return res.status(400).json({ error: 'Invalid scan ID' });
-    }
-
-    const scan = await prisma.imagingStudy.findFirst({
-      where: {
-        id: scanId,
-        modality: '3D_SCAN',
-        OR: [
-          { dentistId },
-          { dentistShares: { some: { recipientDentistId: dentistId, revokedAt: null } } },
-        ],
-      },
-      include: {
-        patient: {
-          select: { id: true, name: true, phone_number: true, email: true },
-        },
-      },
-    });
-
-    if (!scan) {
-      return res.status(404).json({ error: 'Scan session not found or unauthorized' });
-    }
-
-    return res.json({
-      scan: {
-        id: scan.id.toString(),
-        scanIdentifier: scan.folderName,
-        patientId: scan.patientId?.toString() || null,
-        dentistId: scan.dentistId?.toString() || null,
-        clinicId: scan.clinicId ? scan.clinicId.toString() : null,
-        status: scan.status,
-        scanScope: scan.metadata?.scanScope || 'full',
-        sizeInBytes: scan.sizeInBytes.toString(),
-        createdAt: scan.createdAt.toISOString(),
-        metadata: scan.metadata || {},
-        lidra: scan.metadata?.lidra || null,
-        confidence: scan.metadata?.confidence || null,
-        assets: scan.metadata?.assets || null,
-        patient: scan.patient
-          ? {
-              id: scan.patient.id.toString(),
-              name: scan.patient.name,
-              phone: scan.patient.phone_number,
-              email: scan.patient.email?.endsWith('@serene.local') ? null : scan.patient.email,
-            }
-          : null,
-      },
-    });
-  } catch (error) {
-    console.error('[xCoreScanController] get3DScanDetails error:', error);
-    return res.status(500).json({ error: 'Failed to fetch scan details' });
-  }
-};
-
-/**
- * POST /v1/x-core/3d-scans/:id/video
- * Non-blocking continuous smartphone RGB video upload.
- * Persists raw video to disk, extracts metadata, sets status to 'uploaded',
- * and optionally enqueues for async processing without holding connection.
- */
-export const upload3DScanVideo = async (req, res) => {
-  try {
-    const dentistId = parseBigIntId(req.user?.id);
-    if (!dentistId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
-    const scanId = parseBigIntId(req.params.id);
-    if (!scanId) {
-      return res.status(400).json({ error: 'Invalid scan ID' });
-    }
-
-    if (!req.file) {
-      return res.status(400).json({ error: 'Video file is required' });
-    }
-
-    const scan = await prisma.imagingStudy.findFirst({
-      where: {
-        id: scanId,
-        modality: '3D_SCAN',
-        OR: [
-          { dentistId },
-          { dentistShares: { some: { recipientDentistId: dentistId, revokedAt: null } } },
-        ],
-      },
-      include: {
-        patient: {
-          select: { id: true, name: true, phone_number: true, email: true },
-        },
-      },
-    });
-
-    if (!scan) {
-      if (req.file.path && fs.existsSync(req.file.path)) {
-        try { fs.unlinkSync(req.file.path); } catch {}
+    const id = parseId(patientId);
+    if (!id) throw problem(400, 'patientId is required and must be valid', 'PATIENT_ID_REQUIRED');
+    if (!['full', 'upper', 'lower'].includes(scanScope)) throw problem(400, 'Invalid scan scope');
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) throw problem(400, 'Invalid capture metadata');
+    const patient = await prisma.user.findFirst({ where: { id, ...associatedPatientWhere(ownerId) } });
+    if (!patient) throw problem(404, 'Patient not found or unauthorized', 'PATIENT_NOT_FOUND');
+    const clinicId = await clinicIdFor(ownerId);
+    const scan = await prisma.$transaction(async tx => {
+      const draft = await tx.imagingStudy.findFirst({ where: { patientId: id, dentistId: ownerId, modality: '3D_SCAN', status: 'created', metadata: { path: ['patientRegistrationDraft'], equals: true } } });
+      const data = scanData(patient, ownerId, clinicId, metadata, scanScope);
+      data.metadata.notes = typeof notes === 'string' ? notes.slice(0, 2000) : null;
+      if (draft) {
+        const draftMetadata = { ...data.metadata, scanIdentifier: draft.folderName };
+        const changed = await tx.imagingStudy.updateMany({ where: { id: draft.id, metadata: { equals: draft.metadata } }, data: { description: data.description, metadata: draftMetadata } });
+        if (!changed.count) throw problem(409, 'Scan draft changed concurrently');
+        return { ...draft, metadata: draftMetadata, patient };
       }
-      return res.status(404).json({ error: 'Scan session not found or unauthorized' });
-    }
-
-    // Do not allow re-upload if currently processing
-    if (scan.status === 'processing') {
-      if (req.file.path && fs.existsSync(req.file.path)) {
-        try { fs.unlinkSync(req.file.path); } catch {}
-      }
-      return res.status(409).json({ error: 'Scan is currently undergoing 3D reconstruction' });
-    }
-
-    const mime = req.file.mimetype || '';
-    if (!mime.startsWith('video/') && !req.file.originalname?.match(/\.(mp4|mov|m4v|webm)$/i)) {
-      if (req.file.path && fs.existsSync(req.file.path)) {
-        try { fs.unlinkSync(req.file.path); } catch {}
-      }
-      return res.status(400).json({ error: 'Uploaded file must be a valid video format' });
-    }
-
-    const studyDir = path.join(XCORE_UPLOAD_DIR, scan.folderName || `SCAN-3D-${scan.id}`);
-    if (!fs.existsSync(studyDir)) {
-      fs.mkdirSync(studyDir, { recursive: true });
-    }
-
-    const ext = path.extname(req.file.originalname) || '.mp4';
-    const targetVideoFileName = `raw_video${ext}`;
-    const targetVideoPath = path.join(studyDir, targetVideoFileName);
-
-    if (req.file.path && fs.existsSync(req.file.path)) {
-      fs.copyFileSync(req.file.path, targetVideoPath);
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch {}
-    } else if (req.file.buffer) {
-      fs.writeFileSync(targetVideoPath, req.file.buffer);
-    }
-
-    const videoSize = BigInt(req.file.size || fs.statSync(targetVideoPath).size);
-    const durationMs = req.body?.durationMs ? parseInt(req.body.durationMs, 10) : null;
-    const resolution = req.body?.resolution || '1080p';
-    const fps = req.body?.fps ? parseInt(req.body.fps, 10) : 30;
-
-    // Compute file hash for integrity check
-    let checksum = null;
-    try {
-      const fileBuffer = fs.readFileSync(targetVideoPath);
-      checksum = crypto.createHash('sha256').update(fileBuffer).digest('hex');
-    } catch (e) {
-      console.warn('[xCoreScanController] Checksum calculation error:', e);
-    }
-
-    const currentMetadata = (typeof scan.metadata === 'object' && scan.metadata) ? scan.metadata : {};
-    const updatedMetadata = {
-      ...currentMetadata,
-      videoFileName: targetVideoFileName,
-      videoMimeType: req.file.mimetype,
-      videoSizeInBytes: Number(videoSize),
-      checksum,
-      durationMs,
-      resolution,
-      fps,
-      uploadedAt: new Date().toISOString(),
-      capturedAt: currentMetadata.capturedAt || new Date().toISOString(),
-      preservedOriginal: true,
-      captureMode: 'continuous_rgb',
-    };
-
-    const autoQueue = req.body?.autoQueue === 'true' || req.query?.autoQueue === 'true';
-    const targetStatus = autoQueue ? 'queued' : 'uploaded';
-
-    if (autoQueue) {
-      updatedMetadata.processingJob = {
-        jobId: `job-3d-${Date.now()}-${randomUUID().slice(0, 8)}`,
-        status: 'queued',
-        queuedAt: new Date().toISOString(),
-        startedAt: null,
-        completedAt: null,
-        failedAt: null,
-        attempts: 0,
-        maxAttempts: 3,
-        progressPercent: 5,
-        currentStage: 'queued',
-        reconstructionEngine: 'photogrammetry_v1',
-        logs: [
-          {
-            timestamp: new Date().toISOString(),
-            stage: 'upload_autoqueue',
-            level: 'info',
-            message: 'Video uploaded and automatically queued for 3D reconstruction',
-          },
-        ],
-      };
-    }
-
-    const updatedScan = await prisma.imagingStudy.update({
-      where: { id: scan.id },
-      data: {
-        status: targetStatus,
-        sizeInBytes: videoSize,
-        metadata: updatedMetadata,
-      },
-      include: {
-        patient: {
-          select: { id: true, name: true, phone_number: true, email: true },
-        },
-      },
+      const created = await tx.imagingStudy.create({ data });
+      await recordAssignment(tx, created, ownerId);
+      return { ...created, patient };
     });
+    return res.status(201).json({ scan: scanJson(scan) });
+  } catch (error) { return respondError(res, error); }
+}
+export async function get3DScanDetails(req, res) {
+  try { return res.json({ scan: scanJson(await authorizedScan(req)) }); } catch (error) { return respondError(res, error); }
+}
 
-    return res.status(200).json({
-      success: true,
-      message: 'Video 3D scan berhasil diunggah',
-      scan: {
-        id: updatedScan.id.toString(),
-        scanIdentifier: updatedScan.folderName,
-        status: updatedScan.status,
-        legacyStatus: 'captured',
-        patientId: updatedScan.patientId?.toString() || null,
-        dentistId: updatedScan.dentistId?.toString() || null,
-        scanScope: updatedMetadata.scanScope || 'full',
-        sizeInBytes: updatedScan.sizeInBytes.toString(),
-        createdAt: updatedScan.createdAt.toISOString(),
-        video: {
-          fileName: targetVideoFileName,
-          sizeInBytes: Number(videoSize),
-          durationMs,
-          resolution,
-          fps,
-          checksum,
-          uploadedAt: updatedMetadata.uploadedAt,
-        },
-        patient: updatedScan.patient
-          ? {
-              id: updatedScan.patient.id.toString(),
-              name: updatedScan.patient.name,
-              phone: updatedScan.patient.phone_number,
-              email: updatedScan.patient.email?.endsWith('@serene.local') ? null : updatedScan.patient.email,
-            }
-          : null,
-      },
-    });
-  } catch (error) {
-    console.error('[xCoreScanController] upload3DScanVideo error:', error);
-    if (req.file?.path && fs.existsSync(req.file.path)) {
-      try { fs.unlinkSync(req.file.path); } catch {}
-    }
-    return res.status(500).json({ error: 'Failed to upload 3D scan video' });
-  }
-};
-
-/**
- * POST /v1/x-core/3d-scans/:id/queue
- * Enqueue a scan for asynchronous 3D reconstruction.
- */
-export const enqueue3DScan = async (req, res) => {
+export async function upload3DScanVideo(req, res) {
+  let staging;
+  let published;
+  let accepted = false;
+  const started = performance.now();
   try {
-    const dentistId = parseBigIntId(req.user?.id);
-    if (!dentistId) {
-      return res.status(401).json({ error: 'Authentication required' });
+    const scan = await authorizedScan(req, { write: true });
+    if (!req.file) throw problem(400, 'Video file is required');
+    if (!['created', 'pending_capture', 'uploaded', 'failed'].includes(scan.status)) throw problem(409, 'Scan cannot accept a replacement video in its current state');
+    const directory = privateScanDirectory(scan);
+    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+    const uploadId = randomUUID();
+    staging = path.join(directory, `.upload-${uploadId}`);
+    if (req.file.path) await fs.copyFile(req.file.path, staging, fs.constants.COPYFILE_EXCL);
+    else if (req.file.buffer) await fs.writeFile(staging, req.file.buffer, { flag: 'wx', mode: 0o600 });
+    else throw problem(400, 'Video file is required');
+    const video = await inspectVideo(staging);
+    const fileName = `raw_${uploadId}${video.extension}`;
+    published = path.join(directory, fileName);
+    await fs.rename(staging, published);
+    staging = null;
+    let captureMetadata = null;
+    if (req.body?.captureMetadata) {
+      try { captureMetadata = JSON.parse(req.body.captureMetadata); } catch { throw problem(400, 'Invalid capture metadata'); }
+      if (!captureMetadata || typeof captureMetadata !== 'object' || Array.isArray(captureMetadata)) throw problem(400, 'Invalid capture metadata');
+      captureMetadata = { ...clientScanMetadata({ device: captureMetadata.device, platform: captureMetadata.platform }),
+        schemaVersion: 'capture-1', source: 'client_capture', serverVerified: false,
+        captureTimestamp: captureMetadata.captureTimestamp || null, osVersion: captureMetadata.osVersion || null,
+        requested: captureMetadata.requested || null, observed: captureMetadata.observed || null };
     }
-
-    const scanId = parseBigIntId(req.params.id);
-    if (!scanId) {
-      return res.status(400).json({ error: 'Invalid scan ID' });
-    }
-
-    // Verify study authorization
-    const scan = await prisma.imagingStudy.findFirst({
-      where: {
-        id: scanId,
-        modality: '3D_SCAN',
-        OR: [
-          { dentistId },
-          { dentistShares: { some: { recipientDentistId: dentistId, revokedAt: null } } },
-        ],
-      },
-    });
-
-    if (!scan) {
-      return res.status(404).json({ error: 'Scan session not found or unauthorized' });
-    }
-
-    const { scan: updatedScan, job } = await enqueueScan(scan.id, req.body || {});
-
-    // If immediate processing requested (e.g. test or explicit fast run)
-    if (req.body?.immediate) {
-      processScanNow(scan.id).catch((err) => {
-        console.error('[xCoreScanController] immediate processScanNow error:', err);
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: 'Scan berhasil dimasukkan ke dalam antrean rekonstruksi 3D',
-      scan: {
-        id: updatedScan.id.toString(),
-        scanIdentifier: updatedScan.folderName,
-        status: updatedScan.status,
-      },
-      job,
-    });
-  } catch (error) {
-    console.error('[xCoreScanController] enqueue3DScan error:', error);
-    return res.status(error.status || 500).json({ error: error.message || 'Failed to enqueue 3D scan' });
+    const clientDeclared = { durationMs: req.body?.durationMs || null, resolution: req.body?.resolution || null, fps: req.body?.fps || null };
+    const current = scan.metadata || {};
+    const metadata = { ...current, storageVersion: 'private_v1', videoFileName: fileName, videoMimeType: video.mimeType,
+      videoSizeInBytes: video.sizeInBytes, checksum: video.checksum, durationMs: video.durationMs, resolution: video.resolution, fps: video.fps,
+      video: { ...video, fileName, clientDeclared }, captureMetadata, uploadedAt: new Date().toISOString(), preservedOriginal: true,
+      assets: null, processingJob: null, lidra: null, metrics: null, confidence: null, cameraTrajectory: [], provenance: null,
+      performance: { uploadReceiptMs: req.scanUploadStartedAt ? started - req.scanUploadStartedAt : null,
+        inspectionAndStorageMs: performance.now() - started, videoBytes: video.sizeInBytes },
+      capabilities: EXPERIMENTAL_CAPABILITIES, clinicalStatus: 'experimental' };
+    const changed = await auditedScanUpdate(prisma, scan, { id: scan.id, status: scan.status, metadata: { equals: scan.metadata } },
+      { status: 'uploaded', sizeInBytes: BigInt(video.sizeInBytes), metadata }, 'upload_completed');
+    if (!changed.count) throw problem(409, 'Scan changed during upload; refresh before trying again', 'SCAN_CONFLICT');
+    accepted = true;
+    let updated = { ...scan, status: 'uploaded', sizeInBytes: BigInt(video.sizeInBytes), metadata };
+    if (req.body?.autoQueue === 'true' || req.query?.autoQueue === 'true') updated = { ...(await enqueueScan(scan.id)).scan, patient: scan.patient };
+    return res.json({ success: true, message: 'Video 3D scan berhasil diunggah', scan: scanJson(updated) });
+  } catch (error) { return respondError(res, error); }
+  finally {
+    await Promise.all([req.file?.path, staging, !accepted && published].filter(Boolean).map(file => fs.unlink(file).catch(() => {})));
   }
-};
-
-/**
- * GET /v1/x-core/3d-scans/:id/status
- * Polling endpoint for real-time asynchronous reconstruction progress.
- */
-export const get3DScanStatus = async (req, res) => {
+}
+export async function enqueue3DScan(req, res) {
   try {
-    const dentistId = parseBigIntId(req.user?.id);
-    if (!dentistId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
-    const scanId = parseBigIntId(req.params.id);
-    if (!scanId) {
-      return res.status(400).json({ error: 'Invalid scan ID' });
-    }
-
-    // Verify authorization
-    const scan = await prisma.imagingStudy.findFirst({
-      where: {
-        id: scanId,
-        modality: '3D_SCAN',
-        OR: [
-          { dentistId },
-          { dentistShares: { some: { recipientDentistId: dentistId, revokedAt: null } } },
-        ],
-      },
-    });
-
-    if (!scan) {
-      return res.status(404).json({ error: 'Scan session not found or unauthorized' });
-    }
-
-    const statusData = await getScanJobStatus(scan.id);
-    return res.status(200).json({
-      success: true,
-      ...statusData,
-    });
-  } catch (error) {
-    console.error('[xCoreScanController] get3DScanStatus error:', error);
-    return res.status(error.status || 500).json({ error: error.message || 'Failed to get scan status' });
-  }
-};
-
-/**
- * POST /v1/x-core/3d-scans/:id/retry
- * Retry a failed 3D reconstruction session.
- */
-export const retry3DScan = async (req, res) => {
+    const scan = await authorizedScan(req, { write: true });
+    const result = await enqueueScan(scan.id, { engine: req.body?.engine, configuration: req.body?.configuration });
+    if (req.body?.immediate === true) processScanNow(scan.id).catch(error => console.error('[Scan3D immediate]', error));
+    return res.json({ success: true, scan: scanJson({ ...result.scan, patient: scan.patient }), job: result.job });
+  } catch (error) { return respondError(res, error); }
+}
+export async function get3DScanStatus(req, res) {
+  try { const scan = await authorizedScan(req); return res.json({ success: true, ...await getScanJobStatus(scan.id) }); }
+  catch (error) { return respondError(res, error); }
+}
+export async function retry3DScan(req, res) {
+  try { const scan = await authorizedScan(req, { write: true }); const result = await retryScan(scan.id, { engine: req.body?.engine, configuration: req.body?.configuration });
+    return res.json({ success: true, scan: scanJson({ ...result.scan, patient: scan.patient }), job: result.job }); }
+  catch (error) { return respondError(res, error); }
+}
+export async function get3DScanAsset(req, res) {
   try {
-    const dentistId = parseBigIntId(req.user?.id);
-    if (!dentistId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
-    const scanId = parseBigIntId(req.params.id);
-    if (!scanId) {
-      return res.status(400).json({ error: 'Invalid scan ID' });
-    }
-
-    const scan = await prisma.imagingStudy.findFirst({
-      where: {
-        id: scanId,
-        modality: '3D_SCAN',
-        OR: [
-          { dentistId },
-          { dentistShares: { some: { recipientDentistId: dentistId, revokedAt: null } } },
-        ],
-      },
-    });
-
-    if (!scan) {
-      return res.status(404).json({ error: 'Scan session not found or unauthorized' });
-    }
-
-    const { scan: updatedScan, job } = await retryScan(scan.id, req.body || {});
-
-    return res.status(200).json({
-      success: true,
-      message: 'Sesi scan berhasil dijadwalkan ulang untuk rekonstruksi',
-      scan: {
-        id: updatedScan.id.toString(),
-        scanIdentifier: updatedScan.folderName,
-        status: updatedScan.status,
-      },
-      job,
-    });
-  } catch (error) {
-    console.error('[xCoreScanController] retry3DScan error:', error);
-    return res.status(error.status || 500).json({ error: error.message || 'Failed to retry scan' });
-  }
-};
-
-/**
- * GET /v1/x-core/3d-scans/:id/assets/:fileName
- * Serves generated 3D assets (mesh.obj, mesh.ply, preview.png, reconstruction_report.json)
- * with strict directory traversal prevention and appropriate MIME types.
- */
-export const get3DScanAsset = async (req, res) => {
+    const scan = await authorizedScan(req);
+    const fileName = safeComponent(req.params.fileName);
+    const ext = path.extname(fileName).toLowerCase();
+    const mime = { '.obj': 'model/obj', '.ply': 'application/octet-stream', '.stl': 'model/stl', '.glb': 'model/gltf-binary',
+      '.gltf': 'model/gltf+json', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.json': 'application/json', '.mtl': 'model/mtl' }[ext];
+    if (!mime) throw problem(400, 'File type not permitted');
+    const asset = registeredAsset(publicScanMetadata(scan.metadata).assets ? scan.metadata : {}, fileName);
+    if (scan.status !== 'ready' || !asset) throw problem(404, 'Requested asset is not registered to a verified reconstruction');
+    let file;
+    try { file = await confinedExistingFile(scanDirectory(scan), asset.storagePath || fileName); }
+    catch (error) { if (error.code === 'ENOENT') throw problem(404, 'Requested 3D asset is missing', 'ASSET_MISSING'); throw error; }
+    if (await sha256File(file) !== asset.checksum) throw problem(409, 'Asset integrity check failed', 'ASSET_CORRUPTION');
+    await auditScanEvent(prisma, scan, 'asset_viewed', dentistId(req), { checksum: asset.checksum });
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.sendFile(file);
+  } catch (error) { return respondError(res, error); }
+}
+export async function get3DScanEngines(req, res) {
+  try { dentistId(req); return res.json({ success: true, defaultEngine: DEFAULT_SCAN_ENGINE, engines: reconstructionEngineRegistry.list() }); }
+  catch (error) { return respondError(res, error); }
+}
+export async function get3DScanLidraReport(req, res) {
   try {
-    const dentistId = parseBigIntId(req.user?.id);
-    if (!dentistId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
-    const scanId = parseBigIntId(req.params.id);
-    const rawFileName = req.params.fileName;
-
-    if (!scanId || !rawFileName) {
-      return res.status(400).json({ error: 'Invalid scan ID or file name' });
-    }
-
-    // Sanitize filename to prevent directory traversal
-    const safeFileName = path.basename(rawFileName);
-    const allowedExtensions = ['.obj', '.ply', '.stl', '.glb', '.gltf', '.png', '.jpg', '.jpeg', '.json', '.mtl', '.mp4'];
-    const ext = path.extname(safeFileName).toLowerCase();
-
-    if (!allowedExtensions.includes(ext)) {
-      return res.status(400).json({ error: 'File type not permitted' });
-    }
-
-    const scan = await prisma.imagingStudy.findFirst({
-      where: {
-        id: scanId,
-        modality: '3D_SCAN',
-        OR: [
-          { dentistId },
-          { dentistShares: { some: { recipientDentistId: dentistId, revokedAt: null } } },
-        ],
-      },
-    });
-
-    if (!scan) {
-      return res.status(404).json({ error: 'Scan session not found or unauthorized' });
-    }
-
-    const folderName = scan.folderName || `SCAN-3D-${scan.id}`;
-    const filePath = path.join(XCORE_UPLOAD_DIR, folderName, safeFileName);
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'Requested 3D asset not found' });
-    }
-
-    // Set MIME types
-    const mimeMap = {
-      '.obj': 'model/obj',
-      '.stl': 'model/stl',
-      '.glb': 'model/gltf-binary',
-      '.gltf': 'model/gltf+json',
-      '.ply': 'application/octet-stream',
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.json': 'application/json',
-      '.mtl': 'model/mtl',
-      '.mp4': 'video/mp4',
-    };
-
-    res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
-    res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache static mesh assets
-    return res.sendFile(filePath);
-  } catch (error) {
-    console.error('[xCoreScanController] get3DScanAsset error:', error);
-    return res.status(500).json({ error: 'Failed to retrieve 3D asset' });
-  }
-};
-
-/**
- * GET /v1/x-core/3d-scans/engines
- * Lists all registered 3D reconstruction engines and their capabilities.
- */
-export const get3DScanEngines = async (req, res) => {
-  try {
-    const dentistId = parseBigIntId(req.user?.id);
-    if (!dentistId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
-    const engines = reconstructionEngineRegistry.list();
-    return res.status(200).json({
-      success: true,
-      defaultEngine: 'photogrammetry_v1',
-      engines,
-    });
-  } catch (error) {
-    console.error('[xCoreScanController] get3DScanEngines error:', error);
-    return res.status(500).json({ error: 'Failed to list reconstruction engines' });
-  }
-};
-
-/**
- * GET /v1/x-core/3d-scans/:id/lidra
- * Retrieves the LIDRA acquisition analysis report for a 3D scan session.
- */
-export const get3DScanLidraReport = async (req, res) => {
-  try {
-    const dentistId = parseBigIntId(req.user?.id);
-    if (!dentistId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
-    const scanId = parseBigIntId(req.params.id);
-    if (!scanId) {
-      return res.status(400).json({ error: 'Invalid scan ID' });
-    }
-
-    const scan = await prisma.imagingStudy.findFirst({
-      where: {
-        id: scanId,
-        modality: '3D_SCAN',
-        OR: [
-          { dentistId },
-          { dentistShares: { some: { recipientDentistId: dentistId, revokedAt: null } } },
-        ],
-      },
-    });
-
-    if (!scan) {
-      return res.status(404).json({ error: 'Scan session not found or unauthorized' });
-    }
-
-    const folderName = scan.folderName || `SCAN-3D-${scan.id}`;
-    const reportPath = path.join(XCORE_UPLOAD_DIR, folderName, 'lidra_analysis.json');
-
-    let lidraReport = scan.metadata?.lidra || null;
-    if (fs.existsSync(reportPath)) {
-      try {
-        lidraReport = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
-      } catch {}
-    }
-
-    if (!lidraReport) {
-      return res.status(404).json({ error: 'LIDRA acquisition report not yet generated' });
-    }
-
-    return res.status(200).json({
-      success: true,
-      scanId: scan.id.toString(),
-      scanIdentifier: scan.folderName,
-      lidra: lidraReport,
-    });
-  } catch (error) {
-    console.error('[xCoreScanController] get3DScanLidraReport error:', error);
-    return res.status(500).json({ error: 'Failed to retrieve LIDRA acquisition report' });
-  }
-};
-
-// ---------------------------------------------------------------------------
-// Phase 12 — Tooth Segmentation & FDI
-// ---------------------------------------------------------------------------
-
-const PY_SERVICE_BASE_URL = process.env.PY_SERVICE_BASE_URL || 'http://127.0.0.1:8000';
-
-/**
- * GET /v1/x-core/3d-scans/:id/tooth-instances
- * Return cached tooth segmentation for a scan.
- * Tries disk cache (tooth_instances.json) first, then proxies to Python service.
- */
-export const get3DScanToothInstances = async (req, res) => {
-  try {
-    const dentistId = parseBigIntId(req.user?.id);
-    if (!dentistId) return res.status(401).json({ error: 'Authentication required' });
-
-    const scanId = parseBigIntId(req.params.id);
-    if (!scanId) return res.status(400).json({ error: 'Invalid scan ID' });
-
-    const scan = await prisma.imagingStudy.findFirst({
-      where: { id: scanId, modality: '3D_SCAN', dentistId },
-    });
-    if (!scan) return res.status(404).json({ error: '3D scan not found' });
-
-    const folderName = scan.folderName || `SCAN-3D-${scan.id}`;
-    const studyDir = path.join(XCORE_UPLOAD_DIR, folderName);
-    const cachePath = path.join(studyDir, 'tooth_instances.json');
-
-    // 1. Disk cache hit — fast path
-    if (fs.existsSync(cachePath)) {
-      try {
-        const cached = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
-        return res.status(200).json(serializeJson({ success: true, ...cached }));
-      } catch {
-        // corrupt cache — fall through to Python
-      }
-    }
-
-    // 2. Python service proxy
-    try {
-      const pyResp = await fetch(`${PY_SERVICE_BASE_URL}/segment/tooth-instances/${encodeURIComponent(folderName)}`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      if (pyResp.ok) {
-        const pyData = await pyResp.json();
-        return res.status(200).json(serializeJson({ success: true, ...pyData }));
-      }
-      if (pyResp.status === 404) {
-        return res.status(404).json({
-          error: 'Tooth instances not yet computed',
-          hint: 'POST to /tooth-instances/segment to trigger segmentation',
-        });
-      }
-    } catch (pyErr) {
-      console.warn('[xCoreScanController] Python tooth-instances unavailable:', pyErr.message);
-    }
-
-    return res.status(404).json({
-      error: 'Tooth instances not available',
-      hint: 'POST to /tooth-instances/segment to trigger segmentation',
-    });
-  } catch (error) {
-    console.error('[xCoreScanController] get3DScanToothInstances error:', error);
-    return res.status(500).json({ error: 'Failed to retrieve tooth instances' });
-  }
-};
-
-/**
- * POST /v1/x-core/3d-scans/:id/tooth-instances/segment
- * Trigger on-demand tooth segmentation for a scan.
- */
-export const trigger3DScanSegmentation = async (req, res) => {
-  try {
-    const dentistId = parseBigIntId(req.user?.id);
-    if (!dentistId) return res.status(401).json({ error: 'Authentication required' });
-
-    const scanId = parseBigIntId(req.params.id);
-    if (!scanId) return res.status(400).json({ error: 'Invalid scan ID' });
-
-    const scan = await prisma.imagingStudy.findFirst({
-      where: { id: scanId, modality: '3D_SCAN', dentistId },
-      include: { patient: { select: { id: true } } },
-    });
-    if (!scan) return res.status(404).json({ error: '3D scan not found' });
-    if (scan.status !== 'ready') {
-      return res.status(409).json({ error: `Scan is not ready for segmentation (status: ${scan.status})` });
-    }
-
-    const folderName = scan.folderName || `SCAN-3D-${scan.id}`;
-
-    // Proxy to Python service — non-blocking (respond 202 immediately)
-    res.status(202).json({
-      success: true,
-      message: 'Tooth segmentation triggered',
-      scanId: scan.id.toString(),
-      folderName,
-      pollUrl: `/v1/x-core/3d-scans/${scan.id}/tooth-instances`,
-    });
-
-    // Fire-and-forget to Python
-    try {
-      const pyResp = await fetch(`${PY_SERVICE_BASE_URL}/segment/tooth-instances`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          folderName,
-          scanId: scan.id.toString(),
-          patientId: scan.patient?.id?.toString() || '',
-        }),
-        signal: AbortSignal.timeout(30000),
-      });
-      if (!pyResp.ok) {
-        console.warn(`[xCoreScanController] Python segmentation returned ${pyResp.status} for scan ${scan.id}`);
-      }
-    } catch (pyErr) {
-      console.warn('[xCoreScanController] Python tooth segmentation fire-and-forget error:', pyErr.message);
-    }
-  } catch (error) {
-    console.error('[xCoreScanController] trigger3DScanSegmentation error:', error);
-    // Response may already be sent — log only
-  }
-};
-
+    const scan = await authorizedScan(req);
+    const report = scan.metadata?.lidra;
+    if (!report || report.source === 'synthetic' || scan.metadata?.storageVersion !== 'private_v1') throw problem(404, 'LIDRA report from a verified video is not available');
+    return res.json({ success: true, scanId: scan.id.toString(), scanIdentifier: scan.folderName, lidra: report });
+  } catch (error) { return respondError(res, error); }
+}
+// No tooth segmentation model is installed. Previously generated arch/template caches cannot be
+// treated as patient evidence. These endpoints fail closed until an actual implementation is validated.
+export async function get3DScanToothInstances(req, res) {
+  try { await authorizedScan(req); throw problem(503, 'Tooth segmentation is unavailable; no verified tooth instance implementation is configured', 'SEGMENTATION_UNAVAILABLE'); }
+  catch (error) { return respondError(res, error); }
+}
+export async function trigger3DScanSegmentation(req, res) {
+  try { await authorizedScan(req, { write: true }); throw problem(503, 'Tooth segmentation is unavailable; no verified tooth instance implementation is configured', 'SEGMENTATION_UNAVAILABLE'); }
+  catch (error) { return respondError(res, error); }
+}

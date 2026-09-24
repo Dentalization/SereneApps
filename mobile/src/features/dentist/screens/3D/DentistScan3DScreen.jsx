@@ -5,6 +5,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import {
   Text,
@@ -21,8 +23,9 @@ import {
 } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
-import * as FileSystem from 'expo-file-system';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as FileSystem from 'expo-file-system/legacy';
+import { buildScanCaptureMetadata } from '../../../../utils/scanCaptureMetadata';
 import DentistRoleGuard from '../../components/DentistRoleGuard';
 import {
   fetchScanPatients,
@@ -36,7 +39,7 @@ import {
   fetch3DScanLidraReport,
 } from '../../../../services/scan3DService';
 
-const DentistScan3DScreen = ({ navigation }) => {
+const DentistScan3DContent = ({ navigation }) => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -68,7 +71,7 @@ const DentistScan3DScreen = ({ navigation }) => {
 
   // Camera & Recording states
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [micPermission, requestMicPermission] = useMicrophonePermissions();
+  const recordingCancelledRef = useRef(false);
   const cameraRef = useRef(null);
   const timerRef = useRef(null);
   const pollTimerRef = useRef(null);
@@ -114,6 +117,8 @@ const DentistScan3DScreen = ({ navigation }) => {
 
   useEffect(() => {
     return () => {
+      recordingCancelledRef.current = true;
+      cameraRef.current?.stopRecording();
       if (timerRef.current) clearInterval(timerRef.current);
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
@@ -224,6 +229,9 @@ const DentistScan3DScreen = ({ navigation }) => {
 
   const handleStartRecording = async () => {
     if (!cameraRef.current) return;
+    const startedAt = new Date().toISOString();
+    const startedClock = performance.now();
+    recordingCancelledRef.current = false;
     try {
       setIsRecording(true);
       setRecordingDurationSec(0);
@@ -235,10 +243,11 @@ const DentistScan3DScreen = ({ navigation }) => {
 
       const recordPromise = cameraRef.current.recordAsync({
         maxDuration: 120,
-        quality: videoQuality,
       });
 
       const videoResult = await recordPromise;
+      const elapsedMs = performance.now() - startedClock;
+      if (recordingCancelledRef.current) return;
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
@@ -254,18 +263,23 @@ const DentistScan3DScreen = ({ navigation }) => {
           console.warn('[DentistScan3D] Error reading file size:', e);
         }
 
-        const durationSec = recordingDurationSec || 1;
+        const durationSec = Math.floor(elapsedMs / 1000);
         const formattedSize = sizeInBytes > 0
           ? `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`
-          : `${getEstimatedFileSize(durationSec, videoQuality)} MB`;
+          : 'Tidak tersedia';
 
         setRecordedVideo({
           uri: videoResult.uri,
           sizeInBytes,
           durationSec,
           formattedSize,
-          resolution: videoQuality,
-          fps: 30,
+          requestedResolution: videoQuality,
+          captureMetadata: buildScanCaptureMetadata({
+            platform: Platform.OS, osVersion: Platform.Version,
+            deviceModel: Platform.constants?.Model || null,
+            requested: { resolution: videoQuality, facing, torch: enableTorch, audio: false },
+            sizeInBytes, startedAt, elapsedMs, viewport: Dimensions.get('window'),
+          }),
         });
         setScanStage('review');
       }
@@ -298,6 +312,8 @@ const DentistScan3DScreen = ({ navigation }) => {
   };
 
   const handleCancelRecording = () => {
+    recordingCancelledRef.current = true;
+    cameraRef.current?.stopRecording();
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -318,9 +334,7 @@ const DentistScan3DScreen = ({ navigation }) => {
     setUploadError('');
 
     const uploadRes = await upload3DScanVideo(activeScanSession.id, recordedVideo.uri, {
-      durationMs: recordedVideo.durationSec * 1000,
-      resolution: recordedVideo.resolution,
-      fps: recordedVideo.fps,
+      captureMetadata: recordedVideo.captureMetadata,
       scanScope: activeScanSession.scanScope,
     });
 
@@ -370,25 +384,23 @@ const DentistScan3DScreen = ({ navigation }) => {
 
   if (scanStage === 'camera') {
     const hasCameraPerm = cameraPermission?.granted;
-    const hasMicPerm = micPermission?.granted;
 
     return (
-      <DentistRoleGuard navigation={navigation}>
+      <>
         <View style={{ flex: 1, backgroundColor: '#000000', position: 'relative', paddingTop: insets.top, paddingBottom: insets.bottom }}>
           {!hasCameraPerm ? (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#FFFFFF' }}>
               <MaterialCommunityIcons name="camera-off" size={64} color="#EF4444" />
               <Text variant="titleMedium" style={{ fontWeight: '700', color: '#0F172A', marginTop: 16, marginBottom: 8, textAlign: 'center' }}>
-                Izin Kamera & Audio Diperlukan
+                Izin Kamera Diperlukan
               </Text>
               <Text variant="bodyMedium" style={{ color: '#64748B', textAlign: 'center', marginBottom: 20, lineHeight: 20, paddingHorizontal: 16 }}>
-                Untuk merekam video kontinu intraoral 3D scan, SereneApps membutuhkan izin akses kamera dan mikrofon.
+                Untuk merekam video kontinu intraoral 3D scan, SereneApps membutuhkan izin akses kamera. Audio tidak direkam.
               </Text>
               <Button
                 mode="contained"
                 onPress={async () => {
                   await requestCameraPermission();
-                  await requestMicPermission();
                 }}
                 style={{ borderRadius: 12, marginBottom: 12, paddingHorizontal: 16 }}
                 buttonColor={theme.colors.primary || '#0284C7'}
@@ -405,6 +417,8 @@ const DentistScan3DScreen = ({ navigation }) => {
                 ref={cameraRef}
                 style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
                 mode="video"
+                videoQuality={videoQuality}
+                mute
                 facing={facing}
                 enableTorch={enableTorch}
               />
@@ -502,12 +516,12 @@ const DentistScan3DScreen = ({ navigation }) => {
             </View>
           )}
         </View>
-      </DentistRoleGuard>
+      </>
     );
   }
 
   return (
-    <DentistRoleGuard navigation={navigation}>
+    <>
       <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: insets.top }}>
         <ScrollView
           contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 100 }}
@@ -551,7 +565,7 @@ const DentistScan3DScreen = ({ navigation }) => {
                 {/* Specs Box */}
                 <View style={{ flexDirection: 'row', backgroundColor: '#F8FAFC', borderRadius: 12, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0', justifyContent: 'space-around' }}>
                   <View style={{ alignItems: 'center', flex: 1 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>DURASI</Text>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>DURASI (ESTIMASI)</Text>
                     <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A' }}>{formatTimer(recordedVideo.durationSec)}</Text>
                   </View>
                   <View style={{ width: 1, backgroundColor: '#E2E8F0' }} />
@@ -561,8 +575,8 @@ const DentistScan3DScreen = ({ navigation }) => {
                   </View>
                   <View style={{ width: 1, backgroundColor: '#E2E8F0' }} />
                   <View style={{ alignItems: 'center', flex: 1 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>RESOLUSI</Text>
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A' }}>{recordedVideo.resolution.toUpperCase()}</Text>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>RESOLUSI DIMINTA</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A' }}>{recordedVideo.requestedResolution.toUpperCase()}</Text>
                   </View>
                 </View>
 
@@ -669,18 +683,18 @@ const DentistScan3DScreen = ({ navigation }) => {
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
                       <Text style={{ fontSize: 12, color: '#15803D' }}>Format File:</Text>
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#14532D' }}>Wavefront OBJ (.obj)</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#14532D' }}>{processingStatus?.assets?.mesh?.format || 'Tidak tersedia'}</Text>
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
                       <Text style={{ fontSize: 12, color: '#15803D' }}>Jumlah Vertex:</Text>
                       <Text style={{ fontSize: 12, fontWeight: '700', color: '#14532D' }}>
-                        {processingStatus?.assets?.mesh?.vertexCount || 850} vertices
+                        {processingStatus?.assets?.mesh?.vertexCount ?? 'Tidak tersedia'} vertices
                       </Text>
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
                       <Text style={{ fontSize: 12, color: '#15803D' }}>Jumlah Face:</Text>
                       <Text style={{ fontSize: 12, fontWeight: '700', color: '#14532D' }}>
-                        {processingStatus?.assets?.mesh?.faceCount || 1600} polygons
+                        {processingStatus?.assets?.mesh?.faceCount ?? 'Tidak tersedia'} polygons
                       </Text>
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
@@ -701,31 +715,31 @@ const DentistScan3DScreen = ({ navigation }) => {
                         </Text>
                       </View>
                       <Chip compact style={{ backgroundColor: '#E0F2FE', height: 22 }} textStyle={{ color: '#0369A1', fontSize: 10, fontWeight: '700' }}>
-                        {processingStatus?.lidra?.qualityScore || 88}% SKOR
+                        {processingStatus?.lidra?.qualityScore ?? 'Tidak tersedia'}
                       </Chip>
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
                       <Text style={{ fontSize: 12, color: '#64748B' }}>Ketajaman & Motion Blur:</Text>
                       <Text style={{ fontSize: 12, fontWeight: '700', color: '#16A34A' }}>
-                        {processingStatus?.lidra?.motionBlur?.status === 'optimal' ? 'Optimal & Tajam' : 'Dapat Diterima'}
+                        {processingStatus?.lidra?.blur?.status || processingStatus?.lidra?.motionBlur?.status || 'Tidak tersedia'}
                       </Text>
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
                       <Text style={{ fontSize: 12, color: '#64748B' }}>Pencahayaan & Kontras:</Text>
                       <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>
-                        {processingStatus?.lidra?.exposure?.status === 'balanced' ? 'Seimbang (Optimal)' : 'Normal'}
+                        {processingStatus?.lidra?.exposure?.status || 'Tidak tersedia'}
                       </Text>
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
                       <Text style={{ fontSize: 12, color: '#64748B' }}>Cakupan Lengkung Gigi:</Text>
                       <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>
-                        {processingStatus?.lidra?.coverage?.coverageScore || 85}% • {processingStatus?.lidra?.coverage?.completeness?.toUpperCase() || 'LENGKAP'}
+                        {processingStatus?.lidra?.coverage?.status || 'Tidak tersedia'}
                       </Text>
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
                       <Text style={{ fontSize: 12, color: '#64748B' }}>Keyframe Terpilih:</Text>
                       <Text style={{ fontSize: 12, fontWeight: '700', color: '#0284C7' }}>
-                        {processingStatus?.lidra?.selectedFramesCount || processingStatus?.lidra?.frameSelection?.selectedFramesCount || 16} frames
+                        {processingStatus?.lidra?.selectedFramesCount ?? processingStatus?.lidra?.frameSelection?.selectedFramesCount ?? 'Tidak tersedia'} frames
                       </Text>
                     </View>
                   </View>
@@ -736,13 +750,13 @@ const DentistScan3DScreen = ({ navigation }) => {
                       <View>
                         <Text style={{ fontSize: 10, fontWeight: '700', color: '#0284C7', letterSpacing: 0.5 }}>RECONSTRUCTION ENGINE:</Text>
                         <Text style={{ fontSize: 13, fontWeight: '800', color: '#0369A1', marginTop: 2 }}>
-                          {processingStatus?.job?.reconstructionEngine || processingStatus?.metadata?.engine || 'photogrammetry_v1'}
+                          {processingStatus?.job?.reconstructionEngine || processingStatus?.metadata?.engine || 'Tidak tersedia'}
                         </Text>
                       </View>
                       <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#0284C7', letterSpacing: 0.5 }}>CONFIDENCE:</Text>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#0284C7', letterSpacing: 0.5 }}>STATUS:</Text>
                         <Text style={{ fontSize: 14, fontWeight: '800', color: '#16A34A', marginTop: 2 }}>
-                          {Math.round((processingStatus?.confidence || 0.92) * 100)}%
+                          Eksperimental
                         </Text>
                       </View>
                     </View>
@@ -1154,7 +1168,7 @@ const DentistScan3DScreen = ({ navigation }) => {
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8 }}>
                 <MaterialCommunityIcons name="school-outline" size={16} color="#64748B" />
                 <Text variant="bodySmall" style={{ color: '#64748B', fontSize: 11, textAlign: 'center' }}>
-                  Research Precedent: In Vitro Implant Protocol • Deep Learning 3D Reconstruction
+                  Riset in vitro sebagai referensi; hasil SereneApps belum tervalidasi klinis
                 </Text>
               </View>
             </>
@@ -1265,8 +1279,14 @@ const DentistScan3DScreen = ({ navigation }) => {
           </Portal>
         </ScrollView>
       </View>
-    </DentistRoleGuard>
+    </>
   );
 };
+
+const DentistScan3DScreen = (props) => (
+  <DentistRoleGuard navigation={props.navigation}>
+    <DentistScan3DContent {...props} />
+  </DentistRoleGuard>
+);
 
 export default DentistScan3DScreen;

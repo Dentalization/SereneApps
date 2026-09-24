@@ -6,7 +6,7 @@ const TechOverviewSection = () => {
     {
       id: 'vision',
       title: 'YOLOv8 Computer Vision',
-      description: 'State-of-the-art object detection identifies dental conditions with 94.7% accuracy in real-time.',
+      description: 'Experimental image analysis requires clinician review; project-specific accuracy has not been established.',
       icon: 'Eye',
       color: 'text-blue-500',
       bg: 'bg-blue-50 dark:bg-blue-900/20',
@@ -23,8 +23,8 @@ const TechOverviewSection = () => {
     },
     {
       id: 'security',
-      title: 'HIPAA-Compliant Core',
-      description: 'End-to-end encryption (AES-256) and secure cloud infrastructure ensure total patient data protection.',
+      title: 'Security Controls',
+      description: 'Access controls require deployment-specific security assessment; certification has not been established.',
       icon: 'ShieldCheck',
       color: 'text-green-500',
       bg: 'bg-green-50 dark:bg-green-900/20',
@@ -57,7 +57,7 @@ const TechOverviewSection = () => {
           
           <p className="text-lg text-slate-600 dark:text-slate-400 leading-relaxed">
             We combine the speed of computer vision with the reasoning of large language models to deliver 
-            a diagnostic engine that rivals human experts.
+            experimental decision support requiring qualified human review.
           </p>
         </div>
 

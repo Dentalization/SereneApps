@@ -21,6 +21,7 @@ const ClinicalResearch = () => {
         <AccuracyMetrics />
         <PublishedResearch />
         {/* <UniversityPartnerships /> */}
+        <p className="mx-auto max-w-5xl px-6 py-4" role="note">The methodology below is a proposed research workflow. Its example cohorts, phases and performance figures are illustrative and are not completed SereneApps studies or validation results. Research dataset: DATASET_UNAVAILABLE.</p>
         <MethodologySection />
         {/* <AdvisoryBoard /> */}
         {/* <RegulatorySection /> */}
@@ -38,7 +39,7 @@ const ClinicalResearch = () => {
                 <span className="text-lg font-bold">Serene AI</span>
               </div>
               <p className="text-gray-400 text-sm">
-                Evidence-based AI dental diagnostics advancing healthcare through rigorous research and clinical validation.
+                Experimental dental software; project-specific research and clinical validation remain pending.
               </p>
             </div>
             

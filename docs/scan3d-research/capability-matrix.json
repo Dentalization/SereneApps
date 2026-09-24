@@ -1,0 +1,277 @@
+{
+  "schemaVersion": "1",
+  "datasetStatus": "DATASET_UNAVAILABLE",
+  "principle": "IMPLEMENTED != EXPERIMENTALLY VALIDATED != CLINICALLY VALIDATED",
+  "phases": [
+    {
+      "phase": 1,
+      "feature": "Dentist mobile foundation",
+      "implementationStatus": "partial",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "mobile/__tests__/mobile-dentist-role.test.js"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "Token/storage and role timing could mount protected effects",
+      "enhancementApplied": "Session expiry reaches Redux; server-verified role guard before effects; navigation identity isolation",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 2,
+      "feature": "Patient and scan creation",
+      "implementationStatus": "implemented",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "backend/tests/xcore.3d-scan.routes.test.js"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "Global discovery and ambiguous identity/ownership exposed patient links",
+      "enhancementApplied": "Canonical patient resolution, scoped discovery, UUID scan IDs, ownership and clinic checks",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 3,
+      "feature": "Video capture",
+      "implementationStatus": "partial",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "mobile/__tests__/scan-capture-provenance.test.js"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "Requested FPS/resolution and stale timer presented as observed values",
+      "enhancementApplied": "Monotonic capture timing, interruption cleanup, requested versus measured metadata",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 4,
+      "feature": "Upload and video validation",
+      "implementationStatus": "implemented",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "backend/tests/scan3d.integrity.test.js"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "File extension/MIME and public paths trusted",
+      "enhancementApplied": "Private storage, bounded upload, ffprobe and full decode, checksum and confinement",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 5,
+      "feature": "Asynchronous processing",
+      "implementationStatus": "implemented",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "backend/tests/scan3d.integrity.test.js"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "Concurrent claims, stale worker writes and retry inflation possible",
+      "enhancementApplied": "Atomic audited claims, lease fencing, heartbeat, bounded retry/backoff, timeout, queue pagination",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 6,
+      "feature": "Acquisition intelligence / LIDRA",
+      "implementationStatus": "experimental",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "backend/python_service/tests/test_scan3d_research.py"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "Placeholder frames, quality scores and coverage misrepresented",
+      "enhancementApplied": "Measured sharpness/exposure/redundancy on actual frames; coverage and confidence unavailable",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 7,
+      "feature": "Engine abstraction",
+      "implementationStatus": "partial",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "backend/tests/scan3d.engines.test.js"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "Named research engines delegated to procedural fallback",
+      "enhancementApplied": "Explicit unavailable scaffold descriptors; no silent fallback; OpenCV sparse SfM only runnable research engine",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 8,
+      "feature": "Pose and reconstruction",
+      "implementationStatus": "experimental",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "backend/python_service/tests/test_scan3d_research.py"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "Procedural arch independent of video",
+      "enhancementApplied": "Image-feature matching, essential matrix, triangulated sparse geometry and actual estimated poses",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 9,
+      "feature": "Dental mesh processing",
+      "implementationStatus": "partial",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "backend/tests/scan3d.engines.test.js"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "Anatomical deformation could conceal geometric error",
+      "enhancementApplied": "Identity by default; finite/index checks and explicit crop utility; preserve source",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 10,
+      "feature": "X-Core integration",
+      "implementationStatus": "experimental",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "web/tests/scan3DAssetSafety.test.mjs"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "Initialization failure, unverified assets and geometry reload on style changes",
+      "enhancementApplied": "Existing viewer repaired; authorized manifest assets, checksum, bounded loads and disposal",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 11,
+      "feature": "Measurements and annotations",
+      "implementationStatus": "partial",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "web/tests/xCore3DScanViewer.test.mjs"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "Arbitrary coordinates labelled mm; annotations not asset-version scoped",
+      "enhancementApplied": "Visualization-only gating; coordinates preserved; annotations keyed to user/scan/checksum",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 12,
+      "feature": "Tooth segmentation and FDI",
+      "implementationStatus": "blocked",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "backend/python_service/tests/test_scan3d_service.py"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "Procedural heuristic could appear as AI with uncalibrated confidence",
+      "enhancementApplied": "Endpoints fail explicitly; provenance contract; no inferred FDI or fake confidence",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 13,
+      "feature": "Geometric validation infrastructure",
+      "implementationStatus": "partial",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "backend/python_service/tests/test_scan3d_research.py"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "No defensible validation path or empirical dataset",
+      "enhancementApplied": "Rigid registration, surface distances, repeatability, physical-scale/provenance gates and immutable reports",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 14,
+      "feature": "DICOM research infrastructure",
+      "implementationStatus": "partial",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "backend/python_service/tests/test_scan3d_research.py"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "Dataset availability and ML suitability unestablished",
+      "enhancementApplied": "Read-only manifest/QC, explicit threshold derivation, raw preservation, no automatic training",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 15,
+      "feature": "Pipeline performance",
+      "implementationStatus": "partial",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "reports/scan3d/pipeline-fixture-profile.json"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "Unmeasured latency and fabricated performance could be confused",
+      "enhancementApplied": "Actual controlled software timing/CPU/RSS/asset size report; no engine ranking",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 16,
+      "feature": "X-Core performance and stability",
+      "implementationStatus": "partial",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "reports/scan3d/viewer-fixture-profile.json"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "Style changes rebuilt geometry; measurement coordinates vulnerable",
+      "enhancementApplied": "Separate actor styling, cancellation, bounded telemetry and controlled parser/browser checks",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 17,
+      "feature": "Clinical intelligence",
+      "implementationStatus": "blocked",
+      "realOrSimulated": "blocked; no generated output",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "backend/python_service/tests/test_scan3d_service.py"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "Real segmentation and validated data flow absent",
+      "enhancementApplied": "Gate remains closed; no fabricated AI findings, FDI or scan-to-CDSS output",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    },
+    {
+      "phase": 18,
+      "feature": "Hardening and research readiness",
+      "implementationStatus": "partial",
+      "realOrSimulated": "real software; software fixtures separately labelled",
+      "testStatus": "software verification only; see evidence",
+      "evidence": [
+        "backend/tests/scan3d.integrity.test.js"
+      ],
+      "researchStatus": "DATASET_UNAVAILABLE",
+      "clinicalStatus": "blocked",
+      "risk": "Public asset exposure, weak provenance, misleading claims",
+      "enhancementApplied": "Private authenticated assets, audited transitions, immutable provenance, explicit experimental status",
+      "requiredEnhancement": "Real captures, references and phase-specific empirical review; see audit report"
+    }
+  ]
+}

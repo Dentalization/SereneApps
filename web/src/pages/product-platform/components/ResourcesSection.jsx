@@ -192,15 +192,15 @@ const ResourcesSection = () => {
                 <span className="text-sm font-bold uppercase tracking-widest">Scientific Rigor</span>
               </div>
               <h3 className="text-3xl lg:text-4xl font-bold mb-6 leading-tight">
-                Peer-Reviewed & <br />Clinically Validated
+                Research References & <br />Evaluation Requirements
               </h3>
               <p className="text-slate-300 text-lg mb-8 leading-relaxed">
-                Our YOLOv8 architecture isn't just fast; it's proven. Validated against a dataset of 35,000+ labeled radiographs with ground truth established by a consensus of 3 senior radiologists.
+                External research informs development. It does not establish the performance of this implementation; project-specific validation data is unavailable.
               </p>
               
               <div className="flex flex-wrap gap-4">
                 <Button className="bg-white text-blue-900 hover:bg-blue-50 border-none shadow-lg">
-                  Read Validation Study
+                  Explore Research References
                 </Button>
                 <Button variant="outline" className="text-white border-white/30 hover:bg-white/10">
                   Download Whitepaper
@@ -211,10 +211,10 @@ const ResourcesSection = () => {
             {/* Validation Stats Grid */}
             <div className="grid grid-cols-2 gap-4">
               {[
-                { val: "35k+", label: "Training Dataset", sub: "Annotated Images" },
-                { val: "94.7%", label: "Sensitivity", sub: "Caries Detection" },
-                { val: "96.2%", label: "Specificity", sub: "False Positive Rate <4%" },
-                { val: "15", label: "Partner Sites", sub: "Multi-center Trial" }
+                { val: "Unavailable", label: "Training Dataset", sub: "Project-owned evidence required" },
+                { val: "Not evaluated", label: "Sensitivity", sub: "No project validation claim" },
+                { val: "Not evaluated", label: "Specificity", sub: "No project validation claim" },
+                { val: "Unverified", label: "Trial Sites", sub: "No clinical trial evidence supplied" }
               ].map((stat, i) => (
                 <div key={i} className="bg-white/5 backdrop-blur-sm border border-white/10 p-6 rounded-2xl hover:bg-white/10 transition-colors">
                   <div className="text-3xl font-bold text-white mb-1">{stat.val}</div>

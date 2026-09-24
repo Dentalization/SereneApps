@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Physical-scale validation input; runtime enforces evidence and registered hashes",
+  "type": "object",
+  "required": [
+    "scanId",
+    "referenceId",
+    "reconstructionPath",
+    "referencePath",
+    "provenancePath",
+    "units",
+    "referenceUnits",
+    "scaleCalibration",
+    "captureProtocol",
+    "coordinateSystem",
+    "referenceSource",
+    "inclusionCriteria",
+    "exclusionCriteria",
+    "surfaceSelection",
+    "registration",
+    "completenessTolerance"
+  ],
+  "properties": {
+    "scanId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "referenceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reconstructionPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "referencePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provenancePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "captureProtocol": {
+      "type": "string",
+      "minLength": 1
+    },
+    "coordinateSystem": {
+      "type": "string",
+      "minLength": 1
+    },
+    "units": {
+      "enum": [
+        "mm",
+        "m",
+        "um"
+      ]
+    },
+    "referenceUnits": {
+      "enum": [
+        "mm",
+        "m",
+        "um"
+      ]
+    },
+    "scaleCalibration": {
+      "type": "object",
+      "required": [
+        "evidence"
+      ],
+      "properties": {
+        "evidence": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "referenceSource": {
+      "type": "object",
+      "required": [
+        "source",
+        "device",
+        "resolution",
+        "generationMethod"
+      ]
+    },
+    "surfaceSelection": {
+      "const": "whole_supplied_mesh"
+    },
+    "surfaceSamples": {
+      "type": "integer",
+      "minimum": 32,
+      "maximum": 100000
+    },
+    "seed": {
+      "type": "integer"
+    },
+    "completenessTolerance": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "registration": {
+      "type": "object",
+      "required": [
+        "initialTransform"
+      ],
+      "properties": {
+        "method": {
+          "enum": [
+            "rigid",
+            "rigid_icp"
+          ]
+        },
+        "initialTransform": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "maxIterations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        },
+        "tolerance": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    }
+  }
+}

@@ -7,6 +7,7 @@ import * as scan3DService from '../src/services/scan3DService';
 import api from '../src/services/api';
 import DentistScan3DScreen from '../src/features/dentist/screens/3D/DentistScan3DScreen';
 import DentistHomeScreen from '../src/features/dentist/screens/DentistHome/DentistHomeScreen';
+jest.mock('../src/services/authService', () => ({ logoutPatient: jest.fn().mockResolvedValue({ success: true }) }));
 
 jest.mock('../src/services/api', () => ({
   get: jest.fn(),
@@ -52,6 +53,8 @@ function collectText(node, values = []) {
 describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    api.get.mockReset();
+    api.get.mockImplementation((url) => Promise.resolve({ data: url === '/auth/me' ? { id: 10, roles: ['dentist'] } : {} }));
   });
 
   describe('scan3DService', () => {
@@ -300,23 +303,35 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
   });
 
   describe('DentistScan3DScreen UI Flow', () => {
+    test('direct Patient navigation does not mount scan effects or fetch patients', async () => {
+      useSelector.mockImplementation((selector) => selector({ auth: {
+        authLevel: 'full_account', accessToken: 'patient-token', user: { id: 20, roles: ['patient'] },
+      } }));
+      let tree;
+      await act(async () => { tree = renderer.create(<PaperProvider><DentistScan3DScreen navigation={{}} /></PaperProvider>); });
+      expect(collectText(tree.toJSON())).toContain('Akses Dibatasi');
+      expect(api.get).not.toHaveBeenCalled();
+      await act(async () => tree.unmount());
+    });
+
     test('renders 3D Dental Scan interface for authenticated dentist', async () => {
       useSelector.mockImplementation((selector) => {
         return selector({
           auth: {
+            authLevel: 'full_account', accessToken: 'test-session',
             user: { id: 10, name: 'Dr. Sarah', roles: ['dentist'] },
           },
         });
       });
 
-      api.get.mockResolvedValueOnce({
+      api.get.mockImplementation((url) => Promise.resolve(url === '/auth/me' ? { data: { id: 10, roles: ['dentist'] } } : {
         data: {
           success: true,
           patients: [
             { id: 1, name: 'Dewi Lestari', phone_number: '+62812345678' },
           ],
         },
-      });
+      }));
 
       let tree;
       await act(async () => {
@@ -343,12 +358,14 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
       useSelector.mockImplementation((selector) => {
         return selector({
           auth: {
+            authLevel: 'full_account', accessToken: 'test-session',
             user: { id: 10, name: 'Dr. Sarah', roles: ['dentist'] },
           },
         });
       });
 
       api.get.mockImplementation((url) => {
+        if (url === '/auth/me') return Promise.resolve({ data: { id: 10, roles: ['dentist'] } });
         if (url === '/x-core/3d-scans/patients') {
           return Promise.resolve({ data: { success: true, patients: [] } });
         }
@@ -393,6 +410,7 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
       useSelector.mockImplementation((selector) => {
         return selector({
           auth: {
+            authLevel: 'full_account', accessToken: 'test-session',
             user: { id: 10, name: 'Sarah Jenkins', roles: ['dentist'] },
           },
         });
@@ -410,7 +428,7 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
 
       const textValues = collectText(tree.toJSON());
       expect(textValues).toContain('drg. Sarah Jenkins');
-      expect(textValues).toContain('Verified Dentist');
+      expect(textValues).toContain('Akun Dokter Gigi');
       expect(textValues).toContain('Smartphone Dental 3D Scan');
       expect(textValues).toContain('Mulai Pemindaian 3D');
 
@@ -423,19 +441,20 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
       useSelector.mockImplementation((selector) => {
         return selector({
           auth: {
+            authLevel: 'full_account', accessToken: 'test-session',
             user: { id: 10, name: 'Dr. Sarah', roles: ['dentist'] },
           },
         });
       });
 
-      api.get.mockResolvedValueOnce({
+      api.get.mockImplementation((url) => Promise.resolve(url === '/auth/me' ? { data: { id: 10, roles: ['dentist'] } } : {
         data: {
           success: true,
           patients: [
             { id: 42, name: 'Budi Handoko', phone_number: '+628129999000' },
           ],
         },
-      });
+      }));
 
       api.post.mockResolvedValueOnce({
         data: {

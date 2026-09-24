@@ -80,17 +80,17 @@ const LogoWithCaption = ({ name, domain, type, localSrc }) => {
 
 const TrustSection = () => {
   const trustMetrics = [
-    { icon: 'Users', value: '50k+', label: 'Analyses Performed', description: 'Patient trust globally' },
-    { icon: 'Award', value: '98.7%', label: 'Accuracy Rate', description: 'Clinically validated' },
-    { icon: 'Zap', value: '<2s', label: 'Analysis Time', description: 'Real-time inference' },
-    { icon: 'ShieldCheck', value: '100%', label: 'HIPAA Compliant', description: 'Enterprise security' },
+    { icon: 'Users', value: 'Pending', label: 'Cohort Evidence', description: 'Research dataset unavailable' },
+    { icon: 'Award', value: 'Unvalidated', label: 'Clinical Status', description: 'No clinical performance claim' },
+    { icon: 'Zap', value: 'Measured per run', label: 'Processing Time', description: 'Depends on input and environment' },
+    { icon: 'ShieldCheck', value: 'Under review', label: 'Security Controls', description: 'No compliance certification claimed' },
   ];
 
   const certifications = [
-    { name: 'FDA Registered', icon: 'Award', description: 'Class II Software' },
-    { name: 'HIPAA Compliant', icon: 'Shield', description: 'Data Protection' },
-    { name: 'ISO 27001', icon: 'Lock', description: 'Info Security' },
-    { name: 'SOC 2 Type II', icon: 'CheckCircle', description: 'System Controls' },
+    { name: 'Lifecycle review', icon: 'Award', description: 'Engineering objective' },
+    { name: 'Data protection', icon: 'Shield', description: 'Controls require evaluation' },
+    { name: 'Risk management', icon: 'Lock', description: 'Engineering reference' },
+    { name: 'Usability review', icon: 'CheckCircle', description: 'Evaluation pending' },
   ];
 
   // PARTNERS DATA (Updated with Local Images)
@@ -142,7 +142,7 @@ const TrustSection = () => {
         <div className="text-center mb-20">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-sm font-semibold mb-6 border border-green-200 dark:border-green-800">
             <Icon name="Shield" size={14} />
-            <span>Clinically Validated Technology</span>
+            <span>Experimental Software · Evaluation Pending</span>
           </div>
           
           <h2 className="text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white mb-6">
@@ -229,17 +229,17 @@ const TrustSection = () => {
             <div>
               <div className="inline-flex items-center gap-2 mb-6 text-blue-300">
                 <Icon name="FileText" size={20} />
-                <span className="font-semibold uppercase tracking-widest text-sm">Peer-Reviewed</span>
+                <span className="font-semibold uppercase tracking-widest text-sm">Research Status</span>
               </div>
               <h3 className="text-3xl lg:text-4xl font-bold mb-6 leading-tight">
-                98.7% Diagnostic Accuracy
+                Clinical Performance Not Yet Evaluated
               </h3>
               <p className="text-slate-300 mb-8 text-lg leading-relaxed">
-                Our models have been rigorously tested in multi-center clinical trials involving over 50,000 diverse dental images. We consistently outperform traditional screening methods.
+                Project-specific validation evidence is not available in this repository. No diagnostic accuracy or superiority over clinicians is established.
               </p>
               
               <div className="flex flex-col gap-3">
-                {['Multi-center trials completed', 'IRB-approved protocols', 'Published in J. Dental Research'].map((item, i) => (
+                {['Research protocol required', 'Ethics review where applicable', 'Independent evaluation pending'].map((item, i) => (
                   <div key={i} className="flex items-center gap-3">
                     <Icon name="CheckCircle" size={20} className="text-green-400" />
                     <span className="text-slate-200">{item}</span>
@@ -259,9 +259,9 @@ const TrustSection = () => {
 
               <div className="space-y-6">
                 {[
-                  { label: 'Caries Detection', val: '98.7%' },
-                  { label: 'Periodontal Disease', val: '96.3%' },
-                  { label: 'Pathology Screening', val: '94.8%' }
+                  { label: 'Caries Detection', val: 'Not evaluated' },
+                  { label: 'Periodontal Disease', val: 'Not evaluated' },
+                  { label: 'Pathology Screening', val: 'Not evaluated' }
                 ].map((stat, i) => (
                   <div key={i}>
                     <div className="flex justify-between mb-2 text-sm font-medium">
@@ -271,7 +271,7 @@ const TrustSection = () => {
                     <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-gradient-to-r from-blue-500 to-teal-400 rounded-full" 
-                        style={{ width: stat.val }}
+                        style={{ width: 0 }}
                       />
                     </div>
                   </div>

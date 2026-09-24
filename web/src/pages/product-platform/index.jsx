@@ -141,12 +141,12 @@ const ProductPlatform = () => {
               <div className="absolute -bottom-6 -right-6 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 hidden md:block animate-bounce-slow">
                 <div className="flex gap-4 text-center">
                   <div>
-                    <div className="text-2xl font-bold text-blue-500">98.7%</div>
+                    <div className="text-2xl font-bold text-blue-500">Pending</div>
                     <div className="text-[10px] text-slate-500 uppercase tracking-wider">Accuracy</div>
                   </div>
                   <div className="w-px bg-slate-200 dark:bg-slate-700" />
                   <div>
-                    <div className="text-2xl font-bold text-green-500">&lt; 2s</div>
+                    <div className="text-2xl font-bold text-green-500">Unmeasured</div>
                     <div className="text-[10px] text-slate-500 uppercase tracking-wider">Speed</div>
                   </div>
                 </div>

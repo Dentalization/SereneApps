@@ -11,7 +11,7 @@ const MobileCameraGuide = () => {
       title: 'Lighting & Environment',
       desc: 'Find a spot with bright, natural light. Avoid harsh shadows or yellow lamps for the most accurate detection.',
       icon: 'Sun',
-      img: 'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=400&q=80' 
+      img: 'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=400&q=80'
     },
     {
       id: 2,
@@ -37,12 +37,12 @@ const MobileCameraGuide = () => {
 
   return (
     <section className="py-24 bg-slate-50 dark:bg-slate-950 overflow-hidden relative">
-      
+
       {/* Background Decor */}
       <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/graphy.png')] opacity-[0.03]" />
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        
+
         {/* Header */}
         <div className="text-center mb-16">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-bold uppercase tracking-wider mb-6">
@@ -56,29 +56,29 @@ const MobileCameraGuide = () => {
             </span>
           </h2>
           <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
-            High-quality photos lead to high-accuracy results. Follow these 3 simple steps 
+            Clear photos help image review; they do not establish diagnostic accuracy. Follow these 3 simple steps
             to get a clinical-grade analysis from home.
           </p>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-12 items-center mb-20">
-          
+
           {/* Left: Interactive Stepper */}
           <div className="space-y-8">
              {steps.map((step, index) => (
-               <div 
+               <div
                  key={index}
                  onClick={() => setActiveStep(index)}
                  className={`relative pl-8 border-l-2 cursor-pointer transition-all duration-300 ${
-                   activeStep === index 
-                     ? 'border-blue-600 opacity-100' 
+                   activeStep === index
+                     ? 'border-blue-600 opacity-100'
                      : 'border-slate-200 dark:border-slate-800 opacity-50 hover:opacity-80'
                  }`}
                >
                  <span className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 ${
                    activeStep === index ? 'bg-blue-600 border-blue-600' : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700'
                  }`} />
-                 
+
                  <h3 className={`text-xl font-bold mb-2 ${activeStep === index ? 'text-blue-600 dark:text-blue-400' : 'text-slate-900 dark:text-white'}`}>
                    Step {index + 1}: {step.title}
                  </h3>
@@ -97,16 +97,16 @@ const MobileCameraGuide = () => {
 
           {/* Right: Phone Simulation */}
           <div className="relative flex justify-center">
-            
+
             {/* Phone Frame */}
             <div className="relative w-[300px] h-[600px] bg-slate-900 rounded-[3rem] p-3 shadow-2xl border-[4px] border-slate-800">
               <div className="w-full h-full bg-slate-950 rounded-[2.5rem] overflow-hidden relative">
-                
+
                 {/* Image Display */}
                 <div className="absolute inset-0 transition-opacity duration-500">
-                   <img 
-                     src={steps[activeStep].img} 
-                     alt="Step Guide" 
+                   <img
+                     src={steps[activeStep].img}
+                     alt="Step Guide"
                      className="w-full h-full object-cover opacity-80"
                    />
                 </div>
@@ -118,7 +118,7 @@ const MobileCameraGuide = () => {
                       {steps[activeStep].title}
                     </span>
                   </div>
-                  
+
                   {/* Focus Frame Animation */}
                   <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 border-2 border-white/50 rounded-2xl flex items-center justify-center">
                     <div className="w-4 h-4 bg-white/80 rounded-full animate-ping" />

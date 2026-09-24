@@ -84,7 +84,7 @@ const ValueProposition = () => {
           </h2>
           <p className="text-lg text-slate-600 dark:text-slate-400 leading-relaxed">
             Whether you're seeking peace of mind or looking to modernize your practice, 
-            Serene AI delivers clinically validated value.
+            Serene AI provides experimental support tools that require professional review.
           </p>
         </div>
 

@@ -2,6 +2,9 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
+import { MAX_VIDEO_BYTES } from '../services/scan3D/videoInspection.js';
 import { fileURLToPath } from 'url';
 
 import {
@@ -39,6 +42,7 @@ import {
     updateCase,
 } from '../controllers/xCoreAnalysisCaseController.js';
 import {
+    authorize3DScanUpload,
     getScanPatients,
     createScanPatient,
     create3DScan,
@@ -70,11 +74,19 @@ const storage = multer.diskStorage({
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
-        cb(null, Date.now() + '-' + file.originalname);
+        cb(null, randomUUID());
     }
 });
 
 const upload = multer({ storage: storage });
+const scanUpload = multer({ storage, limits: { fileSize: MAX_VIDEO_BYTES, files: 1, fields: 12, fieldSize: 8192 } });
+function receiveScanVideo(req, res, next) {
+    req.scanUploadStartedAt = performance.now();
+    scanUpload.single('video')(req, res, error => {
+        if (error) return res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ error: 'Video upload rejected', code: error.code || 'UPLOAD_FAILED' });
+        return next();
+    });
+}
 
 // Public share routes
 router.get('/share/:token', getSharedStudy);
@@ -97,7 +109,7 @@ router.get('/3d-scans/engines', requireRoles(['dentist']), get3DScanEngines);
 router.post('/3d-scans', requireRoles(['dentist']), express.json(), create3DScan);
 router.get('/3d-scans/:id', requireRoles(['dentist']), get3DScanDetails);
 router.get('/3d-scans/:id/lidra', requireRoles(['dentist']), get3DScanLidraReport);
-router.post('/3d-scans/:id/video', requireRoles(['dentist']), upload.single('video'), upload3DScanVideo);
+router.post('/3d-scans/:id/video', requireRoles(['dentist']), authorize3DScanUpload, receiveScanVideo, upload3DScanVideo);
 router.post('/3d-scans/:id/queue', requireRoles(['dentist']), express.json(), enqueue3DScan);
 router.get('/3d-scans/:id/status', requireRoles(['dentist']), get3DScanStatus);
 router.post('/3d-scans/:id/retry', requireRoles(['dentist']), express.json(), retry3DScan);

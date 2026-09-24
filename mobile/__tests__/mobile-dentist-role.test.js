@@ -4,6 +4,9 @@ import renderer, { act } from 'react-test-renderer';
 import { useSelector } from 'react-redux';
 import { PaperProvider } from 'react-native-paper';
 import { isDentistUser, getPrimaryRole } from '../src/utils/authUtils';
+import api from '../src/services/api';
+jest.mock('../src/services/api', () => ({ get: jest.fn() }));
+
 import DentistRoleGuard from '../src/features/dentist/components/DentistRoleGuard';
 
 jest.mock('react-redux', () => ({
@@ -29,6 +32,7 @@ function collectText(node, values = []) {
 describe('Mobile Dentist Role Foundation (Phase 1)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    api.get.mockResolvedValue({ data: { id: 10, roles: ['dentist'] } });
   });
 
   describe('isDentistUser and getPrimaryRole', () => {
@@ -64,17 +68,32 @@ describe('Mobile Dentist Role Foundation (Phase 1)', () => {
   });
 
   describe('DentistRoleGuard (Protected Routes)', () => {
-    test('renders protected children when authenticated as Dentist', () => {
+    test.each([
+      ['restored role without token', null, { id: 10, roles: ['dentist'] }],
+      ['revoked server role', 'expired-session', { id: 10, roles: ['patient'] }],
+      ['different server identity', 'wrong-session', { id: 30, roles: ['dentist'] }],
+    ])('blocks %s', async (_, accessToken, verifiedUser) => {
+      useSelector.mockImplementation((selector) => selector({ auth: { authLevel: 'full_account', accessToken,
+        user: { id: 10, roles: ['dentist'] } } }));
+      api.get.mockResolvedValue({ data: verifiedUser });
+      let tree;
+      await act(async () => { tree = renderer.create(<PaperProvider><DentistRoleGuard><Text>Protected</Text></DentistRoleGuard></PaperProvider>); });
+      expect(collectText(tree.toJSON())).not.toContain('Protected');
+      await act(async () => tree.unmount());
+    });
+
+    test('renders protected children only after server confirms Dentist session', async () => {
       useSelector.mockImplementation((selector) => {
         return selector({
           auth: {
+            authLevel: 'full_account', accessToken: 'test-session',
             user: { id: 10, name: 'Dr. John', roles: ['dentist'] },
           },
         });
       });
 
       let tree;
-      act(() => {
+      await act(async () => {
         tree = renderer.create(
           <PaperProvider>
             <DentistRoleGuard>

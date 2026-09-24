@@ -33,7 +33,7 @@ const CDSSSection = () => {
     {
       icon: "Lock",
       title: "Security",
-      description: "HIPAA & SOC 2 Compliant",
+      description: "Independent security review pending",
       color: "red"
     }
   ];
@@ -54,11 +54,11 @@ const CDSSSection = () => {
             <span>Clinical Decision Support</span>
           </div>
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white mb-6 tracking-tight">
-            Evidence-Based <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-teal-500">Precision</span>
+            Experimental <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-teal-500">Decision Support</span>
           </h2>
           <p className="text-lg text-slate-600 dark:text-slate-400 max-w-3xl mx-auto leading-relaxed">
-            Our AI doesn't just guess; it validates. Backed by the largest annotated dental dataset
-            and verified by peer-reviewed clinical trials.
+            Illustrative interface only: the static figures below are not measured Serene performance. Research validation requires a documented dataset
+            and independent review before any clinical claims.
           </p>
         </div>
 
@@ -119,7 +119,7 @@ const CDSSSection = () => {
               <div className="bg-blue-50 dark:bg-blue-900/10 p-4 border-t border-blue-100 dark:border-blue-900/20 flex gap-3">
                 <Icon name="Info" size={20} className="text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-blue-800 dark:text-blue-200 leading-relaxed">
-                  <strong>Validation Note:</strong> Results based on double-blind studies comparing AI output against consensus from 3 board-certified radiologists.
+                  <strong>Demonstration only:</strong> These hard-coded figures illustrate a layout. They are not clinical study outcomes, calibrated confidence, or evidence of diagnostic performance.
                 </p>
               </div>
             </div>
@@ -163,18 +163,17 @@ const CDSSSection = () => {
             <div className="max-w-xl">
               <div className="flex items-center gap-3 mb-4 text-green-400">
                 <Icon name="ShieldCheck" size={24} />
-                <span className="font-bold text-sm uppercase tracking-widest">Clinically Validated</span>
+                <span className="font-bold text-sm uppercase tracking-widest">Clinical Evaluation Pending</span>
               </div>
-              <h3 className="text-3xl font-bold mb-4">Proven in Multi-Center Trials</h3>
+              <h3 className="text-3xl font-bold mb-4">Evidence Required Before Clinical Claims</h3>
               <p className="text-slate-400 leading-relaxed mb-8">
-                Our algorithms have been rigorously tested across 15 clinical sites globally,
-                analyzing over 35,000 unique patient cases to ensure zero bias and maximum reliability.
+                Clinical study data and independent validation evidence are not available in this repository. AI outputs remain suggestions for professional review.
               </p>
               <div className="flex flex-wrap gap-6">
                 {[
-                  { label: "Clinical Sites", val: "15" },
-                  { label: "Patient Cases", val: "35k+" },
-                  { label: "Study Duration", val: "18mo" }
+                  { label: "Clinical Sites", val: "Unverified" },
+                  { label: "Patient Cases", val: "Unavailable" },
+                  { label: "Study Duration", val: "Unavailable" }
                 ].map((stat, i) => (
                   <div key={i}>
                     <div className="text-2xl font-bold text-white">{stat.val}</div>

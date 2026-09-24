@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Research validation result; no automatic clinical promotion",
+  "type": "object",
+  "required": [
+    "status",
+    "metrics",
+    "processingVersion"
+  ],
+  "properties": {
+    "status": {
+      "enum": [
+        "DATASET_UNAVAILABLE",
+        "computed_experimental"
+      ]
+    },
+    "metrics": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "processingVersion": {
+      "type": "string"
+    },
+    "scanId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "referenceId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "engine": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "engineVersion": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "captureProtocol": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "registrationMethod": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "units": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "clinicallyValidated": {
+      "const": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "DATASET_UNAVAILABLE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "metrics": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "required": [
+          "scanId",
+          "referenceId",
+          "engine",
+          "engineVersion",
+          "captureProtocol",
+          "registrationMethod",
+          "units",
+          "timestamp",
+          "clinicallyValidated",
+          "configuration",
+          "registration",
+          "reconstructionChecksum",
+          "referenceChecksum"
+        ],
+        "properties": {
+          "metrics": {
+            "type": "object"
+          },
+          "units": {
+            "enum": [
+              "mm",
+              "m",
+              "um"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

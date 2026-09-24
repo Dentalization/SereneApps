@@ -21,6 +21,9 @@ const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
+    tokenRefreshed: (state, action) => {
+      state.accessToken = action.payload;
+    },
     setAuthLevel: (state, action) => {
       state.authLevel = action.payload;
     },
@@ -72,6 +75,7 @@ const authSlice = createSlice({
 });
 
 export const {
+  tokenRefreshed,
   setAuthLevel,
   setPhoneNumber,
   otpVerified,
