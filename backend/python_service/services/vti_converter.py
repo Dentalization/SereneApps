@@ -513,9 +513,9 @@ def suppress_fov_background(
         print(f"[FOV] Suppression skipped: only {candidate_voxels} bone-candidate voxels")
         return volume
 
-    margin_x = max(10, int(round(margin_mm / sx)))
-    margin_y = max(10, int(round(margin_mm / sy)))
-    z_window = max(2, int(round(z_window_mm / sz)))
+    margin_x = max(10, round(margin_mm / sx))
+    margin_y = max(10, round(margin_mm / sy))
+    z_window = max(2, round(z_window_mm / sz))
     slice_bounds: list[tuple[int, int, int, int] | None] = []
 
     for z in range(nz):
@@ -624,35 +624,26 @@ def monai_preprocess(
     print(f"[MONAI] MetaTensor shape: {meta_tensor.shape}")
 
     # ── Step 3: Orientation("RAS") — Reorder (S,A,R) → (R,A,S) = (X,Y,Z) ──
-    try:
-        orient_transform = Orientation(axcodes="RAS")
-        meta_tensor = orient_transform(meta_tensor)
-        print(f"[MONAI] After Orientation(RAS): shape={meta_tensor.shape}")
-    except Exception as e:
-        print(f"[MONAI] ⚠️  Orientation failed (using original): {e}")
+    orient_transform = Orientation(axcodes="RAS")
+    meta_tensor = orient_transform(meta_tensor)
+    print(f"[MONAI] After Orientation(RAS): shape={meta_tensor.shape}")
 
     # ── Step 4: Spacing — Resample, unless native spacing was requested ──
     if target_spacing is not None:
-        try:
-            spacing_transform = Spacing(pixdim=target_spacing, mode="bilinear")
-            meta_tensor = spacing_transform(meta_tensor)
-            print(f"[MONAI] After Spacing{target_spacing}: shape={meta_tensor.shape}")
-        except Exception as e:
-            print(f"[MONAI] ⚠️  Spacing failed (using original): {e}")
+        spacing_transform = Spacing(pixdim=target_spacing, mode="bilinear")
+        meta_tensor = spacing_transform(meta_tensor)
+        print(f"[MONAI] After Spacing{target_spacing}: shape={meta_tensor.shape}")
     else:
         print("[MONAI] Native spacing preserved — no resampling")
 
     # ── Step 5: ScaleIntensityRange — Normalize HU → [0.0, 1.0] ──
-    try:
-        scale_transform = ScaleIntensityRange(
-            a_min=-1000.0, a_max=3000.0,
-            b_min=0.0, b_max=1.0,
-            clip=True
-        )
-        meta_tensor = scale_transform(meta_tensor)
-        print(f"[MONAI] After ScaleIntensity: range=[{meta_tensor.min():.4f}, {meta_tensor.max():.4f}]")
-    except Exception as e:
-        print(f"[MONAI] ⚠️  ScaleIntensity failed (using original): {e}")
+    scale_transform = ScaleIntensityRange(
+        a_min=-1000.0, a_max=3000.0,
+        b_min=0.0, b_max=1.0,
+        clip=True
+    )
+    meta_tensor = scale_transform(meta_tensor)
+    print(f"[MONAI] After ScaleIntensity: range=[{meta_tensor.min():.4f}, {meta_tensor.max():.4f}]")
 
     # ── Step 6: CropForeground — Remove surrounding air/cylinder ──
     try:
@@ -676,6 +667,8 @@ def monai_preprocess(
                 select_fn=lambda x: x > crop_threshold,
                 margin=margin_voxels,
             )
+        if not isinstance(meta_tensor, torch.Tensor):
+            meta_tensor = torch.as_tensor(meta_tensor)
         meta_tensor = crop_transform(meta_tensor)
         print(f"[MONAI] After CropForeground: {pre_crop_shape} → {meta_tensor.shape}")
 
@@ -695,8 +688,9 @@ def monai_preprocess(
     final_spacing = tuple(float(value) for value in (target_spacing if target_spacing is not None else spacing))
 
     # Get updated origin from MONAI affine
-    if hasattr(meta_tensor, 'affine') and meta_tensor.affine is not None:
-        raw_affine: Any = meta_tensor.affine
+    tensor_affine = getattr(meta_tensor, 'affine', None)
+    if tensor_affine is not None:
+        raw_affine: Any = tensor_affine
         new_affine = raw_affine.cpu().numpy() if hasattr(raw_affine, 'cpu') else np.asarray(raw_affine)
         new_origin = (float(new_affine[0, 3]), float(new_affine[1, 3]), float(new_affine[2, 3]))
     else:
@@ -719,36 +713,11 @@ def prepare_volume_for_vti(series_info: dict, sorted_files: list[str], target_sp
 
     volume, spacing, origin, orientation = read_dicom_volume(sorted_files)
     print(f"[VTI] Raw volume: shape={volume.shape}, dtype={volume.dtype}")
-    try:
-        processed, new_spacing, new_origin = monai_preprocess(
-            volume,
-            spacing,
-            origin,
-            orientation,
-            target_spacing=target_spacing,
-        )
-        print(f"[VTI] MONAI pipeline complete: {volume.shape} → {processed.shape}")
-        return processed, new_spacing, new_origin
-    except Exception as monai_err:
-        # Preserve the established fallback for non-standard DICOM payloads.
-        print(f"[VTI] ⚠️  MONAI pipeline failed: {monai_err}")
-        print("[VTI] Falling back to basic normalization...")
-        import traceback
-        traceback.print_exc()
-
-        vol_min = float(np.min(volume))
-        vol_max = float(np.max(volume))
-        a_min = max(vol_min, -1000.0)
-        a_max = min(vol_max, 3000.0)
-        if a_max > a_min:
-            processed = np.clip(volume, a_min, a_max)
-            processed = ((processed - a_min) / (a_max - a_min)).astype(np.float32)
-        else:
-            processed = np.zeros_like(volume, dtype=np.float32)
-
-        processed = np.ascontiguousarray(np.transpose(processed, (2, 1, 0)))
-        print(f"[VTI] Fallback normalization: [{vol_min:.0f},{vol_max:.0f}] → [0.0, 1.0]")
-        return processed, spacing, origin
+    processed, new_spacing, new_origin = monai_preprocess(
+        volume, spacing, origin, orientation, target_spacing=target_spacing,
+    )
+    print(f"[VTI] MONAI pipeline complete: {volume.shape} → {processed.shape}")
+    return processed, new_spacing, new_origin
 
 
 def _binary_erode(mask: np.ndarray, iterations: int = 1) -> np.ndarray:
@@ -810,7 +779,7 @@ def _component_metadata(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, shape: t
 
     return {
         "voxels": (xs, ys, zs),
-        "size": int(xs.size),
+        "size": xs.size,
         "centroid": [
             float(xs.mean()),
             float(ys.mean()),
@@ -887,7 +856,7 @@ def _extract_connected_components(mask: np.ndarray) -> list[dict]:
 
 def _scipy_components_to_list(labeled_array: np.ndarray, num_features: int, shape: tuple) -> list[dict]:
     components = []
-    for label_id in range(1, int(num_features) + 1):
+    for label_id in range(1, num_features + 1):
         xs, ys, zs = np.where(labeled_array == label_id)
         if xs.size == 0:
             continue
@@ -1274,7 +1243,7 @@ def detect_mandibular_canal(volume: np.ndarray, spacing: tuple, origin: tuple = 
     inferior_hard = hard_tissue[:, :, :superior_cut]
     if inferior_hard.any():
         hx, hy, hz = np.where(inferior_hard)
-        margin_vox = max(4, int(round(8.0 / max(float(sx), 0.1))))
+        margin_vox = max(4, round(8.0 / max(float(sx), 0.1)))
         x0, x1 = max(0, int(hx.min()) - margin_vox), min(nx - 1, int(hx.max()) + margin_vox)
         y0, y1 = max(0, int(hy.min()) - margin_vox), min(ny - 1, int(hy.max()) + margin_vox)
         z0, z1 = max(0, int(hz.min()) - margin_vox), min(superior_cut - 1, int(hz.max()) + margin_vox)
@@ -1351,7 +1320,7 @@ def generate_2d_image(file_list: list, output_path: str) -> dict:
             pixel_array = cv2.imread(input_path, cv2.IMREAD_GRAYSCALE)
             if pixel_array is None:
                 raise ValueError(f"Could not load image: {input_path}")
-            cv2.imwrite(output_path, pixel_array, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+            cv2.imwrite(output_path, pixel_array, [cv2.IMWRITE_JPEG_QUALITY, 95])
             
             rows, cols = pixel_array.shape[:2]
             file_size = os.path.getsize(output_path)
@@ -1392,7 +1361,7 @@ def generate_2d_image(file_list: list, output_path: str) -> dict:
             pixel_array = np.full_like(pixel_array, 127, dtype=np.uint8)
         
         # Write JPEG
-        cv2.imwrite(output_path, pixel_array, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+        cv2.imwrite(output_path, pixel_array, [cv2.IMWRITE_JPEG_QUALITY, 95])
         
         rows, cols = pixel_array.shape[:2]
         file_size = os.path.getsize(output_path)
@@ -1431,7 +1400,7 @@ def generate_thumbnail(file_list: list, output_path: str, target_index: int = -1
             if pixel_array is None:
                 raise ValueError(f"Could not load image: {input_path}")
             thumb = cv2.resize(pixel_array, (256, 256), interpolation=cv2.INTER_AREA)
-            cv2.imwrite(output_path, thumb, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+            cv2.imwrite(output_path, thumb, [cv2.IMWRITE_JPEG_QUALITY, 85])
             print(f"[THUMB] Generated from plain image: {output_path}")
             return True
             
@@ -1461,7 +1430,7 @@ def generate_thumbnail(file_list: list, output_path: str, target_index: int = -1
         
         # Resize to 256x256 thumbnail
         thumb = cv2.resize(pixel_array, (256, 256), interpolation=cv2.INTER_AREA)
-        cv2.imwrite(output_path, thumb, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+        cv2.imwrite(output_path, thumb, [cv2.IMWRITE_JPEG_QUALITY, 85])
         print(f"[THUMB] Generated: {output_path}")
         return True
     except Exception as e:
@@ -1481,7 +1450,7 @@ def generate_series_thumbnail(series_info: dict, sorted_files: list[str], output
         import cv2
         middle_slice = (volume[:, :, volume.shape[2] // 2] * 255.0).astype(np.uint8)
         thumbnail = cv2.resize(middle_slice, (256, 256), interpolation=cv2.INTER_AREA)
-        generated = bool(cv2.imwrite(output_path, thumbnail, [int(cv2.IMWRITE_JPEG_QUALITY), 85]))
+        generated = cv2.imwrite(output_path, thumbnail, [cv2.IMWRITE_JPEG_QUALITY, 85])
         if generated:
             print(f"[THUMB] Generated from J. Morita volume: {output_path}")
         return generated
@@ -1539,7 +1508,7 @@ def parse_sr_report(file_path: str) -> list[dict]:
     ds = pydicom.dcmread(file_path, force=True, stop_before_pixels=True)
 
     def parse_item(item) -> dict:
-        node = {
+        node: dict[str, Any] = {
             "label": _sr_concept_label(item),
             "value": None,
             "unit": None,
@@ -1620,7 +1589,7 @@ def _process_3d_series_conversion(
     series_uid: str,
     series_info: dict,
     sorted_files: list,
-    target_spacing: tuple,
+    target_spacing: tuple | None,
     force: bool,
     segment: bool,
     progress_callback,
@@ -1657,21 +1626,8 @@ def _process_3d_series_conversion(
     peak_rss = max(start_rss, process.memory_info().rss)
 
     _emit_progress(progress_callback, {"studyId": study_identifier, "seriesUid": series_uid, "status": "processing", "stage": "monai_preprocess", "progress": 35})
-    try:
-        processed, new_spacing, new_origin = monai_preprocess(volume, spacing, origin, orientation, target_spacing=target_spacing)
-        peak_rss = max(peak_rss, process.memory_info().rss)
-    except Exception as monai_err:
-        print(f"[VTI] ⚠️ MONAI pipeline failed: {monai_err}")
-        vol_min, vol_max = float(np.min(volume)), float(np.max(volume))
-        a_min, a_max = max(vol_min, -1000.0), min(vol_max, 3000.0)
-        if a_max > a_min:
-            processed = np.clip(volume, a_min, a_max)
-            processed = ((processed - a_min) / (a_max - a_min)).astype(np.float32)
-        else:
-            processed = np.zeros_like(volume, dtype=np.float32)
-        processed = np.ascontiguousarray(np.transpose(processed, (2, 1, 0)))
-        new_spacing, new_origin = spacing, origin
-        peak_rss = max(peak_rss, process.memory_info().rss)
+    processed, new_spacing, new_origin = monai_preprocess(volume, spacing, origin, orientation, target_spacing=target_spacing)
+    peak_rss = max(peak_rss, process.memory_info().rss)
 
     _emit_progress(progress_callback, {"studyId": study_identifier, "seriesUid": series_uid, "status": "processing", "stage": "fov_suppress", "progress": 60})
     processed = suppress_fov_background(processed, new_spacing)

@@ -47,9 +47,9 @@ def _detect_cr_dx_subtype(desc: str, proto: str) -> str:
 
 
 def detect_dental_modality(modality: str, series_description: str, protocol_name: str = "", num_slices: int = 1) -> str:
-    mod = str(modality).strip().upper()
-    desc = str(series_description).lower()
-    proto = str(protocol_name).lower()
+    mod = modality.strip().upper()
+    desc = series_description.lower()
+    proto = protocol_name.lower()
     
     # 1. 3D CBCT check
     if mod in {'CT', 'MR'} or num_slices > 10:
@@ -326,7 +326,7 @@ class DicomHandler:
         if isinstance(value, MultiValue):
             parts = [self._normalize_metadata_value(v) for v in value]
             parts = [p for p in parts if p not in (None, '')]
-            return ' × '.join(str(p) for p in parts) if parts else None
+            return ' × '.join(parts) if parts else None
 
         if hasattr(value, 'family_name') or value.__class__.__name__ == 'PersonName':
             text = str(value).replace('^', ' ').strip()
@@ -482,7 +482,7 @@ class DicomHandler:
             pixel_array = np.full_like(pixel_array, 127, dtype=np.uint8)
 
         # Encode to JPEG
-        _, encoded_img = cv2.imencode('.jpg', pixel_array, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+        _, encoded_img = cv2.imencode('.jpg', pixel_array, [cv2.IMWRITE_JPEG_QUALITY, 85])
         
         # Get metadata for headers
         ps = 1.0

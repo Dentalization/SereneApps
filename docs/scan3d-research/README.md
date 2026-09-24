@@ -1,5 +1,7 @@
 # Smartphone 3D research runbook
 
+Latest baseline audit and replay instructions: [BASELINE_INTEGRITY_AUDIT.md](BASELINE_INTEGRITY_AUDIT.md).
+
 IMPLEMENTED ≠ EXPERIMENTALLY VALIDATED ≠ CLINICALLY VALIDATED.
 Smartphone validation results: **SMARTPHONE_VALIDATION_DATASET_UNAVAILABLE**. Historical B001 CBCT benchmark evidence exists; the configured raw path is currently **RAW_DICOM_UNAVAILABLE_CURRENT_ENVIRONMENT**. See `RE_AUDIT_REPORT.md` and `reports/scan3d/re-audit/dataset-evidence.json`.
 
@@ -58,3 +60,5 @@ With missing inputs, calibration reports DATASET_UNAVAILABLE and creates no mesh
 For validation of the derivative, set reconstructionPath/provenancePath to the NEW files, set matching physical units, and set `scaleCalibration.evidence` to the derivative's `scale.evidence` hash. For repeatability, provide this evidence field separately in each scan record because each capture has its own calibration. Reference units and reference provenance remain independently required. Calibration landmarks must not also be reported as independent scale-validation landmarks; use held-out distances or a separate measurement record for scale-error assessment.
 
 Phase 13A is infrastructure plus software verification. Phase 13B requires real repeated captures and justified references; it has no results yet. Profile runs can be saved without replacing historical evidence: `node web/scripts/profile-scan3d-fixtures.mjs --output <new-report.json>`; output refuses overwrite.
+
+Validation identity contract: provide sourceCoordinateSystem matching the source manifest, referenceCoordinateSystem, coordinateSystem equal to the reference frame, and referenceSource.sha256. Repeatability source records require their own sourceCoordinateSystem and calibration evidence. Inputs changing during evaluation are rejected.

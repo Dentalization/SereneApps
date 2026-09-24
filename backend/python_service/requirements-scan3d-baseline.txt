@@ -1,0 +1,4 @@
+# Minimal offline SfM baseline versions from the tested environment.
+# Python 3.14.0, macOS arm64; not a full API/VTK research environment lock.
+numpy==2.4.4
+opencv-python-headless==4.13.0.92

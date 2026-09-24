@@ -5,6 +5,16 @@ export function resolveExperimentConfiguration(study, requested = {}) {
   if (!requested || typeof requested !== 'object' || Array.isArray(requested)) throw new Error('Invalid experiment configuration');
   const allowed = ['schemaVersion', 'captureProtocol', 'capture', 'cameraIntrinsics', 'frameSampling', 'reconstruction', 'postProcessing', 'validation'];
   for (const key of Object.keys(requested)) if (!allowed.includes(key)) throw new Error(`Unsupported experiment configuration: ${key}`);
+  const nestedFields = {
+    reconstruction: ['engine', 'parameters'],
+    postProcessing: ['enabled', 'version'],
+    validation: ['reference', 'registration', 'metrics'],
+  };
+  for (const [section, fields] of Object.entries(nestedFields)) {
+    if (requested[section] === undefined) continue;
+    if (!requested[section] || typeof requested[section] !== 'object' || Array.isArray(requested[section])) throw new Error(`Invalid ${section} configuration`);
+    for (const key of Object.keys(requested[section])) if (!fields.includes(key)) throw new Error(`Unsupported ${section} setting: ${key}`);
+  }
   if (requested.postProcessing?.enabled) throw new Error('Dental post-processing is disabled until an explicit research transform is implemented');
   if (requested.validation?.registration && !['none', 'rigid', 'rigid_icp'].includes(requested.validation.registration)) {
     throw new Error('Only rigid research registration is supported');

@@ -59,6 +59,7 @@ test('default post-processing retains all coordinates and explicit face indices'
 
 test('unknown configuration and nonrigid processing fail explicitly', () => {
   assert.throws(() => resolveExperimentConfiguration({}, { hidden: true }), /Unsupported/);
+  assert.throws(() => resolveExperimentConfiguration({}, { reconstruction: { version: 'invented' } }), /Unsupported/);
   assert.throws(() => resolveExperimentConfiguration({}, { postProcessing: { enabled: true } }), /disabled/);
   assert.throws(() => resolveExperimentConfiguration({}, { validation: { registration: 'nonrigid' } }), /rigid/);
 });
@@ -76,6 +77,7 @@ test('adapter checks provenance and isolates immutable attempt output', async (t
   const originalToken = process.env.SCAN3D_SERVICE_TOKEN;
   process.env.SCAN3D_SERVICE_TOKEN = 'test-only-service-token';
   t.after(() => { globalThis.fetch = originalFetch; if (originalToken === undefined) delete process.env.SCAN3D_SERVICE_TOKEN; else process.env.SCAN3D_SERVICE_TOKEN = originalToken; });
+  let responseMode = 'valid';
   globalThis.fetch = async (url, options) => {
     assert.equal(options.headers.Authorization, 'Bearer test-only-service-token');
     const body = JSON.parse(options.body);
@@ -83,8 +85,13 @@ test('adapter checks provenance and isolates immutable attempt output', async (t
     if (url.endsWith('/lidra/analyze')) return { ok: true, json: async () => ({ status: 'ready', qualityScore: null,
       qualityDecision: { status: 'accepted' }, version: 'test-contract', selectedFrames: [{ fileName: 'test.jpg' }] }) };
     await fs.writeFile(path.join(outputDir, 'mesh.obj'), '# SOFTWARE CONTRACT FIXTURE\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n');
-    return { ok: true, json: async () => ({ success: true, assets: { mesh: { fileName: 'mesh.obj' } },
-      metadata: { engine: 'opencv_sparse_sfm', engineVersion: 'contract-test', synthetic: false }, cameraTrajectory: [] }) };
+    return { ok: true, json: async () => ({ success: true, assets: { mesh: { fileName: 'mesh.obj',
+      sha256: responseMode === 'wrong-output' ? '0'.repeat(64) : await sha256File(path.join(outputDir, 'mesh.obj')),
+      sizeInBytes: (await fs.stat(path.join(outputDir, 'mesh.obj'))).size } },
+      metadata: { engine: 'opencv_sparse_sfm', engineVersion: 'contract-test', synthetic: false,
+        geometrySource: 'image_derived', coordinateSystem: 'first_camera_right_down_forward',
+        configuration: { resolvedFixtureSetting: true }, reproducibility: { scope: 'mock-contract-only' },
+        input: { sha256: responseMode === 'wrong-input' ? '0'.repeat(64) : study.metadata.video.checksum } }, cameraTrajectory: [] }) };
   };
   const result = await runReconstruction(study, { outputDir, attemptId: 'contract' });
   assert.equal(result.provenance.geometrySource, 'image_derived');
@@ -94,6 +101,11 @@ test('adapter checks provenance and isolates immutable attempt output', async (t
   assert.equal(result.assets.mesh.checksum, await sha256File(path.join(outputDir, 'mesh.obj')));
   assert.equal(result.metrics.postProcessing.processedAsset, null);
   assert.equal(JSON.parse(await fs.readFile(path.join(outputDir, 'provenance.json'))).synthetic, false);
+  assert.deepEqual(result.provenance.configuration, { resolvedFixtureSetting: true });
+  responseMode = 'wrong-input';
+  await assert.rejects(runReconstruction(study, { outputDir }), { code: 'RECONSTRUCTION_PROVENANCE_MISMATCH' });
+  responseMode = 'wrong-output';
+  await assert.rejects(runReconstruction(study, { outputDir }), { code: 'RECONSTRUCTION_ASSET_MISMATCH' });
   await fs.writeFile(videoPath, 'TAMPERED');
   await assert.rejects(runReconstruction(study, { outputDir, attemptId: 'contract' }), { code: 'VIDEO_CORRUPT' });
 });

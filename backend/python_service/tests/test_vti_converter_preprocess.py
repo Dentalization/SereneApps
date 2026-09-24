@@ -1,6 +1,8 @@
 import os
 import sys
 import unittest
+from unittest.mock import patch
+import numpy as np
 
 PY_SERVICE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if PY_SERVICE_ROOT not in sys.path:
@@ -9,10 +11,18 @@ if PY_SERVICE_ROOT not in sys.path:
 from services.vti_converter import (  # noqa: E402
     _crop_margin_voxels_for_spacing,
     _slice_normal_z_sign,
+    prepare_volume_for_vti,
 )
 
 
 class VtiPreprocessGeometryTests(unittest.TestCase):
+    def test_dicom_geometry_failure_does_not_write_unoriented_fallback(self):
+        volume = np.ones((2, 3, 4), dtype=np.float32)
+        with patch('services.vti_converter.read_dicom_volume', return_value=(volume, (1, 1, 1), (0, 0, 0), None)):
+            with patch('services.vti_converter.monai_preprocess', side_effect=RuntimeError('orientation failed')):
+                with self.assertRaisesRegex(RuntimeError, 'orientation failed'):
+                    prepare_volume_for_vti({}, ['controlled-fixture.dcm'], (0.5, 0.5, 0.5))
+
     def test_slice_normal_z_sign_detects_inferior_slice_direction(self):
         self.assertEqual(_slice_normal_z_sign([1, 0, 0, 0, -1, 0]), -1.0)
 

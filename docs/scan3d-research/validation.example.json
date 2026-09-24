@@ -19,7 +19,8 @@
     "device": null,
     "resolution": null,
     "generationMethod": null,
-    "voxelSize": null
+    "voxelSize": null,
+    "sha256": null
   },
   "surfaceSamples": 5000,
   "seed": 0,
@@ -54,5 +55,7 @@
     "maxIterations": 50,
     "tolerance": 1e-07
   },
-  "completenessTolerance": null
+  "completenessTolerance": null,
+  "sourceCoordinateSystem": null,
+  "referenceCoordinateSystem": null
 }

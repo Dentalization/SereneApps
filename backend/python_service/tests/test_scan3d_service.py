@@ -22,7 +22,34 @@ def request(token=None, body=None):
     return Request({'type': 'http', 'method': 'POST', 'path': '/reconstruct/3d-scan', 'headers': headers}, receive)
 
 
+def raw_request(token, body):
+    async def receive():
+        return {'type': 'http.request', 'body': body, 'more_body': False}
+    return Request({'type': 'http', 'method': 'POST', 'path': '/reconstruct/3d-scan',
+                    'headers': [(b'authorization', ('Bearer ' + token).encode())]}, receive)
+
+
 class ScanServiceTests(unittest.TestCase):
+    def test_thumbnail_slice_count_rejects_non_numeric_metadata(self):
+        self.assertEqual(main._metadata_slice_count({'num_slices': [1, 2]}), 1)
+        self.assertEqual(main._metadata_slice_count({'num_slices': '12'}), 12)
+        self.assertEqual(main._metadata_slice_count({'num_slices': float('nan')}), 1)
+        self.assertEqual(main._metadata_slice_count({'num_slices': -3}), 1)
+
+    def test_malformed_json_returns_client_error(self):
+        with patch.dict(os.environ, {'SCAN3D_SERVICE_TOKEN': 'test-only'}):
+            for endpoint in (main.reconstruct_3d_scan, main.lidra_analyze):
+                with self.assertRaises(HTTPException) as result:
+                    asyncio.run(endpoint(raw_request('test-only', b'{invalid')))
+                self.assertEqual(result.exception.status_code, 400)
+
+    def test_lidra_rejects_non_object_configuration(self):
+        with patch.dict(os.environ, {'SCAN3D_SERVICE_TOKEN': 'test-only'}):
+            with patch.object(main, '_scan_paths', return_value=('/tmp/attempt', '/tmp/video.mp4')):
+                with self.assertRaises(HTTPException) as result:
+                    asyncio.run(main.lidra_analyze(request('test-only', {'configuration': ['invalid']})))
+                self.assertEqual(result.exception.status_code, 422)
+
     def test_service_authentication_is_fail_closed(self):
         with patch.dict(os.environ, {'SCAN3D_SERVICE_TOKEN': ''}):
             with self.assertRaises(HTTPException) as result: main._scan_service_authorize(request())

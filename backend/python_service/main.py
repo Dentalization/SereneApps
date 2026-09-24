@@ -159,9 +159,19 @@ def _emit_conversion_status(event: dict) -> None:
     asyncio.run_coroutine_threadsafe(_broadcast_conversion_status(event), loop)
 
 
+def _metadata_slice_count(metadata: dict) -> int:
+    value = metadata.get('num_slices', 1)
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return 1
+    try:
+        return max(1, int(value))
+    except (ValueError, OverflowError):
+        return 1
+
+
 def _get_conversion_progress(study_id: str) -> dict:
     with _conversion_state_lock:
-        progress = _conversion_progress.get(str(study_id))
+        progress = _conversion_progress.get(study_id)
     if progress:
         return progress
     study_path = os.path.join(UPLOAD_DIR, study_id)
@@ -816,7 +826,7 @@ def get_series_thumbnail(study_id: str, series_uid: str, share_token: str | None
             handler = MoritaHandler(study_path)
             
         metadata = handler.get_metadata() or {}
-        num_slices = int(metadata.get('num_slices', 1) or 1)
+        num_slices = _metadata_slice_count(metadata)
         middle_index = max(0, num_slices // 2)
         image_bytes, headers = handler.get_slice('axial', middle_index)
         
@@ -1549,7 +1559,7 @@ def get_series_thumb(study_id: str, series_uid: str, share_token: str | None = N
             handler = MoritaHandler(study_path)
             
         metadata = handler.get_metadata() or {}
-        num_slices = int(metadata.get('num_slices', 1) or 1)
+        num_slices = _metadata_slice_count(metadata)
         middle_index = max(0, num_slices // 2)
         image_bytes, headers = handler.get_slice('axial', middle_index)
         return Response(content=image_bytes, media_type="image/jpeg", headers=headers)
@@ -2111,7 +2121,10 @@ def _run_scan_exclusively(study_dir, video_path, scan_scope, configuration):
 async def reconstruct_3d_scan(request: Request):
     """Internal service endpoint: experimental sparse video reconstruction."""
     _scan_service_authorize(request)
-    body = await request.json()
+    try:
+        body = await request.json()
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail="Invalid JSON scan request") from error
     study_dir, video_path = _scan_paths(body)
     try:
         return await asyncio.to_thread(_run_scan_exclusively,
@@ -2130,12 +2143,18 @@ async def reconstruct_3d_scan(request: Request):
 async def lidra_analyze(request: Request):
     """Internal measured acquisition endpoint. Anatomical coverage is unavailable."""
     _scan_service_authorize(request)
-    body = await request.json()
+    try:
+        body = await request.json()
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail="Invalid JSON scan request") from error
     study_dir, video_path = _scan_paths(body)
+    configuration = body.get("configuration")
+    if configuration is not None and not isinstance(configuration, dict):
+        raise HTTPException(status_code=422, detail="Scan configuration must be an object")
     try:
         return await asyncio.to_thread(analyze_video_acquisition,
             video_path=video_path, study_dir=study_dir, scan_scope=body.get("scanScope", "full"),
-            configuration=(body.get("configuration") or {}).get("frameSampling"))
+            configuration=(configuration or {}).get("frameSampling"))
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error))
     except Exception as error:
