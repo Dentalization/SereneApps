@@ -17,11 +17,37 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-// Change this to your computer's local IP when testing on physical device
-const LOCAL_IP = '192.168.1.2'; // Active computer LAN IP
+// Default LAN IP fallback when offline or untracked
+const LOCAL_IP = '10.40.36.133'; // Active computer LAN IP
 
-// Auto-detect environment
-const isSimulator = Constants.isDevice === false;
+// Auto-detect host from active Expo Metro bundler
+const guessExpoHost = () => {
+  const hostCandidates = [
+    Constants.expoConfig?.hostUri,
+    Constants.expoConfig?.debuggerHost,
+    Constants.expoGoConfig?.debuggerHost,
+    Constants.manifest?.hostUri,
+    Constants.manifest?.debuggerHost,
+    Constants.manifest2?.extra?.expoGo?.debuggerHost,
+  ].filter(Boolean);
+
+  for (const candidate of hostCandidates) {
+    const host = candidate.split(':')[0];
+    if (host && host !== 'localhost') {
+      return host;
+    }
+  }
+  return null;
+};
+
+const detectedHost = guessExpoHost();
+const ACTIVE_IP = detectedHost || LOCAL_IP;
+
+// Auto-detect environment (compatible with modern Expo SDK 54 where Constants.isDevice is deprecated)
+const isSimulator =
+  Constants.isDevice === false ||
+  Constants.deviceName?.toLowerCase?.().includes('simulator') ||
+  Platform.constants?.isTesting === true;
 
 // Shared extra config (Expo)
 const expoExtra = Constants.expoConfig?.extra || Constants.manifest?.extra || {};
@@ -35,15 +61,23 @@ const envAiUrl =
   process.env.EXPO_PUBLIC_AI_PROXY_URL ||
   expoExtra.aiProxyUrl;
 
-const localBackendUrl = isSimulator
+const localBackendUrl = isSimulator && Platform.OS === 'ios'
   ? 'http://localhost:4000/api'
-  : `http://${LOCAL_IP}:4000/api`;
+  : `http://${ACTIVE_IP}:4000/api`;
+
+const resolveBackendUrl = () => {
+  if (detectedHost && (!envBackendUrl || /^(https?:\/\/)?(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(envBackendUrl))) {
+    return isSimulator && Platform.OS === 'ios'
+      ? 'http://localhost:4000/api'
+      : `http://${detectedHost}:4000/api`;
+  }
+  return envBackendUrl || localBackendUrl;
+};
 
 // API Configuration
 export const API_CONFIG = {
   // Backend API (SereneApps backend)
-  BACKEND_URL: envBackendUrl
-    || localBackendUrl,
+  BACKEND_URL: resolveBackendUrl(),
   
   // AI diagnosis must use the Serene backend proxy. Service credentials are
   // intentionally never embedded in the mobile bundle.

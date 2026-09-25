@@ -63,30 +63,63 @@ export const formatScanIdentifier = (id) => {
   return str;
 };
 
-export const scanFailureMessage = (code, reason) => {
+export const scanFailureMessage = (code, reason, qualityAssessment) => {
+  const qualityReasons = qualityAssessment?.reasons || [];
+  if (code === 'RECONSTRUCTION_GEOMETRY_INSUFFICIENT') {
+    if (qualityReasons.includes('CAPTURE_TARGET_SCREEN_SUSPECTED')) {
+      return 'Video tampak merekam gambar gigi di layar. Kamera hanya mengamati bidang layar, bukan permukaan gigi 3D. Rekam gigi pasien atau model gigi fisik langsung, tanpa monitor di dalam frame.';
+    }
+    if (qualityReasons.includes('DENTAL_REGION_UNVERIFIED')) {
+      return 'Video dan mesh diagnostik tersimpan, tetapi sistem belum dapat membuktikan bahwa titik 3D berasal dari gigi. Area gigi perlu ditinjau pada frame; merekam ulang saja tidak mengubah status bukti ini.';
+    }
+    if (qualityReasons.includes('CAPTURE_NOT_DENTAL_READY') || qualityReasons.includes('TOO_FEW_REGISTERED_VIEWS')) {
+      return 'Area gigi belum cukup jelas atau belum terlihat dari beberapa posisi kamera. Rekam satu rahang dari geraham kiri ke kanan, pertahankan 2–3 gigi di frame, dan geser kamera perlahan.';
+    }
+    if (qualityReasons.includes('DENSE_MULTIVIEW_NOT_EXECUTED') || qualityReasons.includes('GEOMETRY_STILL_BEST_PAIR')) {
+      return 'Beberapa posisi kamera mungkin terdaftar, tetapi permukaan masih berasal dari terlalu sedikit tampilan. Rekam ulang dengan perpindahan kamera kecil dan tumpang tindih gigi yang konsisten.';
+    }
+    if (qualityReasons.includes('PER_TOOTH_OBSERVED_PATCH_UNAVAILABLE')) {
+      return 'Ada gigi atau permukaan yang belum memiliki patch 3D dari sedikitnya tiga tampilan. Lengkapi sudut kiri, depan, kanan, dan sisi kunyah pada satu rahang.';
+    }
+    if (qualityReasons.some(item => ['NON_MANIFOLD_TOPOLOGY', 'INCONSISTENT_FACE_WINDING', 'SELF_INTERSECTIONS_UNVERIFIED'].includes(item))) {
+      return 'Video menghasilkan geometri, tetapi mesh masih memiliki masalah topology. Simpan hasil diagnostik untuk pemeriksaan pipeline; merekam ulang belum tentu memperbaikinya.';
+    }
+  }
   const messages = {
     SCAN_SERVICE_NOT_CONFIGURED: 'Layanan pemrosesan 3D belum dikonfigurasi. Hubungi administrator; merekam ulang tidak akan memperbaiki masalah ini.',
     ACQUISITION_SERVICE_UNAVAILABLE: 'Layanan analisis video sedang tidak tersedia. Rekaman sudah tersimpan; coba proses ulang setelah layanan aktif.',
     ACQUISITION_UNAVAILABLE: 'Video belum dapat dianalisis oleh layanan pemrosesan. Rekaman sudah tersimpan; periksa layanan sebelum mencoba proses ulang.',
     CAPTURE_QUALITY_REJECTED: 'Video tidak memiliki cukup frame yang berbeda dan jelas. Rekam video baru dengan gerakan kamera perlahan.',
-    RECONSTRUCTION_GEOMETRY_INSUFFICIENT: 'Video menghasilkan geometri terlalu jarang untuk menjadi model gigi. Rekam video baru; arahkan kamera belakang lebih dekat ke gigi dan ulangi lintasan dari beberapa sudut.',
+    CAPTURE_TARGET_SCREEN_SUSPECTED: 'Video tampak merekam gambar gigi di monitor. Rekam gigi pasien atau model gigi fisik langsung; permukaan layar tidak dapat menjadi scan gigi 3D.',
+    DENTAL_REGION_REVIEW_REQUIRED: 'Video sudah tersimpan, tetapi area gigi pada frame belum diverifikasi. Rekonstruksi belum boleh dinyatakan siap sebelum area gigi ditinjau.',
+    RECONSTRUCTION_GEOMETRY_INSUFFICIENT: 'Bukti geometri belum cukup. Status ini belum menyertakan alasan tahap yang gagal; simpan video dan periksa rincian pemeriksaan sebelum memutuskan perlu rekam ulang atau perbaikan pipeline.',
   };
   return messages[code] || reason || 'Terjadi gangguan saat memproses rekonstruksi video.';
 };
 
+export const scanShouldRecapture = (code, qualityAssessment) => {
+  if (code !== 'RECONSTRUCTION_GEOMETRY_INSUFFICIENT') {
+    return ['CAPTURE_QUALITY_REJECTED', 'CAPTURE_TARGET_SCREEN_SUSPECTED', 'VIDEO_NOT_VERIFIED', 'VIDEO_CORRUPT', 'INVALID_VIDEO'].includes(code);
+  }
+  const reasons = qualityAssessment?.reasons || [];
+  if (reasons.includes('CAPTURE_TARGET_SCREEN_SUSPECTED')) return true;
+  return reasons.length > 0 && !reasons.includes('DENTAL_REGION_UNVERIFIED')
+    && !reasons.some(item => ['NON_MANIFOLD_TOPOLOGY', 'INCONSISTENT_FACE_WINDING', 'SELF_INTERSECTIONS_UNVERIFIED'].includes(item));
+};
+
 // Prompts follow time, not observed anatomy. They do not certify tooth coverage.
 export const captureGuideMessage = (elapsedSec) => {
-  if (elapsedSec < 8) return 'Mulai dari geraham kiri. Dekatkan kamera belakang dan jaga 2–3 gigi tetap terlihat.';
-  if (elapsedSec < 16) return 'Geser perlahan melewati gigi depan. Pertahankan tumpang tindih antar tampilan.';
-  if (elapsedSec < 24) return 'Lanjutkan sampai geraham kanan. Hindari gerakan cepat dan pantulan lampu.';
-  return 'Ambil sisi kunyah dan sisi pipi dari sudut berbeda; ulangi bagian yang belum terlihat.';
+  if (elapsedSec < 6) return 'Mulai dari geraham kiri: isi bingkai dengan 2–3 gigi; geser kamera pelan, jangan hanya diputar.';
+  if (elapsedSec < 12) return 'Pindah ke gigi depan: jaga gigi sebelumnya tetap terlihat untuk tumpang tindih antar tampilan.';
+  if (elapsedSec < 18) return 'Lanjut ke geraham kanan: pindah perlahan, hindari gerakan mulut dan pantulan lampu.';
+  return 'Ambil sisi kunyah dari sudut tambahan hanya pada gigi yang belum jelas, lalu selesai.';
 };
 
 export const captureReviewWarnings = (video) => {
   if (!video) return [];
   const warnings = [];
-  if (video.durationSec < 24) {
-    warnings.push('Rekaman singkat untuk satu rahang. Pastikan geraham kiri, gigi depan, dan geraham kanan terlihat dari beberapa sudut.');
+  if (video.durationSec < 12) {
+    warnings.push('Rekaman mungkin terlalu singkat untuk melintasi geraham kiri, gigi depan, dan geraham kanan dengan tumpang tindih. Durasi bukan bukti cakupan gigi.');
   }
   if (video.requestedResolution === '720p') {
     warnings.push('720p dipilih; detail gigi mungkin berkurang. Gunakan 1080p bila perangkat mendukung.');
@@ -139,7 +172,9 @@ const DentistScan3DContent = ({ navigation }) => {
   const [addPatientError, setAddPatientError] = useState('');
 
   // Scan Configuration & Active Scan state
-  const [scanArch, setScanArch] = useState('upper'); // Capture one arch per session.
+  const [scanArch, setScanArch] = useState('upper'); // A full-arch choice creates separate upper/lower scans.
+  const [fullArchPlan, setFullArchPlan] = useState(null);
+  const fullArchCreateRef = useRef(false);
   const [scanNotes, setScanNotes] = useState('');
   const [creatingScan, setCreatingScan] = useState(false);
   const [activeScanSession, setActiveScanSession] = useState(null);
@@ -173,6 +208,7 @@ const DentistScan3DContent = ({ navigation }) => {
   // Asynchronous Processing states (Phase 5)
   const [processingStatus, setProcessingStatus] = useState(null);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [showFailureDiagnostics, setShowFailureDiagnostics] = useState(false);
 
   useEffect(() => {
     if (scanStage === 'camera') {
@@ -221,12 +257,14 @@ const DentistScan3DContent = ({ navigation }) => {
   const handleSelectPatient = (patient) => {
     setSelectedPatient(patient);
     setActiveScanSession(null);
+    setFullArchPlan(null);
     setScanStage('setup');
   };
 
   const handleClearPatient = () => {
     setSelectedPatient(null);
     setActiveScanSession(null);
+    setFullArchPlan(null);
     setScanStage('setup');
   };
 
@@ -276,18 +314,57 @@ const DentistScan3DContent = ({ navigation }) => {
     if (!selectedPatient) return;
 
     setCreatingScan(true);
+    const pairedArch = scanArch === 'full';
     const result = await create3DScan({
       patientId: selectedPatient.id,
-      scanScope: scanArch,
+      scanScope: pairedArch ? 'upper' : scanArch,
       notes: scanNotes.trim() || undefined,
+      ...(pairedArch ? { metadata: { captureProtocol: {
+        mode: 'full_arch_pair', sequence: 1, arch: 'upper', expectedScopes: ['upper', 'lower'],
+      } } } : {}),
     });
     setCreatingScan(false);
 
     if (result.success && result.scan) {
       setActiveScanSession(result.scan);
+      setFullArchPlan(pairedArch ? { phase: 'upper', upperScanId: String(result.scan.id),
+        upperScanIdentifier: result.scan.scanIdentifier } : null);
       setScanStage('setup');
     } else {
       Alert.alert('Gagal Memulai Scan', result.message || 'Terjadi kesalahan sistem');
+    }
+  };
+
+  const handleContinueFullArch = async () => {
+    if (!selectedPatient || fullArchPlan?.phase !== 'upper' || fullArchCreateRef.current) return;
+    fullArchCreateRef.current = true;
+    setCreatingScan(true);
+    try {
+      const result = await create3DScan({
+        patientId: selectedPatient.id,
+        scanScope: 'lower',
+        notes: scanNotes.trim() || undefined,
+        metadata: { captureProtocol: { mode: 'full_arch_pair', sequence: 2,
+          arch: 'lower', pairedUpperScanId: fullArchPlan.upperScanId } },
+      });
+      if (!result.success || !result.scan) {
+        Alert.alert('Gagal Membuat Scan Rahang Bawah', result.message || 'Coba lagi tanpa mengulang rekaman rahang atas.');
+        return;
+      }
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+      setFullArchPlan({ ...fullArchPlan, phase: 'lower', lowerScanId: String(result.scan.id),
+        lowerScanIdentifier: result.scan.scanIdentifier });
+      setActiveScanSession(result.scan);
+      setRecordedVideo(null);
+      setRecordingDurationSec(0);
+      setProcessingStatus(null);
+      setScanStage('setup');
+    } finally {
+      fullArchCreateRef.current = false;
+      setCreatingScan(false);
     }
   };
 
@@ -301,12 +378,15 @@ const DentistScan3DContent = ({ navigation }) => {
       pollTimerRef.current = null;
     }
     setActiveScanSession(null);
+    setFullArchPlan(null);
+    fullArchCreateRef.current = false;
     setSelectedPatient(null);
     setScanNotes('');
     setRecordedVideo(null);
     setIsRecording(false);
     setRecordingDurationSec(0);
     setProcessingStatus(null);
+    setShowFailureDiagnostics(false);
     setScanStage('setup');
   };
 
@@ -376,7 +456,8 @@ const DentistScan3DContent = ({ navigation }) => {
           captureMetadata: buildScanCaptureMetadata({
             platform: Platform.OS, osVersion: Platform.Version,
             deviceModel: Platform.constants?.Model || null,
-            requested: { resolution: videoQuality, facing: 'back', torch: enableTorch, audio: false },
+            requested: { resolution: videoQuality, facing: 'back', torch: enableTorch, audio: false,
+              zoom: 0, selectedLens: Platform.OS === 'ios' ? 'builtInWideAngleCamera' : null },
             sizeInBytes, startedAt, elapsedMs, viewport: Dimensions.get('window'),
           }),
         });
@@ -544,6 +625,8 @@ const DentistScan3DContent = ({ navigation }) => {
                 videoQuality={videoQuality}
                 mute
                 facing="back"
+                zoom={0}
+                selectedLens={Platform.OS === 'ios' ? 'builtInWideAngleCamera' : undefined}
                 enableTorch={enableTorch}
                 onCameraReady={() => { setCameraReady(true); setCameraError(false); }}
                 onMountError={(event) => {
@@ -609,7 +692,7 @@ const DentistScan3DContent = ({ navigation }) => {
                   <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>
                     {isRecording
                       ? captureGuideMessage(recordingDurationSec)
-                      : `Satu rahang: ${activeScanSession?.scanScope === 'lower' ? 'BAWAH' : activeScanSession?.scanScope === 'upper' ? 'ATAS' : 'PILIH ATAS/BAWAH'}. Mulai dari geraham kiri; pastikan gigi memenuhi bingkai.`}
+                      : `${fullArchPlan ? `Full Arch ${fullArchPlan.phase === 'upper' ? '1/2' : '2/2'}` : 'Satu rahang'}: ${activeScanSession?.scanScope === 'lower' ? 'BAWAH' : 'ATAS'}. Arahkan ke gigi fisik, bukan foto atau monitor.`}
                   </Text>
                 </View>
               </View>
@@ -649,9 +732,9 @@ const DentistScan3DContent = ({ navigation }) => {
                 <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
                   {isRecording ? 'Tekan untuk Selesai' : cameraError ? 'Kamera Tidak Siap' : cameraReady ? 'Mulai Perekaman' : 'Menyiapkan Kamera...'}
                 </Text>
-                {isRecording && recordingDurationSec < 24 && (
+                {isRecording && recordingDurationSec < 18 && (
                   <Text style={{ color: '#E2E8F0', fontSize: 11, textAlign: 'center', marginTop: 4 }}>
-                    Panduan lintasan: {24 - recordingDurationSec} detik lagi · waktu bukan bukti cakupan gigi
+                    Panduan lintasan cepat: {18 - recordingDurationSec} detik lagi · lanjut jika ada gigi belum terlihat
                   </Text>
                 )}
               </View>
@@ -753,6 +836,37 @@ const DentistScan3DContent = ({ navigation }) => {
             </LinearGradient>
           </View>
 
+          {scanStage === 'processing' && fullArchPlan?.phase === 'upper'
+            && ['queued', 'processing', 'ready', 'failed'].includes(processingStatus?.status) && (
+            <Card style={[styles.card, { borderColor: '#DDD6FE', borderWidth: 1.5 }]} elevation={2}>
+              <Card.Content style={styles.cardContent}>
+                <Text variant="titleMedium" style={styles.sectionTitle}>Full Arch · Langkah 2 dari 2</Text>
+                <Text variant="bodySmall" style={styles.sectionSubtitle}>
+                  Video rahang atas tersimpan sebagai {formatScanIdentifier(fullArchPlan.upperScanIdentifier)}.
+                  Rekam rahang bawah sebagai sesi terpisah; kedua mesh tidak digabung otomatis.
+                </Text>
+                <Button mode="contained" icon="camera" onPress={handleContinueFullArch}
+                  loading={creatingScan} disabled={creatingScan} style={styles.actionBtnPrimary} buttonColor="#62109F">
+                  Lanjut Rekam Rahang Bawah
+                </Button>
+              </Card.Content>
+            </Card>
+          )}
+
+          {scanStage === 'processing' && fullArchPlan?.phase === 'lower'
+            && ['queued', 'processing', 'ready', 'failed'].includes(processingStatus?.status) && (
+            <Card style={[styles.card, { borderColor: '#DDD6FE', borderWidth: 1.5 }]} elevation={2}>
+              <Card.Content style={styles.cardContent}>
+                <Text variant="titleMedium" style={styles.sectionTitle}>Full Arch · Dua Rekaman Tersimpan</Text>
+                <Text variant="bodySmall" style={styles.sectionSubtitle}>
+                  Atas: {formatScanIdentifier(fullArchPlan.upperScanIdentifier)} ·
+                  Bawah: {formatScanIdentifier(fullArchPlan.lowerScanIdentifier)}.
+                  Status dan kualitas setiap rahang diperiksa terpisah di X-Core; belum ada mesh gabungan.
+                </Text>
+              </Card.Content>
+            </Card>
+          )}
+
           {/* REVIEW STATE */}
           {scanStage === 'review' && recordedVideo ? (
             <Card style={styles.card} elevation={2}>
@@ -797,7 +911,9 @@ const DentistScan3DContent = ({ navigation }) => {
                   </View>
                   <View style={styles.linkageRow}>
                     <Text style={styles.linkageLabel}>Target Lengkung:</Text>
-                    <Text style={styles.linkageValue}>{activeScanSession?.scanScope?.toUpperCase()}</Text>
+                    <Text style={styles.linkageValue}>{fullArchPlan
+                      ? `FULL ARCH · ${fullArchPlan.phase === 'upper' ? 'ATAS 1/2' : 'BAWAH 2/2'}`
+                      : activeScanSession?.scanScope?.toUpperCase()}</Text>
                   </View>
                   <View style={styles.linkageRow}>
                     <Text style={styles.linkageLabel}>Scan Identifier:</Text>
@@ -822,7 +938,7 @@ const DentistScan3DContent = ({ navigation }) => {
                   </View>
                 ))}
                 <Text variant="bodySmall" style={{ color: '#64748B', marginBottom: 8 }}>
-                  Aplikasi belum memverifikasi jumlah gigi atau cakupan anatomi. Tinjau rekaman Anda sendiri sebelum mengunggah.
+                  Pastikan video merekam gigi pasien atau model fisik langsung, bukan gigi yang tampil di layar. Aplikasi belum memverifikasi jumlah gigi atau cakupan anatomi.
                 </Text>
 
                 {/* Actions */}
@@ -999,8 +1115,28 @@ const DentistScan3DContent = ({ navigation }) => {
                         Rekonstruksi 3D Gagal
                       </Text>
                       <Text variant="bodySmall" style={styles.cardSubtitle}>
-                        {scanFailureMessage(processingStatus?.job?.failureCode, processingStatus?.failureReason)}
+                        {scanFailureMessage(processingStatus?.job?.failureCode, processingStatus?.failureReason,
+                          processingStatus?.qualityAssessment)}
                       </Text>
+                      {processingStatus?.qualityAssessment?.reasons?.length ? (
+                        <>
+                          <Button compact mode="text" onPress={() => setShowFailureDiagnostics(value => !value)}>
+                            {showFailureDiagnostics ? 'Sembunyikan' : 'Lihat'} detail teknis ({processingStatus.qualityAssessment.reasons.length})
+                          </Button>
+                          {showFailureDiagnostics && (
+                            <Text style={styles.failureCode}>
+                              {processingStatus.qualityAssessment.reasons.join(', ')}
+                            </Text>
+                          )}
+                        </>
+                      ) : null}
+                      {processingStatus?.qualityAssessment ? (
+                        <Text style={styles.failureCode}>
+                          View terdaftar: {processingStatus.qualityAssessment.registeredFrames ?? '—'} ·
+                          Vertex: {processingStatus.qualityAssessment.vertexCount ?? '—'} ·
+                          Face: {processingStatus.qualityAssessment.faceCount ?? '—'}
+                        </Text>
+                      ) : null}
                       {processingStatus?.job?.failureCode ? (
                         <Text style={styles.failureCode}>Kode: {processingStatus.job.failureCode}</Text>
                       ) : null}
@@ -1011,9 +1147,18 @@ const DentistScan3DContent = ({ navigation }) => {
                   </View>
 
                   <View style={styles.cardActionGroup}>
-                    {['CAPTURE_QUALITY_REJECTED', 'RECONSTRUCTION_GEOMETRY_INSUFFICIENT', 'VIDEO_NOT_VERIFIED', 'VIDEO_CORRUPT', 'INVALID_VIDEO'].includes(processingStatus?.job?.failureCode) ? (
+                    {scanShouldRecapture(processingStatus?.job?.failureCode, processingStatus?.qualityAssessment) ? (
                       <Button mode="contained" icon="video" onPress={handleRetryRecording}
                         style={styles.actionBtnPrimary} buttonColor="#62109F">Rekam Video Baru</Button>
+                    ) : processingStatus?.qualityAssessment?.reasons?.includes('DENTAL_REGION_UNVERIFIED') ? (
+                      <Text style={styles.failureCode}>
+                        Rekaman lama tetap tersedia untuk review area gigi dan mesh diagnostik di X-Core.
+                      </Text>
+                    ) : processingStatus?.job?.failureCode === 'RECONSTRUCTION_GEOMETRY_INSUFFICIENT'
+                      && !processingStatus?.qualityAssessment?.reasons?.length ? (
+                      <Text style={styles.failureCode}>
+                        Rincian tahap belum tersedia. Periksa status scan terbaru dan pertahankan video asli untuk diagnosis.
+                      </Text>
                     ) : (
                       <Button mode="contained" icon="refresh" loading={isRetrying} disabled={isRetrying}
                         onPress={handleRetryProcessing} style={styles.actionBtnPrimary} buttonColor="#62109F">
@@ -1109,8 +1254,19 @@ const DentistScan3DContent = ({ navigation }) => {
 
                 <View style={styles.infoRowDivider}>
                   <Text style={styles.infoLabel}>Target Lengkung:</Text>
-                  <Text style={styles.infoValue}>{activeScanSession.scanScope?.toUpperCase()}</Text>
+                  <Text style={styles.infoValue}>{fullArchPlan
+                    ? `FULL ARCH · ${fullArchPlan.phase === 'upper' ? 'ATAS 1/2' : 'BAWAH 2/2'}`
+                    : activeScanSession.scanScope?.toUpperCase()}</Text>
                 </View>
+
+                {fullArchPlan?.phase === 'lower' && (
+                  <View style={styles.infoRowDivider}>
+                    <Text style={styles.infoLabel}>Scan Rahang Atas:</Text>
+                    <Text style={styles.infoValue} numberOfLines={1}>
+                      {formatScanIdentifier(fullArchPlan.upperScanIdentifier)}
+                    </Text>
+                  </View>
+                )}
 
                 <View style={styles.infoRowDivider}>
                   <Text style={styles.infoLabel}>Status Sesi:</Text>
@@ -1321,23 +1477,28 @@ const DentistScan3DContent = ({ navigation }) => {
                     {/* Full Arch */}
                     <TouchableOpacity
                       activeOpacity={0.8}
-                      disabled
+                      onPress={() => setScanArch('full')}
                       style={[
                         styles.archSegmentCard,
-                        { opacity: 0.5 },
+                        scanArch === 'full' && styles.archSegmentCardActive,
                       ]}
                     >
-                      <View style={styles.archIconCircle}>
+                      <View style={[styles.archIconCircle, scanArch === 'full' && styles.archIconCircleActive]}>
                         <MaterialCommunityIcons
                           name="tooth-outline"
                           size={20}
-                          color="#64748B"
+                          color={scanArch === 'full' ? '#62109F' : '#64748B'}
                         />
                       </View>
-                      <Text style={styles.archSegmentTitle}>
+                      <Text style={[styles.archSegmentTitle, scanArch === 'full' && styles.archSegmentTitleActive]}>
                         Full Arch
                       </Text>
-                      <Text style={styles.archSegmentSubtitle}>2 sesi terpisah</Text>
+                      <Text style={styles.archSegmentSubtitle}>Atas + Bawah</Text>
+                      {scanArch === 'full' && (
+                        <View style={styles.archCheckDot}>
+                          <MaterialCommunityIcons name="check" size={10} color="#FFFFFF" />
+                        </View>
+                      )}
                     </TouchableOpacity>
 
                     {/* Maxilla (Atas) */}
@@ -1396,7 +1557,9 @@ const DentistScan3DContent = ({ navigation }) => {
                   </View>
 
                   <Text variant="bodySmall" style={{ color: '#64748B', marginTop: 8, lineHeight: 18 }}>
-                    Rekam rahang atas dan bawah sebagai sesi terpisah. Satu video untuk kedua rahang belum menghasilkan model tiap gigi yang andal.
+                    {scanArch === 'full'
+                      ? 'Full Arch merekam rahang atas lalu bawah dalam dua video singkat dan dua sesi yang saling ditautkan. Hasilnya diperiksa per rahang; belum menjadi satu mesh gabungan.'
+                      : 'Rekam satu rahang per sesi. Pilih Full Arch untuk alur berurutan rahang atas lalu bawah.'}
                   </Text>
 
                   <TextInput

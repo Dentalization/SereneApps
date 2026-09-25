@@ -15,8 +15,13 @@ from research.validation import (rigid_matrix, kabsch, transform_points, sample_
                                 transformed_mesh, evaluate, repeatability, require_research_source, register)
 from research.dataset import audit_dataset, dataset_layout, derive_reference
 from research.reproduce import reproduce
-from services.lidra_service import analyze_video_acquisition
-from services.reconstruction_service import triangulate_verified, process_3d_scan_reconstruction, mesh_topology_diagnostics, ReconstructionUnavailable
+from research.dental_roi_prepare import prepare as prepare_dental_review
+from services.lidra_service import analyze_video_acquisition, display_border_evidence, file_sha256
+from services.reconstruction_service import triangulate_verified, process_3d_scan_reconstruction, mesh_topology_diagnostics, select_reconstruction_views, ReconstructionUnavailable
+from services.dense_multiview_stereo import dense_multiview_surface, _candidate_pairs
+from services.dental_region_evidence import normalize_regions
+from services.per_tooth_support import summarize_tooth_support
+from services.mesh_surface_audit import self_intersection_report
 
 
 class SurfaceSoftwareTests(unittest.TestCase):
@@ -92,11 +97,135 @@ class SurfaceSoftwareTests(unittest.TestCase):
 
 
 class AcquisitionSoftwareTests(unittest.TestCase):
+    def test_display_border_requires_two_persistent_frame_edges(self):
+        image = np.full((400, 240, 3), 130, np.uint8)
+        image[78:100] = 8
+        image[382:400] = 8
+        self.assertTrue(display_border_evidence(image)['suspectedDisplayBorder'])
+        image[382:400] = 130
+        self.assertFalse(display_border_evidence(image)['suspectedDisplayBorder'])
+
+    def test_dense_pair_budget_keeps_both_ends_of_full_arch_sweep(self):
+        pairs = _candidate_pairs(list(range(8)), 12)
+        self.assertEqual(len(pairs), 12)
+        self.assertEqual(pairs[:7], [(index, index + 1) for index in range(7)])
+        self.assertIn((0, 1), pairs)
+        self.assertIn((6, 7), pairs)
+        self.assertNotIn((0, 7), pairs)
+
+    def test_offline_review_page_prepares_frames_without_inventing_polygons(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / 'review-fixture.avi'
+            writer = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*'MJPG'), 10, (160, 120))
+            self.assertTrue(writer.isOpened())
+            for index in range(4):
+                writer.write(np.full((120, 160, 3), index * 30 + 30, np.uint8))
+            writer.release()
+            template_path = prepare_dental_review(video, root / 'private-review', 4)
+            template = json.loads(template_path.read_text())
+            self.assertEqual(template['videoSha256'], file_sha256(video))
+            self.assertTrue(all(item['polygon'] is None for item in template['frames']))
+            page = (template_path.parent / 'annotate.html').read_text()
+            self.assertIn('operator_annotated_unverified', page)
+            self.assertIn('data:image/jpeg;base64,', page)
+            self.assertNotIn('"polygon":[[', page)
+
+    def test_reconstruction_view_budget_preserves_new_declared_region(self):
+        frames = [{"frameIndex": index, "visibleRegions": ["left"] if index != 4 else ["right"],
+                   "dentalFeatureCount": 100, "medianDentalDisplacementPx": 5} for index in range(8)]
+        chosen, report = select_reconstruction_views(frames, 3)
+        self.assertEqual([frame["frameIndex"] for frame in chosen], [0, 4, 7])
+        self.assertEqual(report["translationStatus"], "physical_camera_translation_not_measured")
+
+    def test_self_intersection_audit_checks_nonadjacent_triangles(self):
+        vertices = np.array([[0, 0, 0], [2, 0, 0], [0, 2, 0],
+                             [.5, .5, -1], [.5, .5, 1], [1.5, .5, 1]], float)
+        result = self_intersection_report(vertices, np.array([[0, 1, 2], [3, 4, 5]]))
+        self.assertEqual(result['status'], 'evaluated')
+        self.assertGreater(result['count'], 0)
+
+    def test_tooth_report_counts_projected_support_without_claiming_completeness(self):
+        vertices = np.array([[0, 0, 4], [.1, 0, 4], [0, .1, 4]], float)
+        faces = np.array([[0, 1, 2]])
+        views = [{"frameIndex": i} for i in range(3)]
+        poses = {i: (np.eye(3), np.zeros(3)) for i in range(3)}
+        k = np.array([[100, 0, 50], [0, 100, 50], [0, 0, 1]], float)
+        tooth = {"expectedToothIds": [11], "frames": [
+            {"frameIndex": i, "toothRegions": [{"fdi": 11,
+                "polygon": [[.4, .4], [.6, .4], [.6, .6], [.4, .6]]}]} for i in range(3)]}
+        report = summarize_tooth_support(vertices, faces, views, poses, k, tooth, (100, 100))
+        self.assertEqual(report['status'], 'projection_support_only')
+        self.assertEqual(report['teeth'][0]['verticesInThreeOrMoreViews'], 3)
+        self.assertIsNone(report['teeth'][0]['anatomicalSurfaceCompleteness'])
+        self.assertFalse(report['teeth'][0]['labelVerified'])
+        observed = summarize_tooth_support(vertices, faces, views, poses, k, tooth, (100, 100),
+                                            vertex_view_bits=np.full(3, 0b011, dtype=np.uint16))
+        self.assertEqual(observed['status'], 'observed_multiview_support_only')
+        self.assertEqual(observed['teeth'][0]['verticesInThreeOrMoreViews'], 0)
+
+    def test_dental_annotations_are_bound_to_video_and_each_frame(self):
+        record = {"source": "operator_annotated_unverified", "reviewer": "software-test", "videoSha256": "a" * 64,
+                  "expectedRegions": ["anterior"], "frames": [
+                    {"frameIndex": i, "polygon": [[.1, .1], [.9, .1], [.9, .9], [.1, .9]],
+                     "mouthStable": True, "visibleRegions": ["anterior"]} for i in (0, 4)]}
+        self.assertEqual(sorted(normalize_regions(record, "a" * 64, 5)), [0, 4])
+        with self.assertRaisesRegex(ValueError, 'exact source video'):
+            normalize_regions(record, "b" * 64, 5)
+        with self.assertRaisesRegex(ValueError, 'mouth-stability'):
+            normalize_regions({**record, "frames": [{**record["frames"][0], "mouthStable": None},
+                                                  record["frames"][1]]}, "a" * 64, 5)
+
+    def test_dense_cpu_stereo_requires_consensus_of_three_observed_views(self):
+        # Controlled planar software fixture checks actual OpenCV depth/fusion execution.
+        # It is not dental data or a reconstruction-accuracy experiment.
+        base = np.random.default_rng(11).integers(30, 220, (240, 320), dtype=np.uint8)
+        images = [cv2.cvtColor(cv2.warpAffine(base, np.float32([[1, 0, -shift], [0, 1, 0]]),
+                       (320, 240)), cv2.COLOR_GRAY2BGR) for shift in (0, 12, 24)]
+        masks = [np.full((240, 320), 255, np.uint8) for _ in images]
+        intrinsic = np.array([[500, 0, 160], [0, 500, 120], [0, 0, 1]], float)
+        poses = {i: (np.eye(3), np.array([-0.096 * i, 0, 0])) for i in range(3)}
+        two_view, two_evidence = dense_multiview_surface(images[:2], masks[:2], intrinsic,
+                                                           {i: poses[i] for i in (0, 1)})
+        self.assertIsNone(two_view)
+        self.assertEqual(two_evidence['status'], 'insufficient_registered_views')
+        dense, evidence = dense_multiview_surface(images, masks, intrinsic, poses)
+        self.assertEqual(evidence['status'], 'executed')
+        self.assertGreater(len(dense[0]), 100)
+        self.assertGreater(len(dense[1]), 100)
+        self.assertEqual(len({view for pair in evidence['pairFrames'] for view in pair}), 3)
+        self.assertEqual(len(dense[0]), len(dense[2]))
+        self.assertTrue(all(int(bits).bit_count() >= 3 for bits in dense[2]))
+        self.assertTrue(np.all(dense[3] >= 2))
+
+    def test_dense_surface_keeps_new_supported_regions_from_multiple_pairs(self):
+        # Four-view planar software fixture; this tests patch union, not dental coverage.
+        base = np.random.default_rng(11).integers(30, 220, (240, 320), dtype=np.uint8)
+        images = [cv2.cvtColor(cv2.warpAffine(base, np.float32([[1, 0, -shift], [0, 1, 0]]),
+                       (320, 240)), cv2.COLOR_GRAY2BGR) for shift in (0, 12, 24, 36)]
+        masks = [np.full((240, 320), 255, np.uint8) for _ in images]
+        masks[0][:, 190:] = 0
+        masks[3][:, :130] = 0
+        intrinsic = np.array([[500, 0, 160], [0, 500, 120], [0, 0, 1]], float)
+        poses = {i: (np.eye(3), np.array([-0.096 * i, 0, 0])) for i in range(4)}
+        dense, report = dense_multiview_surface(images, masks, intrinsic, poses)
+        self.assertEqual(report['status'], 'executed')
+        self.assertGreaterEqual(len(report['surfacePatches']), 2)
+        self.assertGreater(len(np.unique(dense[4])), 1)
+        self.assertEqual(len(dense[1]), len(dense[4]))
+        self.assertTrue(all(int(bits).bit_count() >= 3 for bits in dense[2]))
+
     def test_mesh_topology_reports_fragments_without_claiming_anatomy(self):
         faces = np.array([[0, 1, 2], [1, 2, 3], [4, 5, 6]], dtype=int)
-        self.assertEqual(mesh_topology_diagnostics(8, faces), {
-            'connectedComponents': 2, 'largestComponentFaces': 2,
-            'largestComponentFaceFraction': 2 / 3, 'usedVertices': 7, 'isolatedVertices': 1})
+        topology = mesh_topology_diagnostics(8, faces)
+        self.assertEqual(topology['connectedComponents'], 2)
+        self.assertEqual(topology['largestComponentFaces'], 2)
+        self.assertEqual(topology['largestComponentFaceFraction'], 2 / 3)
+        self.assertEqual(topology['usedVertices'], 7)
+        self.assertEqual(topology['isolatedVertices'], 1)
+        self.assertEqual(topology['nonManifoldEdges'], 0)
+        self.assertEqual(topology['inconsistentWindingEdges'], 1)
+        self.assertFalse(topology['watertight'])
         with self.assertRaisesRegex(ValueError, 'invalid vertex'):
             mesh_topology_diagnostics(3, np.array([[0, 1, 3]]))
 
@@ -147,14 +276,24 @@ class AcquisitionSoftwareTests(unittest.TestCase):
                     if 7 <= x < 633 and 7 <= y < 473: image[y-6:y+7, x-6:x+7] = texture
                 writer.write(cv2.cvtColor(image, cv2.COLOR_GRAY2BGR))
             writer.release()
+            region = {"source": "operator_annotated_unverified", "reviewer": "synthetic_software_fixture_only",
+                      "videoSha256": file_sha256(video), "expectedRegions": ["synthetic_fixture"],
+                      "frames": [{"frameIndex": i, "polygon": [[0.01, 0.01], [0.99, 0.01], [0.99, 0.99], [0.01, 0.99]],
+                                  "mouthStable": True, "visibleRegions": ["synthetic_fixture"]} for i in range(12)]}
+            sampling = {"strategy": "geometry_aware", "minPixelDifference": .1, "dentalRegions": region}
             result = process_3d_scan_reconstruction(str(Path(tmp) / 'output'), video_path=video,
-                configuration={'frameSampling': {'minPixelDifference': .1}, 'reconstruction': {'parameters': {'maxViews': 4}}})
+                configuration={'frameSampling': sampling, 'reconstruction': {'parameters': {'maxViews': 4}}})
             self.assertTrue(result['success'])
             self.assertGreaterEqual(result['metadata']['vertexCount'], 20)
             self.assertGreater(result['metadata']['faceCount'], 0)
             self.assertGreaterEqual(result['metadata']['meshTopology']['connectedComponents'], 1)
             self.assertIn('firstFrame', result['metadata']['bestPair'])
             self.assertGreaterEqual(len(result['cameraTrajectory']), 3)
+            self.assertGreater(result['metadata']['multiViewSparse']['pointCount'], 0)
+            self.assertGreaterEqual(len(result['metadata']['multiViewSparse']['contributingFrames']), 3)
+            adjustment = result['metadata']['multiViewSparse']['bundleAdjustment']
+            self.assertIn(adjustment['status'], ('executed', 'initial_solution_retained', 'rejected_no_improvement'))
+            self.assertIn('initialMedianReprojectionPx', adjustment)
             self.assertEqual(result['metadata']['registeredFrames'], len(result['cameraTrajectory']))
             self.assertTrue(any(view['provenance'] == 'pnp_ransac' for view in result['cameraTrajectory']))
             self.assertEqual(len(result['metadata']['featureSupport']['normalizedBounds']), 4)
@@ -163,7 +302,7 @@ class AcquisitionSoftwareTests(unittest.TestCase):
             self.assertEqual(result['metadata']['measurementCapability'], 'visualization_only')
             self.assertFalse(result['metadata']['validated'])
             self.assertTrue(all(len(a['sha256']) == 64 for a in result['assets'].values()))
-            replay = reproduce(video, {'frameSampling': {'minPixelDifference': .1},
+            replay = reproduce(video, {'frameSampling': sampling,
                                'reconstruction': {'parameters': {'maxViews': 4}}},
                                Path(tmp) / 'repeat-output', 'synthetic_fixture')
             replay_manifest = json.loads(Path(replay['manifest']).read_text())
@@ -174,24 +313,31 @@ class AcquisitionSoftwareTests(unittest.TestCase):
                              {k: v['sha256'] for k, v in repeat['assets'].items()})
             self.assertIn('maxFeatures', result['metadata']['configuration']['reconstruction']['parameters'])
             self.assertIn('minSharpness', result['metadata']['configuration']['frameSampling'])
-            self.assertEqual(len(result['metadata']['reproducibility']['sourceSha256']), 3)
+            self.assertEqual(len(result['metadata']['reproducibility']['sourceSha256']), 8)
             self.assertTrue(all('sha256' in f for f in result['metadata']['selectedFrames']))
+            global_diagnostic = process_3d_scan_reconstruction(str(Path(tmp) / 'global-diagnostic'),
+                video_path=video, configuration={'frameSampling': {'strategy': 'uniform',
+                    'maxFrames': 12, 'minPixelDifference': .1},
+                    'reconstruction': {'parameters': {'maxViews': 4}}})
+            self.assertTrue(global_diagnostic['metadata']['diagnosticOnly'])
+            self.assertEqual(global_diagnostic['metadata']['denseMultiView']['status'], 'disabled_global_diagnostic')
+            self.assertEqual(global_diagnostic['metadata']['dentalEvidence']['status'], 'unavailable')
             reuse_dir = Path(tmp) / 'reuse-output'
-            measured = analyze_video_acquisition(video, str(reuse_dir), configuration={'minPixelDifference': .1})
+            measured = analyze_video_acquisition(video, str(reuse_dir), configuration=sampling)
             self.assertEqual(measured['status'], 'ready')
             with patch('services.reconstruction_service.analyze_video_acquisition', side_effect=AssertionError('video analyzed twice')):
                 reused = process_3d_scan_reconstruction(str(reuse_dir), video_path=video,
-                    configuration={'frameSampling': {'minPixelDifference': .1}, 'reconstruction': {'parameters': {'maxViews': 4}}})
+                    configuration={'frameSampling': sampling, 'reconstruction': {'parameters': {'maxViews': 4}}})
             self.assertEqual(reused['metadata']['acquisitionSource'], 'verified_persisted_report')
             self.assertEqual([(f['frameIndex'], f['sha256']) for f in reused['metadata']['selectedFrames']],
                              [(f['frameIndex'], f['sha256']) for f in measured['selectedFrames']])
             tampered_dir = Path(tmp) / 'tampered-output'
-            tampered = analyze_video_acquisition(video, str(tampered_dir), configuration={'minPixelDifference': .1})
+            tampered = analyze_video_acquisition(video, str(tampered_dir), configuration=sampling)
             first_frame = tampered_dir / 'frames' / tampered['selectedFrames'][0]['fileName']
             first_frame.write_bytes(b'tampered software fixture')
             with self.assertRaisesRegex(ReconstructionUnavailable, 'checksum mismatch'):
                 process_3d_scan_reconstruction(str(tampered_dir), video_path=video,
-                    configuration={'frameSampling': {'minPixelDifference': .1}})
+                    configuration={'frameSampling': sampling})
             with self.assertRaisesRegex(ValueError, 'already exists'):
                 process_3d_scan_reconstruction(str(Path(tmp) / 'output'), video_path=video)
 

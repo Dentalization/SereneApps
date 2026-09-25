@@ -1,58 +1,58 @@
 # Graph Report - SereneApps  (2026-09-25)
 
 ## Corpus Check
-- 1411 files · ~3,767,639 words
+- 1423 files · ~3,780,420 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 179 file(s) not represented in the graph (top: .jsonl 96, .csv 25, (none) 13)
 
 ## Summary
-- 10922 nodes · 23490 edges · 583 communities (503 shown, 80 thin omitted)
-- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 721 edges (avg confidence: 0.87)
+- 11040 nodes · 23700 edges · 590 communities (515 shown, 75 thin omitted)
+- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 723 edges (avg confidence: 0.87)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `376e3956`
+- Built from commit: `3875fcc5`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- webhooks/midtrans.js
+- reconcileJob.js
 - ref_react
-- @expo/vector-icons
+- react-native
 - ref_node_assert
 - VolumeViewer3D.jsx
 - main.py
 - aiDiagnosisService.js
 - cornerstoneWADOImageLoaderWebWorker.min.js
-- formatters.js
+- resolveMediaUrl
 - test_scan3d_research.py
-- MetadataPanel.jsx
+- branches/index.jsx
 - reconstruction_service.py
 - xcore-cdss-benchmark.cjs
 - vti_converter.py
 - 🎯 Complete Deployment Guide - SereneAI Staging
 - dentist-portal.js
-- SearchScreen.jsx
+- PatientTeledentistryScreen.jsx
 - otp/index.js
-- authenticateToken
-- server.js
-- dentist-portal/schedule/index.jsx
+- services/payments/status.js
+- clinicProfile.js
+- patient/index.jsx
 - xCoreController.js
 - PatientAIResult.jsx
-- clinicReportInsights.js
-- xCoreAnalysisCaseService.js
+- dentist-portal/teledentistry/index.jsx
+- payments.js
 - mobile/package.json
 - DentistScan3DScreen.jsx
-- AddNewEMR.jsx
-- useToast
+- ClinicService
+- DentistSpecialtyScreen.jsx
 - 🗓️ Mobile Patient App - Development Roadmap
 - clinic-portal/teledentistry/index.jsx
-- LanguageContext.jsx
-- useLanguage
+- SearchScreen.jsx
+- Routes.jsx
 - EndoCaseDetail.jsx
 - registerOdontogram
 - routes/communications.js
-- endoCore.js
+- xCoreAnalysisPdf.js
 - 📊 Session Summary - Infrastructure & Documentation Complete
 - 👨‍⚕️ Dentist Detail Screen - Data Specifications
 - dependencies
@@ -63,26 +63,26 @@
 - backend/src/services/clinicTeledentistryService.js
 - LoginScreen.jsx
 - query
-- MoritaHandler
+- os
 - Gallery.jsx
 - treatmentPlans.js
-- DashboardNavigator.jsx
+- DashboardScreen.jsx
 - MarketingView.jsx
 - backend_src_generated_prisma_index
-- admin-dashboard.js
-- patient/index.jsx
-- Complete Appointment Flow
-- @prisma/client
-- PreferencesContext.jsx
+- server.js
+- AddNewEMR.jsx
+- services/api.js
+- routes/financials.js
+- useLanguage
 - web/package.json
 - inventory/index.jsx
 - dependencies
 - chat_messages
 - ClinicPlatformOversight.jsx
 - specialistWorkspace.js
-- xCoreRoutes.js
+- scan3d.integrity.test.js
 - api_inti/scripts/utils.js
-- backend/package.json
+- dependencies
 - 🎨 SereneAI Mobile App - Complete Color Guidelines
 - clinic.js
 - analyze_repeated.py
@@ -90,7 +90,7 @@
 - routes/appointments.js
 - 👨‍⚕️ Dentist Detail Screen - Data Specifications
 - segment_teeth_from_mesh
-- staff/index.jsx
+- ref_fs
 - run-k6-load-tests.cjs
 - properties
 - attachmentStorageService.js
@@ -99,18 +99,18 @@
 - AnnotationCanvas.jsx
 - recordCommunicationEvent
 - Panduan Menjalankan Pengujian Skripsi SereneApps
-- analyze.py
+- staff/index.jsx
 - 027_add_services_tables.sql
 - 📘 Error Code Reference - SereneAI API
-- bcrypt
-- DashboardScreen.jsx
+- @prisma/client
+- analyze.py
 - 03-create-appointment.k6.js
 - PaymentsView.jsx
 - DicomHandler
 - SereneAI Mobile API - Implementation Summary
-- useNearbyDentists.js
+- DentistSearchScreen.jsx
 - expo
-- os
+- scan_dicom_series
 - emrRecords.js
 - useDentalAPI.js
 - dentistAIChatService.js
@@ -126,39 +126,39 @@
 - ✅ Testing Checklist by Feature
 - core_api_high_vu.k6.js
 - OperationalView.jsx
-- AdvancedOdontogram.jsx
+- xCoreAnalysisCaseController.js
 - annotationPerformance.mjs
 - diagnosticsService.js
 - i18n-audit.mjs
 - deepDentalAiContract.test.mjs
 - clinic_branches
-- morita_volume.py
+- properties
 - SereneApps Healthtech Platform Blueprint Final
 - .application
 - generate-paper-ready-tables.cjs
 - run_repeated.sh
 - reportUtils.js
 - 📱 Detailed Notification Specifications
-- appointment/screens/ClinicDetailScreen.jsx
+- VisualFindingsCard.jsx
 - 📱 Detailed Notification Specifications
 - chatService.js
 - deepDentalClient.mjs
-- status
+- Payments, invoices, ledger, settlement
+- xCoreRoutes.js
+- PatientReports.jsx
+- queueNotificationEvent
 - clinicsController.js
-- patients/index.jsx
-- BookingSlotScreen.jsx
-- services/payments/status.js
 - xCoreAnnotationValidation.js
 - reconstructionEngineRegistry.js
 - Phase 1–18 audit and implementation report
-- verifiedCaseWorkspaceService.js
+- createVerifiedCaseWorkspaceStore
 - handleSummary
-- midtransService.js
+- AdvancedOdontogram.jsx
 - MainApplication.kt
 - 034_create_treatment_plans.sql
 - 060_create_xcore_analysis_cases.sql
-- Patient clinical data & treatment planning
-- queueNotificationEvent
+- getAccessToken
+- ref_crypto
 - Clinic Services & Public Profile Implementation
 - annotationQuality.js
 - ensure_gallery_tables.sql
@@ -172,16 +172,16 @@
 - xcore.clinic-access.routes.test.js
 - generate-synthetic-dental-fixtures.cjs
 - properties
-- react-native
-- run-latency-tests.js
+- react-native-paper
+- ScanServiceTests
 - 🦷 SereneApps - Dental Care Platform
-- SingleflightConversionTests
+- Complete Appointment Flow
 - outbox.js
 - dashboardMetrics.mjs
 - ThemeTransition
 - 🚀 Quick Reference - SereneAI Staging Deployment
 - MainActivity.kt
-- ClinicService
+- notifications/config.js
 - scripts/maintainability/validate-maintainability-setup.js
 - clinic_staff
 - 🌍 Geolocation Feature Implementation Summary
@@ -190,10 +190,10 @@
 - xCore2dAiAnalysis.mjs
 - scripts
 - clinicalArtifactStore.mjs
-- xcore.3d-scan.routes.test.js
+- verifiedCaseWorkspaceService.js
 - properties
 - **Day 2: Rate Limiting & Input Validation**
-- dentist-portal/home/index.jsx
+- ElectronicMedicalRecordScreen.jsx
 - jest
 - Pengujian Latency, Tetability, dan Maintability/maintainability/summarize-eslint-reports.js
 - 📚 Complete Documentation Suite
@@ -202,16 +202,16 @@
 - experiment-utils.cjs
 - Volume3DOverlayLayer.jsx
 - i18n/index.js
-- usePersistentAnnotations.js
+- sockets/chat.js
 - Repository Audit for Paper Evidence
 - odontogramConfig.js
 - 020_create_notifications_tables.sql
 - services/error-codes.js
-- Patient Data Continuity Implementation Note
+- status
 - deploy
 - 📋 Patient Profile Management API Documentation
 - specialistWorkspace.integration.test.js
-- emitPortalInvalidation
+- xCoreAnalysisReportStorage.js
 - 035_event_outbox_and_webhook_receipts.sql
 - Scan3DMeshViewer.jsx
 - properties
@@ -225,36 +225,36 @@
 - properties
 - verifiedCaseWorkspace.routes.test.js
 - 023_add_in_app_notifications.sql
-- auth/otp.js
+- xCoreAnalysisReportDomain.js
 - run_all.sh
 - 029_create_dentist_emr_records.sql
 - 030_create_ai_analysis_results.sql
 - 056_xcore_clinic_access_and_dentist_shares.sql
 - 20260701000000_add_dentist_emr_records/migration.sql
 - 🔧 Login & Profile Loading Fix
-- communications/config.js
+- SliceViewer.jsx
 - backend/src/constants/specializations.js
 - 🎉 SereneAI Dental Patient App - Build Complete!
-- verifiedCaseImageStorage.js
-- summarize-single-folder-benchmark.js
+- Viewer3D.jsx
+- seed-load-test-data.cjs
 - dentistDetails.js
 - ErrorBoundaryBase
 - web/src/constants/specializations.js
 - testNormalizeAI.js
 - 037_create_otp_request_attempts.sql
 - clinicStaffService.js
-- Final Research Evidence Report
-- SliceViewer.jsx
+- PatientTreatmentPlan.jsx
+- ImageViewer2D.jsx
 - logCommunicationEvent
-- ClinicTable.jsx
+- ClinicDetail.jsx
 - 🚂 Railway Deployment Guide - SereneAI Backend
-- createVerifiedCaseWorkspaceStore
+- chat
 - patient_profiles
 - 039_create_study_shares.sql
 - 052_financial_owner_immutability.sql
 - gradlew
 - RotatingText.jsx
-- xcore.share.routes.test.js
+- xCoreAnalysisCaseService.js
 - compilerOptions
 - 🎉 Infrastructure & Documentation - COMPLETION REPORT
 - Pengujian Latency, Tetability, dan Maintability/maintainability/run-eslint-reports.sh
@@ -299,9 +299,9 @@
 - 🎯 Mobile Patient App - Executive Summary
 - **🌈 Complete Color System**
 - Admin Dashboard - Real-time Metrics Implementation
-- canonicalReportRender.mjs
+- Complete Appointment Flow
 - 🎯 STATUS UPDATE: Profile Loading Issue
-- src/index.jsx
+- verifiedCaseImageStorage.js
 - videoWebhookHandler.js
 - 🌍 Mobile Translation Package - SereneAI
 - 🗄️ Database Schema: PatientProfile
@@ -313,22 +313,22 @@
 - SereneAI - Petunjuk Setup Database dan Backend
 - 2. Analysis of the 10 Potential Bottleneck Vectors
 - DeepDental Dentist Portal Hardening
-- Prisma Models and Physical Tables
+- X-Core imaging & annotations
 - Mobile Readiness Audit & Action Plan
 - Endpoint: PUT /v1/patient/profile
-- seed-load-test-data.cjs
+- start-scan3d-local.mjs
 - 📋 Patient Profile Management API Documentation
 - Internal Release Changelog: OTP SMS-Only Rollout
 - Endpoint: POST /v1/patient/avatar
 - 🚀 Quick Start Guide - Patient Registration API
 - scripts
 - CDSS / X-Core Technical Description
-- appointment
+- xcore-analysis-case.test.js
 - Authentication Testing Guide
 - Endpoint: POST /v1/patient/avatar
 - MultiImageUploader.jsx
 - Q: How was DentistScan3DScreen aligned with the dentist mobile visual style?
-- Error Responses
+- Endpoint: PUT /v1/patient/profile
 - Test Suite 2: Patient Registration Endpoints
 - DevOps Tasks
 - Pengujian Latency, Tetability, dan Maintability/maintainability/validate-maintainability-setup.js
@@ -337,7 +337,7 @@
 - 🗄️ Database Schema: PatientProfile
 - X-Core Analysis Cases
 - Clinic, branch, staff, services
-- Endpoint: PUT /v1/patient/profile
+- 🔍 What Document Should I Read?
 - 🛠️ FIXES APPLIED - AI Diagnosis Integration
 - PATIENT-MOBILE/MOBILE_APP_SETUP_PROMPT.md
 - 🗄️ Database Schema: PatientProfile
@@ -345,29 +345,29 @@
 - Q: How should mobile display LIDRA and reconstruction state without fabricating evidence?
 - React
 - Backend Implementation Guide
-- run-single-folder-repeated-benchmark.js
+- distortion
 - 📱 Patient Registration - Complete Guide for Mobile App
 - 📋 Patient Registration - Documentation Index
 - 🔹 Color Palette
 - Endpoint: PUT /v1/patient/profile
-- Smartphone 3D research runbook
+- Smartphone dental 3D reconstruction: research walkthrough
 - 🆘 Troubleshooting
-- _on_mouse_click
+- devDependencies
 - Endpoint: GET /v1/patient/profile
 - ESLint Maintainability Fix Summary
 - Paper-Ready Evidence Tables
 - BranchDirectory.jsx
 - Backend Implementation Guide
 - 📱 Patient Registration - Complete Guide for Mobile App
-- scan3d.integrity.test.js
+- _on_mouse_click
 - Maintainability Testing Setup
 - Q: How does standalone Python scan service load local shared authentication after backend env changes?
 - Manual Testing with cURL
 - Backend Consultation / Chat Testability Summary
 - Hasil Pengujian API Inti — Repeated Measurement
-- PatientInfoPanel.jsx
+- verifiedCaseAnalysisAdapter.js
 - Auth API Contract (Expected by Frontend)
-- Implementation Checklist
+- Manual Testing with cURL
 - **4. 🛒 E-commerce Mini Screen**
 - 🔍 What Document Should I Read?
 - Verified Case Workspace Implementation Plan
@@ -377,13 +377,13 @@
 - Mobile Testability Summary
 - Pengujian Latency API Inti — Repeated Measurement (n=3)
 - ChatMessage.jsx
-- admin.js
+- Error Responses
 - 📱 Mobile Team Handoff - SereneAI API
 - **4. 🛒 E-commerce Mini Screen**
 - Error Responses
 - Redux Integration
 - Endpoint: POST /v1/patient/avatar
-- ImageViewer2D.jsx
+- usePersistentAnnotations.js
 - OTP Observability Pack
 - Serene AI Backend (Express.js)
 - useAuth
@@ -406,8 +406,8 @@
 - ✅ Validation Rules
 - 📥 Response Format
 - INTEGRATION_EXAMPLES.jsx
-- appointmentScopedRoomName
-- templates.js
+- xcore.share.routes.test.js
+- expectedRegions
 - 🎨 Main Features & Screens
 - **3. 📸 AI Camera / First Diagnosis Screen**
 - SereneAI Patient Mobile App - Complete Setup Prompt
@@ -432,9 +432,9 @@
 - SereneAI Patient Mobile App - Complete Setup Prompt
 - ensureDir
 - ⚠️ Error Handling
-- ScanServiceTests
+- Field Specifications
 - **JSON Field Structures**
-- verifiedCaseAnalysisAdapter.js
+- Q: How can insufficient image-derived scan meshes remain visible for diagnosis without being presented as ready dental reconstructions?
 - 🔐 Security Best Practices
 - 🔌 API Endpoint
 - ⚙️ Backend Configuration
@@ -455,8 +455,8 @@
 - **JSON Field Structures**
 - ⚡ Critical Blockers (MUST FIX)
 - 🚀 PHASE 2: Mobile Development (Weeks 2-6)
-- deepDentalSchemas.mjs
-- @kitware/vtk.js
+- Important Notes
+- 🚀 Quick Start for Backend Team
 - 🔐 Security Best Practices
 - � VERIFIED TESTING RESULTS
 - 🎯 The CORRECT Endpoint
@@ -490,28 +490,28 @@
 - properties
 - scaleCalibration
 - referenceSource
-- toastBus.js
-- ai/index.jsx
+- frames
+- 🔧 Bugs Fixed
 - test-scan3d-integrity.sh
 - calibration.schema.json
 - smartphone-dataset.schema.json
-- vtk_runtime.py
+- **Flutter Implementation**
 - Q: Why did the live 3D scan report acquisition unavailable and what backend diagnostics prevent recurrence?
 - ⚙️ Backend Configuration
 - postProcessing
 - validation-input.schema.json
 - Q: Why did a failed 3D scan appear as a mesh in X-Core Gallery and how does the portal now refresh status?
-- dentistClinicContextService.js
+- scripts
 - Q: Why did the real Android camera scan repeatedly fail with ACQUISITION_UNAVAILABLE and how was it recovered?
-- profile-scan3d-fixtures.mjs
-- cleanup-benchmark-artifacts.js
+- Prisma Models and Physical Tables
+- admin-dashboard.js
 - Q: Why did X-Core scan status show Unexpected token HTML after phone upload?
-- maxFrames
+- SkeletonLoader.jsx
 - surfaceSamples
 - Q: What mobile capture and queue integrity gaps were fixed for real dental 3D scans?
-- FIRST_CAPTURE_GEOMETRY_AUDIT.md
-- 🔍 What Document Should I Read?
-- metro.config.js
+- Mobile Integration
+- run-latency-tests.js
+- @kitware/vtk.js
 - device
 - distance
 - evidencePath
@@ -538,23 +538,30 @@
 - rocketCritical
 - Q: Why did the real mobile scan fail and how was scan 1468 recovered?
 - extends
-- devDependencies
-- init.js
-- Manual Testing with cURL
-- Error Responses
-- Notifications
+- ai-analysis.js
+- ClinicScheduleStats.jsx
+- emitPortalInvalidation
+- Patient Data Continuity Implementation Note
+- run-cdss-async-latency.js
 - Q: Why did main.py, vti_converter.py, and reconstruction_service.py show errors, and what runtime integrity fixes were made?
-- Field Specifications
 - browserslist
-- Important Notes
-- 🚀 Quick Start for Backend Team
-- 🔧 Bugs Fixed
-- AnnotationHistoryPanel.jsx
+- Error Responses
+- run-single-folder-repeated-benchmark.js
+- Implementation Checklist
+- push.js
+- scan3d.full-arch-pair.test.js
 - ImplantPlanner.jsx
 - Q: Why did the first real smartphone 3D scan show non-tooth mesh and what engineering improvements were made?
-- Mobile Integration
-- memoryStore
-- ToothSegmentationOverlay.jsx
+- BookingSlotScreen.jsx
+- xcore-analysis-pdf-visual.test.js
+- cleanup-benchmark-artifacts.js
+- prices/index.jsx
+- templates.js
+- metro.config.js
+- 🎯 **Common Use Cases**
+- StaffProfileDrawer.jsx
+- specialistWorkspace.contract.test.mjs
+- **Available Categories**
 
 ## God Nodes (most connected - your core abstractions)
 1. `useLanguage()` - 297 edges
@@ -575,31 +582,31 @@
   docs/scan3d-research/README.md → backend/python_service/research/validation.py
 - `Upload Endpoint and CDSS Flow` --references--> `convert_study_to_vti()`  [INFERRED]
   paper-evidence/00_repository_audit.md → backend/python_service/services/vti_converter.py
+- `Refactor Plan for `convert_study_to_vti`` --references--> `convert_study_to_vti()`  [INFERRED]
+  paper-evidence/maintainability/cdss_complexity_refactor_plan.md → backend/python_service/services/vti_converter.py
 - `7. Operasi Dokter & Klinik` --references--> `dentistId()`  [INFERRED]
   docs/APPOINTMENT_FLOW_COMPLETE.md → backend/src/controllers/xCoreScanController.js
-- `7. Operasi Dokter & Klinik` --references--> `dentistId()`  [INFERRED]
-  docs/CLINIC_DETAIL_SCREEN.md → backend/src/controllers/xCoreScanController.js
 
 ## Import Cycles
 - 3-file cycle: `backend/src/services/communications.js -> backend/src/services/notifications/index.js -> backend/src/sockets/chat.js -> backend/src/services/communications.js`
 
-## Communities (583 total, 80 thin omitted)
+## Communities (590 total, 75 thin omitted)
 
-### Community 0 - "webhooks/midtrans.js"
-Cohesion: 0.21
-Nodes (9): prisma, router, prisma, recordFinancialAuditLog(), prisma, processPendingWebhooks(), processReceipt(), startWebhookWorker() (+1 more)
+### Community 0 - "reconcileJob.js"
+Cohesion: 0.10
+Nodes (16): MidtransService, prisma, reconcilePayment(), runReconcileBatch(), startReconcileScheduler(), canTransition(), PAYMENT_STATUSES, mapMidtransStatus() (+8 more)
 
 ### Community 1 - "ref_react"
-Cohesion: 0.03
-Nodes (78): ref_react, Icon(), Image(), Button, buttonVariants, Checkbox, CheckboxGroup, Footer() (+70 more)
+Cohesion: 0.04
+Nodes (66): ref_react, Icon(), Image(), Button, buttonVariants, Footer(), Header(), ToothScanLoader() (+58 more)
 
-### Community 2 - "@expo/vector-icons"
-Cohesion: 0.05
-Nodes (92): StatPill(), iconForStatus(), PreCallSystemCheckSheet(), FEATURES, getAppointmentById(), getDentistById(), AppointmentChatBanner(), AppointmentListScreen() (+84 more)
+### Community 2 - "react-native"
+Cohesion: 0.06
+Nodes (72): styles, StatPill(), iconForStatus(), PreCallSystemCheckSheet(), FEATURES, AppointmentChatBanner(), AppointmentListScreen(), formatRelativeSync() (+64 more)
 
 ### Community 3 - "ref_node_assert"
-Cohesion: 0.03
-Nodes (52): templates, adminSource, dashboardSource, serverSource, root, here, prisma, here (+44 more)
+Cohesion: 0.04
+Nodes (41): DentalMeshFilter, adminSource, dashboardSource, serverSource, root, ORIGINAL_ENV, here, prisma (+33 more)
 
 ### Community 4 - "VolumeViewer3D.jsx"
 Cohesion: 0.04
@@ -607,39 +614,39 @@ Nodes (91): createMeasurementLabelPositionStore(), angleBetweenVectorsDeg(), arr
 
 ### Community 5 - "main.py"
 Cohesion: 0.04
-Nodes (102): _authorize_study_access(), _broadcast_conversion_status(), _build_gallery_from_scan(), _compute_density_histogram(), _compute_density_histogram_for_vti(), conversion_status_websocket(), _emit_conversion_status(), _ensure_vti_conversion_singleflight() (+94 more)
+Nodes (101): _authorize_study_access(), _broadcast_conversion_status(), _build_gallery_from_scan(), _compute_density_histogram(), _compute_density_histogram_for_vti(), conversion_status_websocket(), _emit_conversion_status(), _ensure_vti_conversion_singleflight() (+93 more)
 
 ### Community 6 - "aiDiagnosisService.js"
 Cohesion: 0.04
-Nodes (88): 🔧 Additional Improvements Made, EmptyState(), styles, AI_URL, API_CONFIG, BACKEND_URL, ChatScreen(), normalize() (+80 more)
+Nodes (86): 🔧 Additional Improvements Made, AuthGuard(), styles, EmptyState(), styles, AI_URL, API_CONFIG, BACKEND_URL (+78 more)
 
 ### Community 7 - "cornerstoneWADOImageLoaderWebWorker.min.js"
 Cohesion: 0.08
 Nodes (95): Fixes Applied, k6 Load Test Script Correctness & Fix Summary, Problems Found, Why the Fix is Valid for Research, Cleanup Instructions, Load Test Seed Data Summary, Resource Allocation per VU, Seeding Details (+87 more)
 
-### Community 8 - "formatters.js"
-Cohesion: 0.11
-Nodes (25): CartItemCard(), CheckoutSummary(), badgeMeta, ProductCard(), PromoBanner(), FEATURED_BUNDLES, findProductById(), SHOP_CATEGORIES (+17 more)
+### Community 8 - "resolveMediaUrl"
+Cohesion: 0.06
+Nodes (51): currencyFormatter, FeaturedDoctors(), formatAppointmentTime(), getAppointmentStatus(), { width }, DentistHomeScreen(), styles, { width } (+43 more)
 
 ### Community 9 - "test_scan3d_research.py"
-Cohesion: 0.08
-Nodes (44): argparse, calibrate(), Explicit independent scale derivation, never registration-based scale fitting.…, scale_from_landmarks(), audit_dataset(), dataset_layout(), derive_reference(), numbers() (+36 more)
+Cohesion: 0.07
+Nodes (47): calibrate(), Explicit independent scale derivation, never registration-based scale fitting.…, scale_from_landmarks(), audit_dataset(), dataset_layout(), derive_reference(), numbers(), Read-only DICOM research inventory and explicit derived-reference preparation.… (+39 more)
 
-### Community 10 - "MetadataPanel.jsx"
-Cohesion: 0.47
-Nodes (9): buildCopyText(), buildRawTagsCopyText(), buildSections(), formatValue(), GROUP_LABELS, groupLabel(), isPrivateTag(), MetadataPanel() (+1 more)
+### Community 10 - "branches/index.jsx"
+Cohesion: 0.06
+Nodes (34): react-dom, APP_FALLBACK_COPY, STATUS_CONFIG, Toast(), ToastContainer(), STATUS_CONFIG, ToastItem(), DEFAULTS (+26 more)
 
 ### Community 11 - "reconstruction_service.py"
-Cohesion: 0.08
-Nodes (29): reproduce(), profile(), apply_dental_geometry_filters(), export_binary_stl(), Any, Exports a 3D triangle mesh to binary STL format. 80-byte header, uint32…, Applies classical computer vision & geometric dental filtering: 1. Parabolic…, analyze_video_acquisition() (+21 more)
+Cohesion: 0.04
+Nodes (66): argparse, annotation_page(), Self-contained offline review page; no automatic dental mask is generated., prepare(), Prepare private frame previews for a human dental-region review. The emitted…, Run the existing baseline on a supplied video in a NEW evidence directory.…, reproduce(), profile() (+58 more)
 
 ### Community 12 - "xcore-cdss-benchmark.cjs"
 Cohesion: 0.10
 Nodes (34): nowIso(), readJsonl(), wait(), assertRunnableOrWriteNotRun(), cleanupStudy(), computeEventTimings(), concurrentColumns, defaultFixtureDir (+26 more)
 
 ### Community 13 - "vti_converter.py"
-Cohesion: 0.04
-Nodes (82): Stream a single slice with multi-series support Args: study_id: Folder name…, stream_slice(), load_jm_volume_for_viewer(), ndarray, Load a bounded-resolution normalized volume for VTI rendering. Raw Morita scans…, _binary_dilate(), _binary_erode(), _build_heuristic_tooth_labels() (+74 more)
+Cohesion: 0.05
+Nodes (69): Stream a single slice with multi-series support Args: study_id: Folder name…, stream_slice(), load_jm_volume_for_viewer(), ndarray, Load a bounded-resolution normalized volume for VTI rendering. Raw Morita scans…, _binary_dilate(), _binary_erode(), _build_heuristic_tooth_labels() (+61 more)
 
 ### Community 14 - "🎯 Complete Deployment Guide - SereneAI Staging"
 Cohesion: 0.04
@@ -649,73 +656,69 @@ Nodes (46): 🐛 **Common Issues & Solutions**, 🎯 Complete Deployment Guide -
 Cohesion: 0.06
 Nodes (28): calculateAgeFromDate(), dentistAIChatService, dentistChatRateLimits, dentistChatStorage, __dirname, EDITABLE_MEDICAL_HISTORY_FIELDS, emrConsentStorage, emrConsentUploadDir (+20 more)
 
-### Community 16 - "SearchScreen.jsx"
-Cohesion: 0.07
-Nodes (44): ActionButton(), NearbyClinics(), normalize(), { width: SCREEN_WIDTH }, formatCoords(), NearbyClinicsScreen(), API_BASE, buildCatalogFromDentists() (+36 more)
+### Community 16 - "PatientTeledentistryScreen.jsx"
+Cohesion: 0.08
+Nodes (39): APPOINTMENTS, CLINICS, DENTIST_SEED, getAppointmentById(), getDentistById(), getSlotsForDate(), now, REMINDER_MINUTES (+31 more)
 
 ### Community 17 - "otp/index.js"
-Cohesion: 0.10
-Nodes (40): createOtpError(), OTP_ERRORS, OtpServiceError, assertChannelAllowed(), assertIdentifierMatchesChannel(), buildOtpMessage(), buildOtpResponse(), clearOtpTestState() (+32 more)
+Cohesion: 0.14
+Nodes (34): createOtpError(), OTP_ERRORS, OtpServiceError, assertChannelAllowed(), assertIdentifierMatchesChannel(), buildOtpMessage(), buildOtpResponse(), clearOtpTestState() (+26 more)
 
-### Community 18 - "authenticateToken"
+### Community 18 - "services/payments/status.js"
 Cohesion: 0.07
-Nodes (40): isActivePaymentStatus(), prisma, isActivePaymentStatus(), prisma, router, __testables, ensureInternalOrOwner(), prisma (+32 more)
+Nodes (32): isActivePaymentStatus(), isActivePaymentStatus(), prisma, router, __testables, recordStatusChange(), recordSettlementInBalance(), accrueCompensation() (+24 more)
 
-### Community 19 - "server.js"
+### Community 19 - "clinicProfile.js"
+Cohesion: 0.14
+Nodes (12): __dirname, __filename, pool, router, storage, upload, autoAssignServiceDentists(), getClinicDentistsForBranch() (+4 more)
+
+### Community 20 - "patient/index.jsx"
 Cohesion: 0.03
-Nodes (64): options, swaggerSpec, authenticateAdmin(), prisma, router, __dirname, __filename, prisma (+56 more)
-
-### Community 20 - "dentist-portal/schedule/index.jsx"
-Cohesion: 0.04
-Nodes (63): getPortalAppointmentTimeRange(), normalizePortalAppointmentChannel(), normalizePortalAppointmentStatus(), STATUS_ALIASES, ALL_OPERATIONAL_DOMAINS, createPortalRefreshCoordinator(), createSignal(), getBroadcastChannel() (+55 more)
+Nodes (104): getPortalAppointmentTimeRange(), normalizePortalAppointmentChannel(), normalizePortalAppointmentStatus(), STATUS_ALIASES, ALL_OPERATIONAL_DOMAINS, createPortalRefreshCoordinator(), createSignal(), getBroadcastChannel() (+96 more)
 
 ### Community 21 - "xCoreController.js"
-Cohesion: 0.09
-Nodes (59): analyzeStudy(), ANNOTATION_TYPES, assignStudyPatient(), benchmarkCallback(), computeSourceInstanceKeyFromAnnotation(), confidenceForStatus(), createAnnotationSnapshot(), createStudyShare() (+51 more)
+Cohesion: 0.08
+Nodes (67): analyzeStudy(), ANNOTATION_TYPES, assignStudyPatient(), benchmarkCallback(), computeSourceInstanceKeyFromAnnotation(), confidenceForStatus(), createAnnotationSnapshot(), createStudyShare() (+59 more)
 
 ### Community 22 - "PatientAIResult.jsx"
 Cohesion: 0.06
 Nodes (47): AnalysisSummaryRenderer(), reinsertAnalysisBreaks(), splitLongParagraphs(), StructuredContent(), ChatMessage(), ROLE_META, ERROR_STYLES, formatAIResponse() (+39 more)
 
-### Community 23 - "clinicReportInsights.js"
-Cohesion: 0.23
-Nodes (19): asId(), asNumber(), buildComplianceReport(), buildMarketingReport(), dateOnly(), emptyReviewSummary(), fetchAttributions(), fetchBackupMetrics() (+11 more)
-
-### Community 24 - "xCoreAnalysisCaseService.js"
+### Community 23 - "dentist-portal/teledentistry/index.jsx"
 Cohesion: 0.05
-Nodes (105): accessFor(), createCase(), deleteCase(), downloadReport(), generateReport(), getCase(), listCases(), preflightReport() (+97 more)
+Nodes (52): twilio-video, CALL_STATES, hasRecentDeviceCheck(), markDeviceCheckPassed(), useCallState(), DEFAULT_VIDEO_SETTINGS, useTwilioVideoClient(), ALLOWED_ATTACHMENT_TYPES (+44 more)
+
+### Community 24 - "payments.js"
+Cohesion: 0.09
+Nodes (32): prisma, router, prisma, router, prisma, recordFinancialAuditLog(), buildAuthHeader(), cancelMidtransTransaction() (+24 more)
 
 ### Community 25 - "mobile/package.json"
-Cohesion: 0.03
-Nodes (82): AppContent(), BackgroundPresenceConnector(), ErrorBoundary, LoadingSplash(), normalize(), styles, TextEncodingPolyfill, { width: SCREEN_WIDTH } (+74 more)
+Cohesion: 0.04
+Nodes (52): AppContent(), BackgroundPresenceConnector(), ErrorBoundary, LoadingSplash(), normalize(), styles, TextEncodingPolyfill, { width: SCREEN_WIDTH } (+44 more)
 
 ### Community 26 - "DentistScan3DScreen.jsx"
-Cohesion: 0.08
-Nodes (50): TabNavigator, DashboardScreen(), DentistRoleGuard(), styles, captureGuideMessage(), captureReviewWarnings(), DentistScan3DContent(), DentistScan3DScreen() (+42 more)
+Cohesion: 0.13
+Nodes (32): TabNavigator, captureGuideMessage(), captureReviewWarnings(), DentistScan3DContent(), DentistScan3DScreen(), formatScanIdentifier(), scanFailureMessage(), scanShouldRecapture() (+24 more)
 
-### Community 27 - "AddNewEMR.jsx"
-Cohesion: 0.47
-Nodes (8): AddNewEMR(), buildInitialForm(), normalizeDateInput(), normalizeGender(), sanitizeVitalInput(), stripVitalUnit(), VISIT_TYPES, VITAL_FIELDS
-
-### Community 28 - "useToast"
-Cohesion: 0.05
-Nodes (64): AnalysisScreen(), normalize(), styles, { width: SCREEN_WIDTH }, DentistDetailScreen(), formatRupiah(), formatSlots(), pickDoctorAvatar() (+56 more)
+### Community 28 - "DentistSpecialtyScreen.jsx"
+Cohesion: 0.11
+Nodes (28): API_BASE, DEFAULT_COORDS, DentistDirectoryScreen(), DICEBEAR_BG, extractClinicContext(), formatDentistName(), mapDentist(), normalizeDicebear() (+20 more)
 
 ### Community 29 - "🗓️ Mobile Patient App - Development Roadmap"
 Cohesion: 0.07
 Nodes (27): ✅ Action Items, Ad-hoc Sync, Backend Team (2 Engineers), Bi-weekly Demo (30 min), 📞 Communication Plan, Daily Standups (15 min), Development Metrics, DevOps Team (1 Engineer) (+19 more)
 
 ### Community 30 - "clinic-portal/teledentistry/index.jsx"
-Cohesion: 0.08
-Nodes (36): fmt(), fmtCurrency(), formatAddress(), getStatusConfig(), HistoryTab(), isVirtualAppointment(), OverviewTab(), PatientDetailModal() (+28 more)
+Cohesion: 0.06
+Nodes (56): ProtectedRoute(), fmt(), fmtCurrency(), formatAddress(), getStatusConfig(), HistoryTab(), isVirtualAppointment(), OverviewTab() (+48 more)
 
-### Community 31 - "LanguageContext.jsx"
-Cohesion: 0.03
-Nodes (102): react-dom, twilio-video, Additional Issues, STATUS_CONFIG, Toast(), ToastContainer(), STATUS_CONFIG, ToastItem() (+94 more)
+### Community 31 - "SearchScreen.jsx"
+Cohesion: 0.07
+Nodes (44): ActionButton(), NearbyClinics(), normalize(), { width: SCREEN_WIDTH }, formatCoords(), NearbyClinicsScreen(), API_BASE, buildCatalogFromDentists() (+36 more)
 
-### Community 32 - "useLanguage"
-Cohesion: 0.03
-Nodes (101): react-router-dom, recharts, BarChart(), LineChart(), ErrorBoundary(), ScrollToTop(), useLanguage(), AIOverviewCards() (+93 more)
+### Community 32 - "Routes.jsx"
+Cohesion: 0.05
+Nodes (58): react-router-dom, ScrollToTop(), AIOverviewCards(), AIUsageChart(), ModelPerformance(), RecentActivity(), AIPlatform(), AnalyticsOverview() (+50 more)
 
 ### Community 33 - "EndoCaseDetail.jsx"
 Cohesion: 0.05
@@ -726,12 +729,12 @@ Cohesion: 0.12
 Nodes (31): registerOdontogram(), AMF(), ANO(), ARROW_BOTTOM_LEFT(), ARROW_BOTTOM_RIGHT(), ARROW_BOTTOM_TURN_LEFT(), ARROW_BOTTOM_TURN_RIGHT(), ARROW_TOP_LEFT() (+23 more)
 
 ### Community 35 - "routes/communications.js"
-Cohesion: 0.12
-Nodes (36): ALLOWED_MIME_TYPES, CLIENT_EVENT_TYPES, deprecatedVideoTokenHeaders(), getAppointmentForUser(), prisma, router, toBigInt(), upload (+28 more)
-
-### Community 36 - "endoCore.js"
 Cohesion: 0.13
-Nodes (34): asId(), baseSummary(), booleanValue(), caseInclude, cleanText(), createEndoCoreRouter(), emitEndoInvalidation(), emptyDifficultyAssessment() (+26 more)
+Nodes (33): ALLOWED_MIME_TYPES, CLIENT_EVENT_TYPES, deprecatedVideoTokenHeaders(), prisma, router, upload, communicationActorRoleForAppointment(), disconnectVideoParticipantForIdentity() (+25 more)
+
+### Community 36 - "xCoreAnalysisPdf.js"
+Cohesion: 0.19
+Nodes (27): addFooters(), addPage(), BRAND_ICON_PATH, buildXCoreAnalysisPdf(), CLINICAL_LABELS, COLORS, __dirname, drawConclusion() (+19 more)
 
 ### Community 37 - "📊 Session Summary - Infrastructure & Documentation Complete"
 Cohesion: 0.04
@@ -750,8 +753,8 @@ Cohesion: 0.07
 Nodes (45): activePaymentError(), assertInvoicePayable(), assertNoOtherActiveAppointmentPayment(), calculateClinicSplit(), getContext(), loadInvoiceForPayment(), normalizeMetadata(), parsePositiveAmount() (+37 more)
 
 ### Community 41 - "auth.js"
-Cohesion: 0.05
-Nodes (35): token, user, authLimiter, generalLimiter, otpLimiter, validate(), authorizeClinicDentistRegistration(), __dirname (+27 more)
+Cohesion: 0.04
+Nodes (53): authLimiter, generalLimiter, otpLimiter, validate(), prisma, router, authorizeClinicDentistRegistration(), __dirname (+45 more)
 
 ### Community 42 - "payment_intents"
 Cohesion: 0.07
@@ -762,64 +765,64 @@ Cohesion: 0.04
 Nodes (45): Audit, 🔑 Authentication, Case Storage Download, 💬 Chat, ConfidenceLevel, DeepDental API Documentation, DELETE `/api/v1/sessions/{session_id}`, DELETE `/api/v1/sessions/{session_id}/messages` (+37 more)
 
 ### Community 44 - "backend/src/services/clinicTeledentistryService.js"
-Cohesion: 0.11
+Cohesion: 0.10
 Nodes (42): ADMIN_ROLES, capabilitiesForClinicRole(), clinicAdminCanViewClinicalSummary(), clinicBranchIdsForContext(), evaluateClinicObserverAccess(), evaluateClinicObserverStaffAccess(), getClinicTeledentistryContext(), hasClinicRole() (+34 more)
 
 ### Community 45 - "LoginScreen.jsx"
-Cohesion: 0.05
-Nodes (55): 3. Updated Login Flow to Fetch Profile, EditProfileScreen(), styles, LoginScreen(), styles, OTP_STATUS_BY_CODE, OTPScreen(), secondsUntil() (+47 more)
+Cohesion: 0.08
+Nodes (38): 3. Updated Login Flow to Fetch Profile, LoginScreen(), styles, OTP_STATUS_BY_CODE, OTPScreen(), secondsUntil(), styles, interestOptions (+30 more)
 
 ### Community 46 - "query"
 Cohesion: 0.09
 Nodes (50): cancelAppointment(), confirmAppointment(), createAppointment(), getAppointmentById(), getAppointments(), getAvailableSlotsForReschedule(), updateAppointment(), createChatRoom() (+42 more)
 
-### Community 47 - "MoritaHandler"
-Cohesion: 0.19
-Nodes (5): MoritaHandler, Get a slice from the specified view (axial, coronal, or sagittal). For coronal…, Return metadata including dimensions for all three views. For MPR support, we…, Load all BMP files into a 3D numpy array (z, y, x) for MPR reconstruction. This…, MoritaHandlerTests
+### Community 47 - "os"
+Cohesion: 0.04
+Nodes (36): asyncio, _app_lifespan(), get_series_instances(), Return per-instance metadata for a series, including real SOPInstanceUIDs.…, MoritaHandler, Get a slice from the specified view (axial, coronal, or sagittal). For coronal…, Return metadata including dimensions for all three views. For MPR support, we…, Load all BMP files into a 3D numpy array (z, y, x) for MPR reconstruction. This… (+28 more)
 
 ### Community 48 - "Gallery.jsx"
 Cohesion: 0.17
 Nodes (21): explicitPyApiBase, NODE_API_BASE, PY_API_BASE, AssignStudyPatientModal(), batchFetch(), expand3DScanStudy(), extractErrorMessage(), fetchStudySeries() (+13 more)
 
 ### Community 49 - "treatmentPlans.js"
-Cohesion: 0.14
-Nodes (40): getTreatmentPlanPaymentContext(), addTreatmentPlanItem(), asId(), calculateFinancialSplit(), canRefreshInvoice(), createTreatmentPlan(), deleteTreatmentPlanItem(), ensureInvoiceForTreatmentPlan() (+32 more)
+Cohesion: 0.13
+Nodes (41): getTreatmentPlanPaymentContext(), addTreatmentPlanItem(), asId(), calculateFinancialSplit(), canRefreshInvoice(), createTreatmentPlan(), deleteTreatmentPlanItem(), emitTreatmentPlanRealtime() (+33 more)
 
-### Community 50 - "DashboardNavigator.jsx"
-Cohesion: 0.09
-Nodes (30): useNotifications(), NotificationItem(), styles, NotificationDetailLayout(), styles, NOTIFICATION_TYPE_META, now, SAMPLE_NOTIFICATIONS (+22 more)
+### Community 50 - "DashboardScreen.jsx"
+Cohesion: 0.05
+Nodes (58): useNotifications(), AIHomeScreen(), ARTICLES, FEATURES, GUIDE_STEPS, normalize(), { width: SCREEN_WIDTH, height: SCREEN_HEIGHT }, Article() (+50 more)
 
 ### Community 51 - "MarketingView.jsx"
 Cohesion: 0.39
 Nodes (6): MarketingView(), money(), num(), pct(), ReferralBar(), StarRow()
 
 ### Community 52 - "backend_src_generated_prisma_index"
-Cohesion: 0.05
-Nodes (26): prisma, prisma, prisma, prisma, prisma, prisma, prisma, prisma (+18 more)
-
-### Community 53 - "admin-dashboard.js"
-Cohesion: 0.22
-Nodes (8): formatIdr(), PAID_INVOICE_STATUSES, PENDING_INVOICE_STATUSES, PENDING_PAYMENT_STATUSES, prisma, router, SETTLED_PAYMENT_STATUSES, toNumber()
-
-### Community 54 - "patient/index.jsx"
 Cohesion: 0.06
-Nodes (64): AddPatient(), ClinicalIcon(), iconMap, sizeClasses, toneClasses, EnhancedHeader(), PatientAppointment(), DEFAULT_BILLING (+56 more)
+Nodes (25): prisma, prisma, prisma, prisma, prisma, prisma, prisma, prisma (+17 more)
 
-### Community 55 - "Complete Appointment Flow"
-Cohesion: 0.08
-Nodes (25): deriveDefaultView(), ensureIsoDate(), getDayKey(), getWorkingWindow(), parseWorkingHours(), 10. Skenario End-to-End (E2E) untuk QA / Dokumentasi UI, 1. Aktor, Tampilan Default, dan Scope Hak Akses, 2. Struktur Data & Status Appointment (+17 more)
-
-### Community 56 - "@prisma/client"
+### Community 53 - "server.js"
 Cohesion: 0.04
-Nodes (34): prisma, prisma, prisma, prisma, prisma, prisma, prisma, prisma (+26 more)
+Nodes (59): devDependencies, prisma, dotenv, express-rate-limit, multer, sharp, twilio, @twilio/conversations (+51 more)
 
-### Community 57 - "PreferencesContext.jsx"
-Cohesion: 0.36
-Nodes (6): DEFAULTS, PreferencesContext, PreferencesProvider(), readStoredPreferences(), usePreferences(), useLocale()
+### Community 54 - "AddNewEMR.jsx"
+Cohesion: 0.47
+Nodes (8): AddNewEMR(), buildInitialForm(), normalizeDateInput(), normalizeGender(), sanitizeVitalInput(), stripVitalUnit(), VISIT_TYPES, VITAL_FIELDS
+
+### Community 55 - "services/api.js"
+Cohesion: 0.07
+Nodes (35): getMobileNotificationCTA(), getMobileNotificationType(), mapDatabaseNotification(), NOTIFICATION_TYPE_META, NotificationContext, NotificationProvider(), DentistRoleGuard(), styles (+27 more)
+
+### Community 56 - "routes/financials.js"
+Cohesion: 0.07
+Nodes (21): CLINIC_FINANCIAL_VIEW_ROLES, prisma, resolveClinicFinancialContext(), router, toBigInt(), prisma, releaseMaturedBalances(), approveAndExecuteCorrection() (+13 more)
+
+### Community 57 - "useLanguage"
+Cohesion: 0.03
+Nodes (74): lucide-react, recharts, BarChart(), LineChart(), ErrorBoundary(), LanguageContext, useLanguage(), ComplianceStandards() (+66 more)
 
 ### Community 58 - "web/package.json"
 Cohesion: 0.05
-Nodes (41): autoprefixer, chart.js, class-variance-authority, clsx, @dhiwise/component-tagger, jquery, postcss, @radix-ui/react-slot (+33 more)
+Nodes (42): autoprefixer, chart.js, class-variance-authority, clsx, @dhiwise/component-tagger, jquery, jspdf, postcss (+34 more)
 
 ### Community 59 - "inventory/index.jsx"
 Cohesion: 0.15
@@ -838,40 +841,40 @@ Cohesion: 0.29
 Nodes (11): `clinic_profiles`, buildAuditRows(), buildComplianceFlags(), clinicName(), ClinicPlatformOversight(), daysSince(), formatDate(), issueChipClasses (+3 more)
 
 ### Community 63 - "specialistWorkspace.js"
-Cohesion: 0.13
-Nodes (40): asId(), asyncRoute(), caseDetailInclude, CLINIC_SUMMARY_ROLES, createSpecialistWorkspaceRouter(), emitSpecialistCaseInvalidation(), loadXcorePreview(), loadXcoreStudyPreview() (+32 more)
+Cohesion: 0.07
+Nodes (73): asId(), baseSummary(), booleanValue(), caseInclude, cleanText(), createEndoCoreRouter(), emitEndoInvalidation(), emptyDifficultyAssessment() (+65 more)
 
-### Community 64 - "xCoreRoutes.js"
-Cohesion: 0.13
-Nodes (44): authorize3DScanUpload(), authorizedScan(), clinicIdFor(), create3DScan(), createScanPatient(), dentistId(), enqueue3DScan(), get3DScanAsset() (+36 more)
+### Community 64 - "scan3d.integrity.test.js"
+Cohesion: 0.06
+Nodes (64): scanServiceHeaders(), scanServiceSignal(), PROCESSING_VERSION, resolveExperimentConfiguration(), acquisitionFailureCode(), HTTP_FAILURE_CODES, runLidraAcquisition(), unavailableAcquisition() (+56 more)
 
 ### Community 65 - "api_inti/scripts/utils.js"
 Cohesion: 0.12
 Nodes (33): setup(), setup(), detailConsultationFailed, detailConsultationRequests, detailConsultationTrend, options, setup(), options (+25 more)
 
-### Community 66 - "backend/package.json"
-Cohesion: 0.04
-Nodes (50): dependencies, bcrypt, cors, dotenv, express, express-rate-limit, firebase-admin, jsonwebtoken (+42 more)
+### Community 66 - "dependencies"
+Cohesion: 0.06
+Nodes (33): dependencies, bcrypt, cors, dotenv, express, express-rate-limit, firebase-admin, jsonwebtoken (+25 more)
 
 ### Community 67 - "🎨 SereneAI Mobile App - Complete Color Guidelines"
 Cohesion: 0.04
 Nodes (45): 🎯 10. Usage Examples, 🌈 1. Brand Colors, 🚦 2. Semantic Colors (Status & Feedback), 📅 3. Appointment Status Colors, 🚨 4. Medical Alert Colors (CRITICAL), 🤖 5. AI Diagnosis Colors, 🛒 6. E-commerce Colors, 🎨 7. Neutral Colors (Grayscale) (+37 more)
 
 ### Community 68 - "clinic.js"
-Cohesion: 0.09
-Nodes (20): assertCanManageClinicStaff(), CLINIC_CONFIGURATION_TOKEN_ROLES, CLINIC_PATIENT_STAFF_ROLES, CLINIC_PATIENT_TOKEN_ROLES, CLINIC_PORTAL_ROLES, CLINIC_STAFF_ASSIGNABLE_ROLES, CLINIC_STAFF_ELEVATED_ROLES, CLINIC_STAFF_MANAGER_ROLES (+12 more)
+Cohesion: 0.06
+Nodes (44): assertCanManageClinicStaff(), CLINIC_CONFIGURATION_TOKEN_ROLES, CLINIC_PATIENT_STAFF_ROLES, CLINIC_PATIENT_TOKEN_ROLES, CLINIC_PORTAL_ROLES, CLINIC_STAFF_ASSIGNABLE_ROLES, CLINIC_STAFF_ELEVATED_ROLES, CLINIC_STAFF_MANAGER_ROLES (+36 more)
 
 ### Community 69 - "analyze_repeated.py"
-Cohesion: 0.10
-Nodes (39): dataclasses, build_summary_rows(), calculate_statistic(), csv_number(), display_number(), Endpoint, finite_number(), main() (+31 more)
+Cohesion: 0.11
+Nodes (37): build_summary_rows(), calculate_statistic(), csv_number(), display_number(), Endpoint, finite_number(), main(), manifest_index() (+29 more)
 
 ### Community 70 - "users"
 Cohesion: 0.11
 Nodes (32): idx_refresh_tokens_token, refresh_tokens, users, idx_users_clinic_id, idx_users_last_login_at, ai_findings, case_audit_events, case_exports (+24 more)
 
 ### Community 71 - "routes/appointments.js"
-Cohesion: 0.09
-Nodes (24): ACTIVE_APPOINTMENT_STATUSES, authorizeAppointmentCancellation(), authorizeAppointmentStatusUpdate(), buildDateTime(), generateSlotsForWindow(), isClinicRole(), makeRouteError(), OPERATIONAL_STATUS_ACTIONS (+16 more)
+Cohesion: 0.10
+Nodes (22): ACTIVE_APPOINTMENT_STATUSES, authorizeAppointmentCancellation(), authorizeAppointmentStatusUpdate(), buildDateTime(), generateSlotsForWindow(), isClinicRole(), makeRouteError(), OPERATIONAL_STATUS_ACTIONS (+14 more)
 
 ### Community 72 - "👨‍⚕️ Dentist Detail Screen - Data Specifications"
 Cohesion: 0.04
@@ -879,11 +882,11 @@ Nodes (45): **1. Basic Information**, **1. Get Dentist Schedule**, **1. Image Lo
 
 ### Community 73 - "segment_teeth_from_mesh"
 Cohesion: 0.11
-Nodes (22): _assign_quadrant_and_position(), _fdi_from_quadrant_position(), load_tooth_instances(), Any, tooth_segmentation_service.py Phase 12 — Dental Semantic Layer: Tooth…, Segment a dental arch mesh into individual tooth instances using geometric…, Run segmentation, write tooth_instances.json to study_dir, return summary., Read cached tooth_instances.json from study_dir. Returns None if not found or… (+14 more)
+Nodes (21): _assign_quadrant_and_position(), _fdi_from_quadrant_position(), load_tooth_instances(), Any, tooth_segmentation_service.py Phase 12 — Dental Semantic Layer: Tooth…, Segment a dental arch mesh into individual tooth instances using geometric…, Run segmentation, write tooth_instances.json to study_dir, return summary., Read cached tooth_instances.json from study_dir. Returns None if not found or… (+13 more)
 
-### Community 74 - "staff/index.jsx"
+### Community 74 - "ref_fs"
 Cohesion: 0.07
-Nodes (27): ChangeBranchModal(), DirectoryTable(), mapToOptions(), ROLE_ICONS, StaffDirectory(), STATUS_STYLES, INITIAL_FORM, StaffInviteModal() (+19 more)
+Nodes (29): annotationIds, __dirname, ids, items, output, annotate(), __dirname, overlaySvg() (+21 more)
 
 ### Community 75 - "run-k6-load-tests.cjs"
 Cohesion: 0.18
@@ -901,16 +904,16 @@ Cohesion: 0.06
 Nodes (31): allOf, type, const, type, type, type, type, properties (+23 more)
 
 ### Community 77 - "attachmentStorageService.js"
-Cohesion: 0.12
-Nodes (32): backendRoot, buildS3PresignedGetUrl(), buildS3Url(), buildSignedAttachmentUrl(), canonicalQuery(), deleteS3Object(), __dirname, encodeS3Key() (+24 more)
+Cohesion: 0.13
+Nodes (31): attachmentPresentationForMessage(), backendRoot, buildS3PresignedGetUrl(), buildS3Url(), buildSignedAttachmentUrl(), canonicalQuery(), deleteS3Object(), __dirname (+23 more)
 
 ### Community 78 - "AnalysisCaseWorkspace.jsx"
 Cohesion: 0.16
-Nodes (28): AnalysisCaseWorkspace(), FindingEditor(), newId(), normalizeOrders(), RenderStatusBadge(), serializeCaseItems(), sourceOptions(), createAnalysisCase() (+20 more)
+Nodes (27): AnalysisCaseWorkspace(), FindingEditor(), newId(), normalizeOrders(), RenderStatusBadge(), serializeCaseItems(), sourceOptions(), createAnalysisCase() (+19 more)
 
 ### Community 79 - "consoleToaster.js"
-Cohesion: 0.27
-Nodes (13): containsEmoji(), containsKeyword(), detectStatus(), emitFromLog(), EMOJIS, formatArg(), formatArgs(), isDuplicateMessage() (+5 more)
+Cohesion: 0.10
+Nodes (27): App(), container, root, web_src_styles_modal_fix, web_src_styles_tailwind, containsEmoji(), containsKeyword(), detectStatus() (+19 more)
 
 ### Community 80 - "AnnotationCanvas.jsx"
 Cohesion: 0.17
@@ -924,9 +927,9 @@ Nodes (26): ALLOWED_MIME_TYPES, prisma, router, upload, acknowledgeClinicalSumma
 Cohesion: 0.04
 Nodes (44): 10. Urutan demonstrasi yang disarankan, 1.1 Memeriksa alat pengujian, 1.2 Menjalankan PostgreSQL, 1.3 Menjalankan backend API, 1.4 Menjalankan layanan CDSS, 1. Persiapan lingkungan, 2.1 Login pengguna, 2.2 Mengambil daftar appointment (+36 more)
 
-### Community 83 - "analyze.py"
-Cohesion: 0.13
-Nodes (27): calculate_statistic(), execution_status(), execution_valid(), extract_from_ndjson(), extract_from_summary(), extract_metrics(), main(), number_or_na() (+19 more)
+### Community 83 - "staff/index.jsx"
+Cohesion: 0.09
+Nodes (25): Additional Issues, AddDentistModal(), ChangeBranchModal(), DirectoryTable(), mapToOptions(), ROLE_ICONS, StaffDirectory(), STATUS_STYLES (+17 more)
 
 ### Community 84 - "027_add_services_tables.sql"
 Cohesion: 0.11
@@ -936,13 +939,13 @@ Nodes (28): clinic_facilities, clinic_gallery, clinic_highlights, clinic_service
 Cohesion: 0.05
 Nodes (42): **1001 - AUTH_INVALID_CREDENTIALS**, **1002 - AUTH_EMAIL_EXISTS**, **1003 - AUTH_OTP_EXPIRED**, **1004 - AUTH_OTP_INVALID**, **1005 - AUTH_TOKEN_EXPIRED**, **1006 - AUTH_TOKEN_INVALID**, **1009 - AUTH_OTP_MAX_ATTEMPTS**, **1. Create Error Model** (+34 more)
 
-### Community 86 - "bcrypt"
-Cohesion: 0.09
-Nodes (11): bcrypt, isDryRun, prisma, isDryRun, prisma, { PrismaClient }, prisma, prisma (+3 more)
+### Community 86 - "@prisma/client"
+Cohesion: 0.04
+Nodes (24): prisma, prisma, prisma, prisma, prisma, prisma, prisma, prisma (+16 more)
 
-### Community 87 - "DashboardScreen.jsx"
-Cohesion: 0.08
-Nodes (32): AIHomeScreen(), ARTICLES, FEATURES, GUIDE_STEPS, normalize(), { width: SCREEN_WIDTH, height: SCREEN_HEIGHT }, Article(), formatArticleRelativeTime() (+24 more)
+### Community 87 - "analyze.py"
+Cohesion: 0.12
+Nodes (29): dataclasses, calculate_statistic(), execution_status(), execution_valid(), extract_from_ndjson(), extract_from_summary(), extract_metrics(), main() (+21 more)
 
 ### Community 88 - "03-create-appointment.k6.js"
 Cohesion: 0.10
@@ -960,17 +963,17 @@ Nodes (22): classify_series(), _detect_cr_dx_subtype(), detect_dental_modality()
 Cohesion: 0.05
 Nodes (42): 1. Run Database Migrations, 2. Test Notifications Endpoints, 3. Test Chat Endpoints, 4. Create Swagger Documentation, 5. Integration Testing, 6. Performance Optimization, 7. Security Review, 📊 API Coverage by Use Case (+34 more)
 
-### Community 92 - "useNearbyDentists.js"
-Cohesion: 0.12
-Nodes (28): formatDistance(), formatRupiah(), NearbyDentists(), normalize(), { width: SCREEN_WIDTH }, formatCoords(), formatDistance(), formatRupiah() (+20 more)
+### Community 92 - "DentistSearchScreen.jsx"
+Cohesion: 0.08
+Nodes (41): API_BASE, DentistSearchScreen(), DICEBEAR_BG, extractClinicContext(), formatDentistName(), haversineDistance(), normalize(), normalizeDicebear() (+33 more)
 
 ### Community 93 - "expo"
 Cohesion: 0.07
-Nodes (26): backgroundColor, adaptiveIcon, package, permissions, backgroundColor, barStyle, expo, android (+18 more)
+Nodes (27): backgroundColor, adaptiveIcon, package, permissions, backgroundColor, barStyle, expo, android (+19 more)
 
-### Community 94 - "os"
+### Community 94 - "scan_dicom_series"
 Cohesion: 0.05
-Nodes (32): asyncio, _app_lifespan(), get_series_instances(), Return per-instance metadata for a series, including real SOPInstanceUIDs.…, detect_mandibular_canal(), Heuristic inferior alveolar canal candidate detection. This is intentionally…, DensityHistogramTests, TestInstancesEndpoint (+24 more)
+Nodes (45): discover_jm_volumes(), _float_attribute(), Utilities for J. Morita ``.vol`` CBCT exports. The J. Morita volume format…, Read and validate the non-pixel header of a J. Morita ``.vol`` file., Return valid J. Morita raw volumes found beneath ``study_path``., read_jm_volume_header(), _volume_uid(), _discover_plain_2d_series() (+37 more)
 
 ### Community 95 - "emrRecords.js"
 Cohesion: 0.20
@@ -981,16 +984,16 @@ Cohesion: 0.14
 Nodes (25): buildQualityMetricsFromFile(), buildSummary(), classifyError(), createCaseWorkspaceDraft(), deleteLocalTitle(), deleteOwnedSession(), extractPersistedMessageContent(), extractPersistedMessageImage() (+17 more)
 
 ### Community 97 - "dentistAIChatService.js"
-Cohesion: 0.19
-Nodes (24): buildClinicalContext(), backend_src_services_dentistaichatservice_clinical_system_prompt, collectConversationImages(), createDentistAIChatService(), archiveAttachments(), chat(), fetchUpstreamSession(), getConversation() (+16 more)
+Cohesion: 0.27
+Nodes (12): backend_src_services_dentistaichatservice_clinical_system_prompt, collectConversationImages(), imageInputsFromMedia(), backend_src_services_dentistaichatservice_max_message_length, mergeConversationMessages(), normalizeImageCandidate(), normalizeUpstreamMessage(), sanitizeMessage() (+4 more)
 
 ### Community 98 - "beban_pengguna/scripts/utils.js"
 Cohesion: 0.15
 Nodes (22): sampleImage, setup(), API_PREFIX, API_URL, authOnlyHeaders(), BASE_URL, buildAppointmentPayload(), CLINIC_BRANCH_ID (+14 more)
 
 ### Community 99 - "scheduleAnalytics.mjs"
-Cohesion: 0.15
-Nodes (21): ClinicScheduleStats(), formatCurrency(), formatDuration(), RECOMMENDATION_TONES, STATUS_ITEMS, appointmentWaitMinutes(), asDate(), buildHistoricalPeak() (+13 more)
+Cohesion: 0.22
+Nodes (17): appointmentWaitMinutes(), asDate(), buildHistoricalPeak(), buildRecommendations(), buildScheduleAnalytics(), countByStatus(), durationMinutes(), IN_PROGRESS_STATUSES (+9 more)
 
 ### Community 100 - "clinicalPersistenceRecords.mjs"
 Cohesion: 0.23
@@ -998,7 +1001,7 @@ Nodes (24): baseMeasurementRecord(), build2DMeasurementRecord(), build3DMeasurem
 
 ### Community 101 - "services/communications.js"
 Cohesion: 0.07
-Nodes (47): main(), prisma, addConversationParticipantForIdentity(), appointmentVideoRoomEnded(), attachmentPresentationForMessage(), buildCombinedTwilioToken(), buildWaitingRoomState(), handleChatMessageEvent() (+39 more)
+Nodes (43): main(), prisma, addConversationParticipantForIdentity(), appointmentVideoRoomEnded(), buildCombinedTwilioToken(), buildWaitingRoomState(), clampCommunicationTokenTtl(), getConversationsServiceSid() (+35 more)
 
 ### Community 102 - "🧪 Backend Testing Report - Patient Registration API"
 Cohesion: 0.05
@@ -1013,12 +1016,12 @@ Cohesion: 0.14
 Nodes (22): set_specialist_workspace_updated_at(), update_specialist_case_notes_updated_at, update_specialist_cases_updated_at, endo_case_details, endo_diagnostic_tests, endo_treatment_stages, idx_endo_case_details_tooth, idx_endo_diagnostic_tests_case (+14 more)
 
 ### Community 105 - "ref_path"
-Cohesion: 0.04
-Nodes (70): __dirname, __filename, run(), specializationMapping, __dirname, __filename, run(), __dirname (+62 more)
+Cohesion: 0.05
+Nodes (46): __dirname, __filename, run(), specializationMapping, __dirname, __filename, run(), __dirname (+38 more)
 
 ### Community 106 - "caseWorkspaceModels.mjs"
-Cohesion: 0.15
-Nodes (22): buildClinicalHistoryItems(), CASE_HISTORY_FILTERS, createWorkspaceRaceGuard(), filterClinicalHistoryItems(), getCaseStatusMeta(), imageFingerprint(), matchesFilter(), matchesQuery() (+14 more)
+Cohesion: 0.17
+Nodes (20): buildClinicalHistoryItems(), CASE_HISTORY_FILTERS, createWorkspaceRaceGuard(), filterClinicalHistoryItems(), getCaseStatusMeta(), matchesFilter(), matchesQuery(), normalizeCaseItem() (+12 more)
 
 ### Community 107 - "✅ Testing Checklist by Feature"
 Cohesion: 0.10
@@ -1032,16 +1035,16 @@ Nodes (18): API_URL, authFailures, detailConsultationFailed, detailConsultationT
 Cohesion: 0.16
 Nodes (14): FinancialView(), money(), number(), MiniSparkline(), number(), OperationalView(), percent(), boundedPercent() (+6 more)
 
-### Community 110 - "AdvancedOdontogram.jsx"
-Cohesion: 0.11
-Nodes (33): AdvancedOdontogram(), geometryObjectToPosArray(), MODE_BUTTONS, ensureOdontogramReady(), ODONTOGRAM_MODE_AMF, ODONTOGRAM_MODE_ANO, ODONTOGRAM_MODE_ARROW_BOTTOM_LEFT, ODONTOGRAM_MODE_ARROW_BOTTOM_RIGHT (+25 more)
+### Community 110 - "xCoreAnalysisCaseController.js"
+Cohesion: 0.27
+Nodes (13): accessFor(), createCase(), deleteCase(), downloadReport(), generateReport(), getCase(), listCases(), preflightReport() (+5 more)
 
 ### Community 111 - "annotationPerformance.mjs"
 Cohesion: 0.17
 Nodes (15): Volume3DAnnotationCanvas, applyPartialState(), createVolume3DAnnotationCanvasController(), drawPolyline(), drawVolume3DAnnotationCanvas(), emptyState(), normalizePointList(), buildSurfaceAnchor() (+7 more)
 
 ### Community 112 - "diagnosticsService.js"
-Cohesion: 0.23
+Cohesion: 0.22
 Nodes (18): ADMIN_DIAGNOSTICS_ROLES, asString(), bucketForInconsistencies(), detectInconsistencies(), exportCommunicationAudit(), getAppointmentDiagnostics(), getAppointmentOrThrow(), getCommunicationTimeline() (+10 more)
 
 ### Community 113 - "i18n-audit.mjs"
@@ -1056,9 +1059,9 @@ Nodes (19): buildVisualFindingsFromCaseAnalysis(), firstPresent(), rehydrateAnno
 Cohesion: 0.16
 Nodes (18): clinic_branches, clinic_profiles, idx_clinic_branches_active, idx_clinic_branches_clinic_id, idx_clinic_branches_main, idx_clinic_profiles_legal_name, idx_clinic_profiles_nib, idx_clinic_profiles_npwp (+10 more)
 
-### Community 116 - "morita_volume.py"
+### Community 116 - "properties"
 Cohesion: 0.11
-Nodes (20): discover_jm_volumes(), _float_attribute(), Utilities for J. Morita ``.vol`` CBCT exports. The J. Morita volume format…, Read and validate the non-pixel header of a J. Morita ``.vol`` file., Return valid J. Morita raw volumes found beneath ``study_path``., read_jm_volume_header(), _volume_uid(), MoritaVolumeTests (+12 more)
+Nodes (19): description, properties, required, type, description, items, maxItems, type (+11 more)
 
 ### Community 117 - "SereneApps Healthtech Platform Blueprint Final"
 Cohesion: 0.05
@@ -1084,52 +1087,52 @@ Cohesion: 0.19
 Nodes (20): append_manifest(), base_host(), cooldown(), credential_payload(), DENTIST_EMAIL, DENTIST_PASSWORD, DENTIST_PROFILE_ID, die() (+12 more)
 
 ### Community 121 - "reportUtils.js"
-Cohesion: 0.20
-Nodes (20): jspdf, ANNOTATION_COLORS, buildMetadataSections(), buildTrainingAnnotation(), drawAnnotations(), drawArrow(), drawCircleAnnotation(), drawFreehandAnnotation() (+12 more)
+Cohesion: 0.21
+Nodes (19): ANNOTATION_COLORS, buildMetadataSections(), buildTrainingAnnotation(), drawAnnotations(), drawArrow(), drawCircleAnnotation(), drawFreehandAnnotation(), drawRegionAnnotation() (+11 more)
 
 ### Community 122 - "📱 Detailed Notification Specifications"
 Cohesion: 0.05
 Nodes (39): **10. AI Diagnosis Complete**, **11. Order Status Update**, **1. Appointment Confirmed**, **1. React Native Push Notification Handler**, **2. Appointment Reminder - 24 Hours**, **2. Notification Badge Count**, **3. Appointment Reminder - 1 Hour**, **3. Local Notification for Reminders** (+31 more)
 
-### Community 123 - "appointment/screens/ClinicDetailScreen.jsx"
-Cohesion: 0.13
-Nodes (17): API_BASE, ClinicDetailScreen(), DAY_KEYS, DAY_LABELS, formatClinicDistance(), normalizeHours(), pickDoctorAvatar(), resolveAvatar() (+9 more)
+### Community 123 - "VisualFindingsCard.jsx"
+Cohesion: 0.12
+Nodes (18): framer-motion, ALLOWED_IMAGE_MIME_TYPES, buildAnnotatedImageDataUrl(), DEFAULT_ANNOTATED_IMAGE_MIME_TYPE, getAnnotatedImageMimeType(), normalizeMimeType(), VISUAL_FINDINGS_SCHEMA_VERSION, ThinkingLoader() (+10 more)
 
 ### Community 124 - "📱 Detailed Notification Specifications"
 Cohesion: 0.05
 Nodes (39): **10. AI Diagnosis Complete**, **11. Order Status Update**, **1. Appointment Confirmed**, **1. React Native Push Notification Handler**, **2. Appointment Reminder - 24 Hours**, **2. Notification Badge Count**, **3. Appointment Reminder - 1 Hour**, **3. Local Notification for Reminders** (+31 more)
 
 ### Community 125 - "chatService.js"
-Cohesion: 0.05
-Nodes (55): Conversations, ref_twilio_conversations, CALL_STATES, hasRecentDeviceCheck(), markDeviceCheckPassed(), useCallState(), useChat(), BUCKET_BADGE (+47 more)
+Cohesion: 0.06
+Nodes (49): Conversations, ref_twilio_conversations, useChat(), BUCKET_BADGE, describeError(), ERROR_MESSAGES, STATUS_TONE, AppointmentDiagnosticsDashboard() (+41 more)
 
 ### Community 126 - "deepDentalClient.mjs"
 Cohesion: 0.19
 Nodes (18): buildApiUrl(), createDeepDentalClient(), createDeepDentalHeaders(), DeepDentalApiError, DEFAULT_DEEPDENTAL_PROXY_BASE_URL, firstArray(), loadAllPages(), mergeAbortSignals() (+10 more)
 
-### Community 127 - "status"
-Cohesion: 0.12
-Nodes (23): status(), `accounting_periods`, `appointments`, `available_balances`, `dentist_compensation_entries`, `domain_event_outbox`, Events & webhooks, `financial_audit_logs` (+15 more)
+### Community 127 - "Payments, invoices, ledger, settlement"
+Cohesion: 0.17
+Nodes (12): `accounting_periods`, `available_balances`, `financial_audit_logs`, `invoice_items`, `ownership_correction_logs`, `payment_ledgers`, `payment_settlements`, `payment_snapshots` (+4 more)
 
-### Community 128 - "clinicsController.js"
+### Community 128 - "xCoreRoutes.js"
+Cohesion: 0.12
+Nodes (45): authorize3DScanUpload(), authorizedScan(), clinicIdFor(), create3DScan(), createScanPatient(), dentistId(), enqueue3DScan(), get3DScanAsset() (+37 more)
+
+### Community 129 - "PatientReports.jsx"
+Cohesion: 0.17
+Nodes (20): ACTIVE_APPOINTMENT_STATUSES, getPatientDentistIds(), isActiveAppointment(), listTreatmentTypes(), normalizeId(), readAppointmentDate(), resolveAnalyticsDateRange(), scopeClinicPatientData() (+12 more)
+
+### Community 130 - "queueNotificationEvent"
+Cohesion: 0.17
+Nodes (16): prisma, processReminders(), startReminderWorker(), emitAppointmentEvent(), notifyAppointmentCancelled(), notifyAppointmentConfirmed(), notifyAppointmentReminder(), notifyPaymentFailed() (+8 more)
+
+### Community 131 - "clinicsController.js"
 Cohesion: 0.25
 Nodes (16): calculateDistance(), clampRadius(), deriveRating(), deriveReviewCount(), estimateQueue(), formatClinicName(), getBoundingBox(), getClinicById() (+8 more)
 
-### Community 129 - "patients/index.jsx"
-Cohesion: 0.15
-Nodes (24): ACTIVE_APPOINTMENT_STATUSES, getJakartaDateKey(), getPatientDentistIds(), isActiveAppointment(), listTreatmentTypes(), normalizeId(), readAppointmentDate(), resolveAnalyticsDateRange() (+16 more)
-
-### Community 130 - "BookingSlotScreen.jsx"
-Cohesion: 0.14
-Nodes (15): APPOINTMENTS, CLINICS, DENTIST_SEED, DENTISTS, getSlotsForDate(), now, REMINDER_MINUTES, SLOT_AVAILABILITY (+7 more)
-
-### Community 131 - "services/payments/status.js"
-Cohesion: 0.08
-Nodes (31): recordStatusChange(), recordSettlementInBalance(), accrueCompensation(), prisma, recordFinancialEntry(), prisma, recordLedgerEntry(), recordLedgerEntryIfMissing() (+23 more)
-
 ### Community 132 - "xCoreAnnotationValidation.js"
-Cohesion: 0.22
-Nodes (19): ANNOTATION_TYPES, FINDING_TYPES, hasNormalizedLine(), hasNormalizedPointPath(), hasRequiredReviewMetadata(), hasWorldPointPath(), isMeasurementRecordType(), isNormalizedPoint() (+11 more)
+Cohesion: 0.19
+Nodes (20): ANNOTATION_TYPES, FINDING_TYPES, hasNormalizedLine(), hasNormalizedPointPath(), hasRequiredReviewMetadata(), hasWorldPointPath(), isMeasurementRecordType(), isNormalizedPoint() (+12 more)
 
 ### Community 133 - "reconstructionEngineRegistry.js"
 Cohesion: 0.10
@@ -1139,13 +1142,17 @@ Nodes (14): BaseReconstructionEngine, buildObjContent(), buildPlyContent(), gene
 Cohesion: 0.07
 Nodes (28): 10. Remaining limitations, 11. Research blockers, 12. Clinical blockers, 13. Tests executed, 14. Files changed, 15. Files not changed, 16. Final capability matrix, 1. Phase 1–12 audit (+20 more)
 
-### Community 135 - "verifiedCaseWorkspaceService.js"
-Cohesion: 0.09
-Nodes (18): assertTransition(), AUDIT_EVENT_TYPES, buildPdfPayload(), CASE_STATUSES, CLINICIAN_ROLES, createClinicalError(), transitionCase(), evaluateQuality() (+10 more)
+### Community 135 - "createVerifiedCaseWorkspaceStore"
+Cohesion: 0.19
+Nodes (37): caseSummary(), getCaseOrThrow(), recordAudit(), recordTimeline(), createVerifiedCaseWorkspaceStore(), addCaseImage(), archiveCase(), confirmFinding() (+29 more)
 
 ### Community 136 - "handleSummary"
 Cohesion: 0.20
 Nodes (13): pengujian_latency_tetability_dan_maintability_latency_beban_pengguna_scripts_load_by_vu_k6_default, handleSummary(), options, handleSummary(), options, handleSummary(), options, handleSummary() (+5 more)
+
+### Community 137 - "AdvancedOdontogram.jsx"
+Cohesion: 0.11
+Nodes (33): AdvancedOdontogram(), geometryObjectToPosArray(), MODE_BUTTONS, ensureOdontogramReady(), ODONTOGRAM_MODE_AMF, ODONTOGRAM_MODE_ANO, ODONTOGRAM_MODE_ARROW_BOTTOM_LEFT, ODONTOGRAM_MODE_ARROW_BOTTOM_RIGHT (+25 more)
 
 ### Community 138 - "MainApplication.kt"
 Cohesion: 0.15
@@ -1159,13 +1166,13 @@ Nodes (15): idx_treatment_items_plan, idx_treatment_items_status, idx_treatment_
 Cohesion: 0.21
 Nodes (15): idx_xcore_analysis_case_items_case, idx_xcore_analysis_case_items_study_scope, idx_xcore_analysis_cases_owner, idx_xcore_analysis_cases_patient, idx_xcore_analysis_reports_case, trg_xcore_analysis_case_items_updated_at, trg_xcore_analysis_cases_updated_at, update_xcore_analysis_updated_at() (+7 more)
 
-### Community 141 - "Patient clinical data & treatment planning"
-Cohesion: 0.29
-Nodes (7): `ai_analysis_results`, `ai_chat_messages`, `dentist_emr_records`, Patient clinical data & treatment planning, `patient_profiles`, `treatment_items`, `treatment_plans`
-
-### Community 142 - "queueNotificationEvent"
+### Community 141 - "getAccessToken"
 Cohesion: 0.18
-Nodes (15): prisma, processReminders(), startReminderWorker(), emitAppointmentEvent(), notifyAppointmentCancelled(), notifyAppointmentConfirmed(), notifyAppointmentReminder(), notifyPaymentFailed() (+7 more)
+Nodes (8): saveAnalysisRender(), ComparisonViewer(), ErrorBoundary, Uploader(), useToothInstances(), XCore(), getAccessToken(), getRefreshToken()
+
+### Community 142 - "ref_crypto"
+Cohesion: 0.13
+Nodes (7): OtpService, prisma, SmsAdapter, ref_bcryptjs, ref_crypto, accessSecret, refreshSecret
 
 ### Community 143 - "Clinic Services & Public Profile Implementation"
 Cohesion: 0.05
@@ -1208,8 +1215,8 @@ Cohesion: 0.18
 Nodes (10): router, router, createApp(), createBranch(), createClinic(), createUser(), fixture, prisma (+2 more)
 
 ### Community 153 - "xcore.clinic-access.routes.test.js"
-Cohesion: 0.20
-Nodes (15): __dirname, __filename, UPLOAD_DIR, addClinicStaff(), cleanupFixtures(), createClinic(), createDentist(), createFixtureGraph() (+7 more)
+Cohesion: 0.29
+Nodes (12): addClinicStaff(), cleanupFixtures(), createClinic(), createDentist(), createFixtureGraph(), createStudy(), createUser(), ignoreMissingTable() (+4 more)
 
 ### Community 154 - "generate-synthetic-dental-fixtures.cjs"
 Cohesion: 0.16
@@ -1219,17 +1226,21 @@ Nodes (16): repoRootFromScript(), chunk(), clamp(), crc32(), defaultOutDir, enco
 Cohesion: 0.09
 Nodes (23): type, type, type, type, type, type, type, type (+15 more)
 
-### Community 156 - "react-native"
+### Community 156 - "react-native-paper"
 Cohesion: 0.07
-Nodes (43): ✅ Core Features Implemented, AuthGuard(), styles, ErrorState(), styles, RiskBadge(), styles, SkeletonLoader() (+35 more)
+Nodes (47): normalize(), ServerUnavailableScreen(), styles, { width: SCREEN_WIDTH }, AuthHero(), styles, InfoScreenLayout(), styles (+39 more)
 
-### Community 157 - "run-latency-tests.js"
-Cohesion: 0.27
-Nodes (9): { exec }, fs, generateReports(), parseDuration(), path, run(), runCommand(), tests (+1 more)
+### Community 157 - "ScanServiceTests"
+Cohesion: 0.19
+Nodes (4): raw_request(), request(), receive(), ScanServiceTests
 
 ### Community 158 - "🦷 SereneApps - Dental Care Platform"
 Cohesion: 0.05
 Nodes (38): Backend, Backend, Backend, Backend API, Backend API, Backend (.env), 🚢 Deployment, 📚 Dokumentasi Penting (+30 more)
+
+### Community 159 - "Complete Appointment Flow"
+Cohesion: 0.15
+Nodes (13): ensureIsoDate(), getDayKey(), getWorkingWindow(), parseWorkingHours(), 3. Tahapan Pra-Booking: Menemukan Slot Dokter, 10. Skenario End-to-End (E2E) untuk QA / Dokumentasi UI, 2. Struktur Data & Status Appointment, 3. Tahapan Pra-Booking: Menemukan Slot Dokter (+5 more)
 
 ### Community 160 - "outbox.js"
 Cohesion: 0.19
@@ -1246,6 +1257,10 @@ Nodes (36): 🔄 **Auto-Deploy**, **Categories:**, **Common Errors:**, 🐛 **Co
 ### Community 164 - "MainActivity.kt"
 Cohesion: 0.21
 Nodes (8): build, Bundle, fabricenabled, MainActivity, DefaultReactActivityDelegate, ReactActivity, ReactActivityDelegate, reactactivitydelegatewrapper
+
+### Community 165 - "notifications/config.js"
+Cohesion: 0.25
+Nodes (9): isEmailConfigured(), isPushConfigured(), isSmsConfigured(), notificationConfig, ensureConfigured(), sendEmailNotification(), getClient(), sendSmsNotification() (+1 more)
 
 ### Community 166 - "scripts/maintainability/validate-maintainability-setup.js"
 Cohesion: 0.17
@@ -1279,9 +1294,9 @@ Nodes (12): scripts, build, build:sourcemap, i18n:audit, i18n:audit:keys, i18n:c
 Cohesion: 0.23
 Nodes (8): CLINICAL_ARTIFACT_DB_NAME, CLINICAL_ARTIFACT_DB_VERSION, CLINICAL_ARTIFACT_STORE_NAME, clinicalArtifactStore, createIndexedDbClinicalArtifactStore(), createMemoryClinicalArtifactStore(), DEFAULT_CLINICAL_ARTIFACT_RETENTION_MS, openClinicalArtifactDb()
 
-### Community 174 - "xcore.3d-scan.routes.test.js"
-Cohesion: 0.10
-Nodes (20): backend, backendDir, baseUrl, children, exit(), python, pythonService, stop() (+12 more)
+### Community 174 - "verifiedCaseWorkspaceService.js"
+Cohesion: 0.09
+Nodes (18): assertTransition(), AUDIT_EVENT_TYPES, buildPdfPayload(), CASE_STATUSES, CLINICIAN_ROLES, createClinicalError(), transitionCase(), evaluateQuality() (+10 more)
 
 ### Community 175 - "properties"
 Cohesion: 0.11
@@ -1291,13 +1306,13 @@ Nodes (18): minLength, type, properties, captureProtocol, provenancePath, refere
 Cohesion: 0.06
 Nodes (34): 1.1 Install Dependencies, 1.2 Environment Variables, 1.3 Create OTP Service, 1.4 Create Database Migration for OTP, 1.5 Create OTP Routes, 2.1 Install Dependencies, 2.2 Create Rate Limiter Middleware, 2.3 Apply Rate Limiters (+26 more)
 
-### Community 177 - "dentist-portal/home/index.jsx"
-Cohesion: 0.05
-Nodes (36): useNotifications(), PatientSearchPicker(), ClaimsCard(), FinanceMiniChart(), InsightsCard(), KpiCard(), PipelineCard(), QuickActionCard() (+28 more)
+### Community 177 - "ElectronicMedicalRecordScreen.jsx"
+Cohesion: 0.12
+Nodes (29): PatientList(), PatientMedicalHistory(), calculateAge(), displayValue(), formatAddress(), PatientProfile(), getPatientEmrById(), PATIENT_EMR_DATA (+21 more)
 
 ### Community 178 - "jest"
-Cohesion: 0.12
-Nodes (16): jest, collectCoverageFrom, coverageDirectory, coverageReporters, preset, setupFilesAfterEnv, testMatch, watchPathIgnorePatterns (+8 more)
+Cohesion: 0.25
+Nodes (8): jest, collectCoverageFrom, coverageDirectory, coverageReporters, preset, setupFilesAfterEnv, testMatch, watchPathIgnorePatterns
 
 ### Community 179 - "Pengujian Latency, Tetability, dan Maintability/maintainability/summarize-eslint-reports.js"
 Cohesion: 0.20
@@ -1327,9 +1342,9 @@ Nodes (9): arrowHeadPoints(), HoverTooltip, MeasurementLabel, MeasurementOverlay
 Cohesion: 0.33
 Nodes (5): en, id, resolveTranslation(), translate(), translations
 
-### Community 186 - "usePersistentAnnotations.js"
-Cohesion: 0.17
-Nodes (18): EMPTY_CLINICAL_RECORDS, studyIdForApi(), studyKeyForStorage(), usePersistentAnnotations(), ANNOTATION_KEEPALIVE_MAX_BYTES, authHeaders(), buildAnnotationSavePayload(), deleteAnnotationSnapshot() (+10 more)
+### Community 186 - "sockets/chat.js"
+Cohesion: 0.26
+Nodes (11): handleChatMessageEvent(), prisma, updateLastRead(), authorizeAppointment(), broadcastPresence(), emitChatMessage(), emitChatRead(), prisma (+3 more)
 
 ### Community 187 - "Repository Audit for Paper Evidence"
 Cohesion: 0.17
@@ -1347,9 +1362,9 @@ Nodes (8): idx_notification_devices_user_provider, idx_notification_jobs_status_
 Cohesion: 0.25
 Nodes (6): APIError, ERROR_CODES, errorHandler(), prisma, ref_generated_prisma_index_js, ref_tokens_js
 
-### Community 191 - "Patient Data Continuity Implementation Note"
-Cohesion: 0.25
-Nodes (7): 1. Components Still Using Mock Or Static Data, 2. Components Already Fetching Real API Data, 3. Backend Entities Already Existing, 4. Backend Endpoints Already Existing, 5. Socket Events Already Existing, 6. Broken Or Duplicated Data Flow, Patient Data Continuity Implementation Note
+### Community 191 - "status"
+Cohesion: 0.15
+Nodes (23): status(), `appointment_clinical_summaries`, `appointment_communication_participants`, `appointment_follow_up_tasks`, `appointment_pre_session_health_forms`, `appointment_status_history`, `appointments`, Appointments & communications (+15 more)
 
 ### Community 192 - "deploy"
 Cohesion: 0.22
@@ -1363,17 +1378,17 @@ Nodes (13): Authentication, Backend ✅, Common HTTP Status Codes, Database Sche
 Cohesion: 0.21
 Nodes (9): createApp(), createBranch(), createClinic(), createImagingStudy(), createUser(), fixture, prisma, uniqueValue() (+1 more)
 
-### Community 195 - "emitPortalInvalidation"
-Cohesion: 0.21
-Nodes (11): deleteStudy(), getDirSizeBytes(), getStorageStats(), emitAppointmentRealtimeUpdate(), emitClinicConfigurationUpdate(), emitClinicStaffRealtimeUpdate(), emitClinicalPortalInvalidation(), emitPortalInvalidation() (+3 more)
+### Community 195 - "xCoreAnalysisReportStorage.js"
+Cohesion: 0.38
+Nodes (10): assertStoragePath(), checksum(), decodeImageDataUrl(), __dirname, entropyOf(), sampledPixelMetrics(), storageError(), validateRenderImage() (+2 more)
 
 ### Community 196 - "035_event_outbox_and_webhook_receipts.sql"
 Cohesion: 0.43
 Nodes (7): domain_event_outbox, idx_domain_event_outbox_aggregate, idx_domain_event_outbox_status_available, idx_webhook_receipts_provider_received_at, idx_webhook_receipts_status_next_attempt, uniq_domain_event_outbox_event_id, webhook_receipts
 
 ### Community 197 - "Scan3DMeshViewer.jsx"
-Cohesion: 0.23
-Nodes (17): Scan3DAnnotationOverlay, clearAllMeasurements(), createMeasurementsState(), deleteMeasurement(), distanceMm3D(), genId(), handlePick(), hydrateMeasurements() (+9 more)
+Cohesion: 0.12
+Nodes (27): ref_node_module, ref_node_os, outputFlag, report, require, results, stateTimings, Scan3DAnnotationOverlay (+19 more)
 
 ### Community 198 - "properties"
 Cohesion: 0.12
@@ -1396,8 +1411,8 @@ Cohesion: 0.25
 Nodes (7): background_color, display, icons, name, short_name, start_url, theme_color
 
 ### Community 203 - "notifications/index.js"
-Cohesion: 0.12
-Nodes (26): isEmailConfigured(), isPushConfigured(), isSmsConfigured(), notificationConfig, CHANNEL_AVAILABILITY, dispatchJob(), EVENT_CHANNEL_DEFAULTS, markProcessing() (+18 more)
+Cohesion: 0.16
+Nodes (19): CHANNEL_AVAILABILITY, deactivateNotificationDevice(), defaultPreference(), dispatchJob(), EVENT_CHANNEL_DEFAULTS, getPreferenceMap(), listNotificationPreferences(), markProcessing() (+11 more)
 
 ### Community 204 - "📋 Patient Registration - Documentation Index"
 Cohesion: 0.08
@@ -1408,8 +1423,8 @@ Cohesion: 0.50
 Nodes (6): createVerifiedCaseWorkspaceClient(), normalizeImageArtifacts(), unwrapData(), VERIFIED_CASE_ENDPOINTS, verifiedCaseWorkspaceClient, resolveWorkspaceArtifactUrl()
 
 ### Community 206 - "properties"
-Cohesion: 0.13
-Nodes (15): properties, minimum, type, minimum, type, minimum, type, minimum (+7 more)
+Cohesion: 0.10
+Nodes (20): properties, maximum, minimum, type, minimum, type, minimum, type (+12 more)
 
 ### Community 207 - "verifiedCaseWorkspace.routes.test.js"
 Cohesion: 0.10
@@ -1419,9 +1434,9 @@ Nodes (16): createMemoryVerifiedCaseWorkspaceRepository(), getState(), createMem
 Cohesion: 0.48
 Nodes (6): idx_notifications_user_created, idx_notifications_user_read, idx_user_devices_user_active, notifications, uniq_user_device_token, user_devices
 
-### Community 209 - "auth/otp.js"
-Cohesion: 0.17
-Nodes (7): otpRateLimiter, prisma, router, OtpService, prisma, backend_src_utils_tokens_generatetokens, ref_bcryptjs
+### Community 209 - "xCoreAnalysisReportDomain.js"
+Cohesion: 0.26
+Nodes (13): annotationForFingerprint(), assertFindingLinks(), computeAnalysisFingerprint(), normalizeRenderMetadata(), normalizeStructuredFindings(), optionalFiniteNumber(), REPORT_RENDER_TYPES, REPORT_RENDER_VERSION (+5 more)
 
 ### Community 210 - "run_all.sh"
 Cohesion: 0.52
@@ -1447,9 +1462,9 @@ Nodes (5): dentist_emr_records, idx_dentist_emr_records_dentist, idx_dentist_emr
 Cohesion: 0.06
 Nodes (31): 1. Added GET Profile Endpoint to Backend Docs, 1. Login to get token, 2. Added getPatientProfile Service (Mobile), 2. Get patient profile, 🔐 Authentication & Token Flow, 📝 Backend Checklist, Backend (Required), Backend Testing (cURL) (+23 more)
 
-### Community 216 - "communications/config.js"
-Cohesion: 0.14
-Nodes (13): assertConversationsConfig(), assertTwilioStandardKeyConfig(), assertVerifyConfig(), getWebhookBaseUrl(), missingEnv(), REQUIRED_STANDARD_KEY_ENV, VideoService, createTwilioSmsAdapter() (+5 more)
+### Community 216 - "SliceViewer.jsx"
+Cohesion: 0.07
+Nodes (44): annotationAnchor(), buildCanonical2DReportRenders(), CANONICAL_MAX_EDGE, CANONICAL_REPORT_RENDER_VERSION, canonicalRenderDimensions(), clamp(), createCanvas(), drawFindingMarkers() (+36 more)
 
 ### Community 217 - "backend/src/constants/specializations.js"
 Cohesion: 0.33
@@ -1459,13 +1474,13 @@ Nodes (3): DENTAL_SPECIALIZATIONS, SPECIALIZATION_MAP, SPECIALIZATION_OPTIONS
 Cohesion: 0.06
 Nodes (31): 1. Install & Run, 2. Test on Device, 3. Start Building, Architecture:, 🔌 Backend Connection, 🎨 Code Quality, ✅ Complete Architecture, 🎊 Congratulations! (+23 more)
 
-### Community 219 - "verifiedCaseImageStorage.js"
+### Community 219 - "Viewer3D.jsx"
 Cohesion: 0.22
-Nodes (12): listLinkedVerifiedCaseResults(), base64Url(), createLocalImageStorageAdapter(), ensureDir(), putBuffer(), refToUrl(), putBuffer(), createSignedToken() (+4 more)
+Nodes (18): buildCopyText(), buildRawTagsCopyText(), buildSections(), formatValue(), GROUP_LABELS, groupLabel(), isPrivateTag(), MetadataPanel() (+10 more)
 
-### Community 220 - "summarize-single-folder-benchmark.js"
-Cohesion: 0.35
-Nodes (9): __dirname, __filename, formatNumber(), formatStats(), mean(), observedAgreement(), run(), stdDev() (+1 more)
+### Community 220 - "seed-load-test-data.cjs"
+Cohesion: 0.13
+Nodes (10): envPath, fs, path, { Pool }, root, users_adrianhalim_sereneapps_backend_node_modules_pg, users_adrianhalim_sereneapps_backend_node_modules_pg_pool, adminRoot (+2 more)
 
 ### Community 221 - "dentistDetails.js"
 Cohesion: 0.47
@@ -1484,32 +1499,32 @@ Cohesion: 0.70
 Nodes (4): idx_otp_request_attempts_idempotency, idx_otp_request_attempts_identifier_window, idx_otp_request_attempts_ip_window, otp_request_attempts
 
 ### Community 226 - "clinicStaffService.js"
-Cohesion: 0.07
-Nodes (36): demonstrateClinicStaffSystem(), authMiddleware(), prisma, requireClinicAccess(), requireRoles(), validateClinicDataAccess(), assignUserToClinic(), canAccessClinicData() (+28 more)
+Cohesion: 0.06
+Nodes (37): demonstrateClinicStaffSystem(), prisma, authMiddleware(), prisma, requireClinicAccess(), requireRoles(), validateClinicDataAccess(), assignUserToClinic() (+29 more)
 
-### Community 227 - "Final Research Evidence Report"
-Cohesion: 0.17
-Nodes (11): Code Changes, Commands Executed, Failed or Incomplete Tasks, Final Research Evidence Report, Generated Files, Manuscript Claim Updates Needed, New Results, Readiness Assessment (+3 more)
+### Community 227 - "PatientTreatmentPlan.jsx"
+Cohesion: 0.30
+Nodes (13): CATEGORY_ICONS, DENTAL_TREATMENTS, isCompletedPlan(), isDraftPlan(), isInProgressPlan(), isTreatmentDone(), mapTreatmentCategory(), PatientTreatmentPlan() (+5 more)
 
-### Community 228 - "SliceViewer.jsx"
-Cohesion: 0.07
-Nodes (42): AXIS, AXIS_ORDER, buildCenteredSlices(), buildDentistName(), clamp(), CROSSHAIR_COLORS, DEFAULT_WINDOW_LEVEL, drawMeasurementPillToCanvas() (+34 more)
+### Community 228 - "ImageViewer2D.jsx"
+Cohesion: 0.09
+Nodes (33): Dropdown(), DropdownDivider(), DropdownItem(), captureAnalysisCaseItem(), AnnotationHistoryPanel(), buildDiffSummary(), compactDateTime(), snapshotIds() (+25 more)
 
 ### Community 229 - "logCommunicationEvent"
-Cohesion: 0.18
-Nodes (14): logCommunicationEvent(), serializeValue(), expireMediaAttachments(), expireParticipantInviteTokens(), prisma, startCommunicationsRetentionWorker(), __testables, handlePaymentFailed() (+6 more)
+Cohesion: 0.17
+Nodes (15): tombstoneAttachmentMessage(), logCommunicationEvent(), serializeValue(), expireMediaAttachments(), expireParticipantInviteTokens(), prisma, startCommunicationsRetentionWorker(), __testables (+7 more)
 
-### Community 230 - "ClinicTable.jsx"
-Cohesion: 0.21
-Nodes (20): ref_prop_types, BranchList(), cleanText(), EMPTY_DISPLAY_VALUE, formatBranchAddress(), formatLocalizedDate(), getBranchCount(), getBranchPreview() (+12 more)
+### Community 230 - "ClinicDetail.jsx"
+Cohesion: 0.13
+Nodes (28): ref_prop_types, BranchList(), cleanText(), EMPTY_DISPLAY_VALUE, formatBranchAddress(), formatLocalizedDate(), getBranchCount(), getBranchPreview() (+20 more)
 
 ### Community 231 - "🚂 Railway Deployment Guide - SereneAI Backend"
 Cohesion: 0.06
 Nodes (30): **1. Health Check**, **2. Swagger UI**, **3. Test Registration**, 🔄 **Auto-Deploy on Git Push**, 🐛 **Common Issues**, 🗄️ **Database Setup**, 🎉 **Deployment Complete!**, 🔧 **Generate JWT Secrets** (+22 more)
 
-### Community 232 - "createVerifiedCaseWorkspaceStore"
-Cohesion: 0.19
-Nodes (37): caseSummary(), getCaseOrThrow(), recordAudit(), recordTimeline(), createVerifiedCaseWorkspaceStore(), addCaseImage(), archiveCase(), confirmFinding() (+29 more)
+### Community 232 - "chat"
+Cohesion: 0.33
+Nodes (12): buildClinicalContext(), createDentistAIChatService(), archiveAttachments(), chat(), fetchUpstreamSession(), getConversation(), listMessages(), persistAttachments() (+4 more)
 
 ### Community 233 - "patient_profiles"
 Cohesion: 0.83
@@ -1531,9 +1546,9 @@ Nodes (3): gradlew script, die(), warn()
 Cohesion: 0.67
 Nodes (3): ref_motion, cn(), RotatingText
 
-### Community 238 - "xcore.share.routes.test.js"
-Cohesion: 0.25
-Nodes (5): getSharedStudy(), validateStudyShareToken(), createApp(), prisma, withServer()
+### Community 238 - "xCoreAnalysisCaseService.js"
+Cohesion: 0.18
+Nodes (31): assertCaseOwner(), asBigInt(), attachRenderState(), createAnalysisCase(), deleteAnalysisCase(), generateAnalysisReport(), getAnalysisCase(), getAnalysisReportFile() (+23 more)
 
 ### Community 239 - "compilerOptions"
 Cohesion: 0.50
@@ -1643,25 +1658,25 @@ Nodes (21): **10. E-commerce Colors**, **11. Gradient Colors**, **12. Shadow Col
 Cohesion: 0.09
 Nodes (21): 1. **Backend API Endpoints** (`/backend/src/routes/admin-dashboard.js`), 2. **Frontend Components**, Admin Dashboard - Real-time Metrics Implementation, 🔐 Authorization, Backend Test, Chart Components (`/web/src/components/charts/index.jsx`), 🗺️ Clinic Distribution Map (New), Dashboard Updates (`/web/src/pages/admin-portal/home/index.jsx`) (+13 more)
 
-### Community 325 - "canonicalReportRender.mjs"
-Cohesion: 0.24
-Nodes (11): annotationAnchor(), buildCanonical2DReportRenders(), CANONICAL_MAX_EDGE, CANONICAL_REPORT_RENDER_VERSION, canonicalRenderDimensions(), clamp(), createCanvas(), drawFindingMarkers() (+3 more)
+### Community 325 - "Complete Appointment Flow"
+Cohesion: 0.18
+Nodes (10): deriveDefaultView(), 10. Skenario End-to-End (E2E) untuk QA / Dokumentasi UI, 1. Aktor, Tampilan Default, dan Scope Hak Akses, 2. Struktur Data & Status Appointment, 6. Mengelola Appointment dari Sisi Pasien, 7. Operasi Dokter & Klinik, 8. Error Handling & Kode yang Perlu Ditangani UI, 9. Rangkuman Endpoint Utama (+2 more)
 
 ### Community 326 - "🎯 STATUS UPDATE: Profile Loading Issue"
 Cohesion: 0.10
 Nodes (20): 1. Data Transformation (snake_case → camelCase), Backend HARUS implement salah satu dari 2 opsi ini:, 🔍 Diagnosis, 📋 Dokumentasi yang Sudah Dibuat, 🎯 Expected Result Setelah Fix, Log yang Diharapkan:, Masalah yang Ditemukan:, 📞 Next Steps (+12 more)
 
-### Community 327 - "src/index.jsx"
-Cohesion: 0.16
-Nodes (10): App(), container, root, web_src_styles_index, web_src_styles_modal_fix, web_src_styles_tailwind, cleanStrayElements(), initDevCleanup() (+2 more)
+### Community 327 - "verifiedCaseImageStorage.js"
+Cohesion: 0.22
+Nodes (12): listLinkedVerifiedCaseResults(), base64Url(), createLocalImageStorageAdapter(), ensureDir(), putBuffer(), refToUrl(), putBuffer(), createSignedToken() (+4 more)
 
 ### Community 328 - "videoWebhookHandler.js"
 Cohesion: 0.29
 Nodes (13): parseAppointmentIdFromRoomName(), markCommunicationParticipantJoinedFromIdentity(), parseParticipantIdentity(), eventOccurredAt(), handleObserverPublishViolation(), handleVideoEvent(), isObserverTrackPublishEvent(), OBSERVER_PUBLISH_EVENTS (+5 more)
 
 ### Community 329 - "🌍 Mobile Translation Package - SereneAI"
-Cohesion: 0.05
-Nodes (38): **1. Check for missing keys**, **1. Install Dependencies**, **1. Install Dependencies**, **1. Login Screen**, **2. Add Translation Files**, **2. Create i18n Configuration**, **2. OTP Verification**, **2. Test language switching** (+30 more)
+Cohesion: 0.10
+Nodes (19): **1. Check for missing keys**, **2. Test language switching**, **Add to translation files:**, 📝 **Adding New Translations**, 🌐 **API Response Localization**, 🔍 **Best Practices**, **Flutter (easy_localization)**, 🔄 **Language Switching** (+11 more)
 
 ### Community 330 - "🗄️ Database Schema: PatientProfile"
 Cohesion: 0.11
@@ -1699,9 +1714,9 @@ Nodes (15): 1. Executive Summary, 2. Analysis of the 10 Potential Bottleneck Vec
 Cohesion: 0.13
 Nodes (14): API Contract Changes, Backend Case Contract, Current Caveat, Data Model, DeepDental Dentist Portal Hardening, Frontend Workflow, Hardening Added On 2026-05-08, Negative-Test Matrix (+6 more)
 
-### Community 339 - "Prisma Models and Physical Tables"
-Cohesion: 0.12
-Nodes (18): token(), `ai_results`, `annotation_snapshots`, `dentist_schedule_entries`, Identity & authentication, `imaging_series`, `imaging_studies`, Other (+10 more)
+### Community 339 - "X-Core imaging & annotations"
+Cohesion: 0.13
+Nodes (15): token(), `ai_results`, `annotation_snapshots`, Identity & authentication, `imaging_series`, `imaging_studies`, `otp_request_attempts`, `OTPVerification` (+7 more)
 
 ### Community 340 - "Mobile Readiness Audit & Action Plan"
 Cohesion: 0.10
@@ -1711,9 +1726,9 @@ Nodes (17): 1. Audit: Dentist/Clinic Portals – Mobile Readiness, 1. Current Po
 Cohesion: 0.20
 Nodes (10): 400 Bad Request - Invalid Date Format, 400 Bad Request - Invalid Gender, 401 Unauthorized, 403 Forbidden - Not a Patient, cURL Example, Endpoint: PUT /v1/patient/profile, Error Responses, Request Body (+2 more)
 
-### Community 342 - "seed-load-test-data.cjs"
-Cohesion: 0.15
-Nodes (12): envPath, fs, path, { Pool }, root, users_adrianhalim_sereneapps_backend_node_modules_pg, users_adrianhalim_sereneapps_backend_node_modules_pg_pool, HIGHLIGHT_ICON_OPTIONS (+4 more)
+### Community 342 - "start-scan3d-local.mjs"
+Cohesion: 0.22
+Nodes (8): backend, backendDir, baseUrl, children, exit(), python, pythonService, stop()
 
 ### Community 343 - "📋 Patient Profile Management API Documentation"
 Cohesion: 0.14
@@ -1739,9 +1754,9 @@ Nodes (12): dependencies, express-rate-limit, twilio, express-rate-limit, twilio
 Cohesion: 0.15
 Nodes (12): CDSS / X-Core Technical Description, Confidence Score Format, Diagnostic Scope, Inference / Analysis Steps, Input Image Format, Limitations, Metadata Returned, Model Type (+4 more)
 
-### Community 349 - "appointment"
-Cohesion: 0.27
-Nodes (12): `appointment_clinical_summaries`, `appointment_communication_participants`, `appointment_follow_up_tasks`, `appointment_pre_session_health_forms`, `appointment_status_history`, Appointments & communications, `chat_messages`, `chat_room_members` (+4 more)
+### Community 349 - "xcore-analysis-case.test.js"
+Cohesion: 0.25
+Nodes (11): buildRadiographSectionLabels(), computeSourceInstanceKey(), field(), normalizeToothNumbers(), RADIOGRAPH_LABELS, RADIOGRAPH_TYPES, suggestRadiographType(), VALID_TEETH (+3 more)
 
 ### Community 350 - "Authentication Testing Guide"
 Cohesion: 0.15
@@ -1752,16 +1767,16 @@ Cohesion: 0.29
 Nodes (7): Behavior Notes, cURL Example, Endpoint: POST /v1/patient/avatar, File Specifications, Request Body (Form Data), Request Details, Success Response (200 OK)
 
 ### Community 352 - "MultiImageUploader.jsx"
-Cohesion: 0.16
-Nodes (15): DeepDental Hardening Implementation Plan, Task 1: Tests And Contracts, Task 2: Server-Side DeepDental Proxy, Task 3: Frontend API Client And Storage, Task 4: Safe Rendering And Clinical UI, Task 5: Docs, Collection, And Verification, InputBar(), MultiImageUploader() (+7 more)
+Cohesion: 0.15
+Nodes (17): DeepDental Hardening Implementation Plan, Task 1: Tests And Contracts, Task 2: Server-Side DeepDental Proxy, Task 3: Frontend API Client And Storage, Task 4: Safe Rendering And Clinical UI, Task 5: Docs, Collection, And Verification, imageFingerprint(), validateWorkspaceImages() (+9 more)
 
 ### Community 353 - "Q: How was DentistScan3DScreen aligned with the dentist mobile visual style?"
 Cohesion: 0.40
 Nodes (4): Answer, Outcome, Q: How was DentistScan3DScreen aligned with the dentist mobile visual style?, Source Nodes
 
-### Community 354 - "Error Responses"
-Cohesion: 0.40
-Nodes (5): 400 Bad Request - Invalid Date Format, 400 Bad Request - Invalid Gender, 401 Unauthorized, 403 Forbidden - Not a Patient, Error Responses
+### Community 354 - "Endpoint: PUT /v1/patient/profile"
+Cohesion: 0.20
+Nodes (10): Address Object (JSONB), cURL Example, Emergency Contact Object (JSONB), Endpoint: PUT /v1/patient/profile, Field Specifications, Medical Details Object (JSONB), Request Body, Request Details (+2 more)
 
 ### Community 355 - "Test Suite 2: Patient Registration Endpoints"
 Cohesion: 0.17
@@ -1795,9 +1810,9 @@ Nodes (10): Alur pengguna, Canonical report render, Endpoint, Marker dan temuan,
 Cohesion: 0.18
 Nodes (11): Clinic, branch, staff, services, `clinic_branches`, `clinic_facilities`, `clinic_gallery`, `clinic_highlights`, `clinic_services`, `clinic_staff`, `clinics` (+3 more)
 
-### Community 363 - "Endpoint: PUT /v1/patient/profile"
-Cohesion: 0.20
-Nodes (10): Address Object (JSONB), cURL Example, Emergency Contact Object (JSONB), Endpoint: PUT /v1/patient/profile, Field Specifications, Medical Details Object (JSONB), Request Body, Request Details (+2 more)
+### Community 363 - "🔍 What Document Should I Read?"
+Cohesion: 0.29
+Nodes (7): Scenario 1: "I need to integrate patient registration NOW", Scenario 2: "I'm getting errors and don't know why", Scenario 3: "I need to understand all validation rules", Scenario 4: "I want to add medical history and insurance info", Scenario 5: "How do I handle errors properly?", Scenario 6: "I need to test the backend", 🔍 What Document Should I Read?
 
 ### Community 364 - "🛠️ FIXES APPLIED - AI Diagnosis Integration"
 Cohesion: 0.18
@@ -1827,9 +1842,9 @@ Nodes (10): 🙏 Acknowledgments, 🧩 Adding Routes, 📦 Deployment, 🚀 Feat
 Cohesion: 0.20
 Nodes (10): 1. Get Profile Endpoint (GET /v1/patient/profile), 2. Update Profile Endpoint (PUT /v1/patient/profile), 3. Upload Avatar Endpoint (POST /v1/patient/avatar), 4. Multer Configuration, 5. Routes Configuration, 6. Mount Routes in Server, 7. Authentication Middleware Example, 8. Required npm Packages (+2 more)
 
-### Community 371 - "run-single-folder-repeated-benchmark.js"
-Cohesion: 0.32
-Nodes (7): ref_form_data, ref_http, __dirname, __filename, getFilesRecursive(), run(), uploadFolder()
+### Community 371 - "distortion"
+Cohesion: 0.25
+Nodes (8): description, items, maxItems, minItems, type, type, items, distortion
 
 ### Community 372 - "📱 Patient Registration - Complete Guide for Mobile App"
 Cohesion: 0.20
@@ -1847,17 +1862,17 @@ Nodes (9): Accent Color, 🔹 Color Palette, CSS Variables, 🎨 Dentalization �
 Cohesion: 0.20
 Nodes (10): Address Object (JSONB), cURL Example, Emergency Contact Object (JSONB), Endpoint: PUT /v1/patient/profile, Field Specifications, Medical Details Object (JSONB), Request Body, Request Details (+2 more)
 
-### Community 376 - "Smartphone 3D research runbook"
-Cohesion: 0.14
-Nodes (12): Gaps corrected before Phase 13 changes, Phase 13: only after the baseline checks, Real reconstruction path, integrity and reproducibility audit, Reproduce the baseline, Verification and limits, DICOM preparation, Experiment contract, Offline evaluation (+4 more)
+### Community 376 - "Smartphone dental 3D reconstruction: research walkthrough"
+Cohesion: 0.06
+Nodes (29): Gaps corrected before Phase 13 changes, Phase 13: only after the baseline checks, Real reconstruction path, integrity and reproducibility audit, Reproduce the baseline, Verification and limits, Changes from the audited baseline, Controlled software verification and limits, Dental multi-view reconstruction engineering walkthrough (+21 more)
 
 ### Community 377 - "🆘 Troubleshooting"
 Cohesion: 0.33
 Nodes (6): ⚠️ COMMON MISTAKE: Wrong API Path, Issue: "Cannot POST /v1/auth/patient/register", Issue: CORS error, Issue: "Email already registered", Issue: "Network request failed", 🆘 Troubleshooting
 
-### Community 378 - "_on_mouse_click"
-Cohesion: 0.24
-Nodes (12): getHoverShapeOnTeeth(), getMouse(), initialize(), isPolyIntersect(), isRectIntersect(), joinShapeTeeth(), Odontogram(), _on_mouse_click() (+4 more)
+### Community 378 - "devDependencies"
+Cohesion: 0.33
+Nodes (6): devDependencies, @babel/core, babel-preset-expo, baseline-browser-mapping, jest, jest-expo
 
 ### Community 379 - "Endpoint: GET /v1/patient/profile"
 Cohesion: 0.22
@@ -1883,9 +1898,9 @@ Nodes (9): 1. Update Profile Endpoint (PUT /v1/patient/profile), 2. Upload Avata
 Cohesion: 0.07
 Nodes (29): 1. Test with cURL, 2. Test with Postman, 3. Test Cases, 4. Validation Testing, 🔌 API Endpoint, Base URL Configuration, Complete Registration Screen (React Native), Complete Type Definition (+21 more)
 
-### Community 385 - "scan3d.integrity.test.js"
-Cohesion: 0.08
-Nodes (55): scanServiceHeaders(), scanServiceSignal(), PROCESSING_VERSION, resolveExperimentConfiguration(), acquisitionFailureCode(), HTTP_FAILURE_CODES, runLidraAcquisition(), unavailableAcquisition() (+47 more)
+### Community 385 - "_on_mouse_click"
+Cohesion: 0.24
+Nodes (12): getHoverShapeOnTeeth(), getMouse(), initialize(), isPolyIntersect(), isRectIntersect(), joinShapeTeeth(), Odontogram(), _on_mouse_click() (+4 more)
 
 ### Community 386 - "Maintainability Testing Setup"
 Cohesion: 0.25
@@ -1907,17 +1922,17 @@ Nodes (7): Added Tests, Backend Consultation / Chat Testability Summary, Command
 Cohesion: 0.25
 Nodes (7): Catatan kelengkapan, Error Rate Endpoint Target (custom Rate, %), Hasil Pengujian API Inti — Repeated Measurement, p95 Response Time Endpoint Target (custom Trend, ms), Rata-rata Response Time Endpoint Target (custom Trend, avg, ms), Ringkasan untuk BAB IV, Throughput Endpoint Target (custom Counter, req/s)
 
-### Community 391 - "PatientInfoPanel.jsx"
-Cohesion: 0.24
-Nodes (7): AVATAR_GRADIENTS, CollapsedPanel(), formatTimeAgo(), getAvatarGradient(), getInitials(), panelClass(), PatientInfoPanel()
+### Community 391 - "verifiedCaseAnalysisAdapter.js"
+Cohesion: 0.20
+Nodes (6): describeDetection(), DETECTION_DIFFERENTIALS, extractFindings(), OUTPUT_CONTRACT_INSTRUCTION, OUTPUT_REPAIR_INSTRUCTION, ref_node_buffer
 
 ### Community 392 - "Auth API Contract (Expected by Frontend)"
 Cohesion: 0.25
 Nodes (7): Auth API Contract (Expected by Frontend), GET /auth/me, Notes, POST /auth/login, POST /auth/logout (optional), POST /auth/patient/register, POST /auth/refresh
 
-### Community 393 - "Implementation Checklist"
-Cohesion: 0.50
-Nodes (4): Backend ✅, Database Verification ✅, Frontend (Mobile) ✅, Implementation Checklist
+### Community 393 - "Manual Testing with cURL"
+Cohesion: 0.33
+Nodes (6): 1. Register Patient, 2. Update Profile, 3. Upload Avatar, Manual Testing with cURL, Testing Guide, Using HTML Test Interface
 
 ### Community 394 - "**4. 🛒 E-commerce Mini Screen**"
 Cohesion: 0.29
@@ -1952,12 +1967,12 @@ Cohesion: 0.29
 Nodes (6): Analisis dan interpretasi, Dry run (wajib sebelum eksekusi), Konsistensi data uji, Menjalankan pengujian, Pengujian Latency API Inti — Repeated Measurement (n=3), Prasyarat dan keamanan
 
 ### Community 402 - "ChatMessage.jsx"
-Cohesion: 0.11
-Nodes (15): framer-motion, react-markdown, rehype-sanitize, remark-gfm, ChatMessage(), messageVariants, stripContextBlockDisplay(), ThinkingLoader() (+7 more)
+Cohesion: 0.20
+Nodes (6): react-markdown, rehype-sanitize, remark-gfm, ChatMessage(), messageVariants, stripContextBlockDisplay()
 
-### Community 403 - "admin.js"
-Cohesion: 0.18
-Nodes (7): __dirname, __filename, token, router, prisma, router, jsonwebtoken
+### Community 403 - "Error Responses"
+Cohesion: 0.33
+Nodes (6): 400 Bad Request - File Too Large, 400 Bad Request - Invalid File Type, 400 Bad Request - No File, 401 Unauthorized, 403 Forbidden - Not a Patient, Error Responses
 
 ### Community 404 - "📱 Mobile Team Handoff - SereneAI API"
 Cohesion: 0.29
@@ -1979,9 +1994,9 @@ Nodes (7): Action Creators, Action Types, Component Usage, Date Format Handling,
 Cohesion: 0.29
 Nodes (7): Behavior Notes, cURL Example, Endpoint: POST /v1/patient/avatar, File Specifications, Request Body (Form Data), Request Details, Success Response (200 OK)
 
-### Community 409 - "ImageViewer2D.jsx"
-Cohesion: 0.12
-Nodes (29): Dropdown(), DropdownDivider(), DropdownItem(), AnnotationSessionModal(), ComparisonViewer(), buildDentistName(), clamp(), distanceBetweenPoints() (+21 more)
+### Community 409 - "usePersistentAnnotations.js"
+Cohesion: 0.17
+Nodes (18): EMPTY_CLINICAL_RECORDS, studyIdForApi(), studyKeyForStorage(), usePersistentAnnotations(), ANNOTATION_KEEPALIVE_MAX_BYTES, authHeaders(), buildAnnotationSavePayload(), deleteAnnotationSnapshot() (+10 more)
 
 ### Community 410 - "OTP Observability Pack"
 Cohesion: 0.33
@@ -1992,8 +2007,8 @@ Cohesion: 0.33
 Nodes (5): Endpoints, Env Vars, Notes, Quick Start, Serene AI Backend (Express.js)
 
 ### Community 412 - "useAuth"
-Cohesion: 0.05
-Nodes (67): APP_FALLBACK_COPY, ProtectedRoute(), AuthContext, AuthProvider(), useAuth(), getActions(), getCategory(), getSeverity() (+59 more)
+Cohesion: 0.04
+Nodes (86): Checkbox, CheckboxGroup, GlassSurface(), Input, getModalRoot(), ModalPortal(), Select, AuthContext (+78 more)
 
 ### Community 413 - "**5. 👤 Profile Screen**"
 Cohesion: 0.33
@@ -2020,8 +2035,8 @@ Cohesion: 0.33
 Nodes (5): Error Rate (`http_req_failed`), Hasil Pengujian Load Testing — Repeated Measurement, p95 Response Time (`http_req_duration`, ms), Rata-rata Response Time (`http_req_duration`, avg, ms), Throughput (`http_reqs.rate`, req/s)
 
 ### Community 419 - "Repository Load Test Failure Audit (error-rate-0)"
-Cohesion: 0.29
-Nodes (6): 1. Endpoints Tested in 100/200 VU Scripts, 2. Endpoint Contributing the Most Failures, 3. Status Code Distribution, 4. Failure Type Distribution, 6. Initial Hypothesis, Repository Load Test Failure Audit (error-rate-0)
+Cohesion: 0.20
+Nodes (9): getAppointmentForUser(), toBigInt(), 1. Endpoints Tested in 100/200 VU Scripts, 2. Endpoint Contributing the Most Failures, 3. Status Code Distribution, 4. Failure Type Distribution, 5. Application Code vs Test Script Assumptions, 6. Initial Hypothesis (+1 more)
 
 ### Community 420 - "Repeated-Run CBCT Benchmark Performance Report"
 Cohesion: 0.33
@@ -2036,8 +2051,8 @@ Cohesion: 0.33
 Nodes (6): **1. Patient Registration**, **2. Request OTP (SMS Only)**, **3. Verify OTP**, **4. Login**, **5. Refresh Token**, 🔐 **Authentication Flow**
 
 ### Community 423 - "idempotency.js"
-Cohesion: 0.14
-Nodes (22): router, getWebhookUrl(), router, verifyTwilioSignature(), getWebhookUrl(), router, verifyTwilioSignature(), getTwilioWebhookAuthToken() (+14 more)
+Cohesion: 0.11
+Nodes (32): router, getWebhookUrl(), router, verifyTwilioSignature(), getWebhookUrl(), router, verifyTwilioSignature(), assertConversationsConfig() (+24 more)
 
 ### Community 424 - "**5. 👤 Profile Screen**"
 Cohesion: 0.33
@@ -2068,16 +2083,16 @@ Cohesion: 0.33
 Nodes (6): Error Response (400 Bad Request), Error Response (409 Conflict), Error Response (500 Internal Server Error), 📥 Response Format, Success Response (201 Created), Success Response Example
 
 ### Community 431 - "INTEGRATION_EXAMPLES.jsx"
-Cohesion: 0.19
-Nodes (12): ref_components_gallery, ref_components_viewer3d, cornerstone-core, cornerstone-tools, DentistPortalXCore, loadAndDisplayImage(), setupMeasurementTools(), XCoreViewerExample() (+4 more)
+Cohesion: 0.13
+Nodes (16): ref_components_gallery, ref_components_viewer3d, cornerstone-core, cornerstone-math, cornerstone-tools, cornerstone-wado-image-loader, dicom-parser, hammerjs (+8 more)
 
-### Community 432 - "appointmentScopedRoomName"
-Cohesion: 0.33
-Nodes (6): appointmentScopedRoomName(), chatChannelNameForAppointment(), normalizeAppointmentId(), videoRoomNameForAppointment(), __testables, prisma
-
-### Community 433 - "templates.js"
+### Community 432 - "xcore.share.routes.test.js"
 Cohesion: 0.25
-Nodes (9): defaultPreference(), getPreferenceMap(), listNotificationPreferences(), updateNotificationPreferences(), DATE_FORMATTER, formatDate(), getTemplate(), NOTIFICATION_CHANNELS (+1 more)
+Nodes (5): getSharedStudy(), validateStudyShareToken(), createApp(), prisma, withServer()
+
+### Community 433 - "expectedRegions"
+Cohesion: 0.40
+Nodes (5): items, minItems, type, uniqueItems, expectedRegions
 
 ### Community 434 - "🎨 Main Features & Screens"
 Cohesion: 0.40
@@ -2175,17 +2190,17 @@ Nodes (7): csvEscape(), ensureDir(), markdownTable(), writeCsv(), writeJson(), r
 Cohesion: 0.40
 Nodes (5): ⚠️ Error Handling, Error Response Structure, Example Error Handler (React Native), HTTP Status Codes, Retry Logic
 
-### Community 458 - "ScanServiceTests"
-Cohesion: 0.19
-Nodes (4): raw_request(), request(), receive(), ScanServiceTests
+### Community 458 - "Field Specifications"
+Cohesion: 0.40
+Nodes (5): Address Object (JSONB), Emergency Contact Object (JSONB), Field Specifications, Medical Details Object (JSONB), Root Level Fields (snake_case for database columns)
 
 ### Community 459 - "**JSON Field Structures**"
 Cohesion: 0.50
 Nodes (4): **1. `emergency_contact` (JSONB)**, **2. `address` (JSONB)**, **3. `medical_details` (JSONB) - ⚠️ MOST CRITICAL!**, **JSON Field Structures**
 
-### Community 460 - "verifiedCaseAnalysisAdapter.js"
-Cohesion: 0.20
-Nodes (6): describeDetection(), DETECTION_DIFFERENTIALS, extractFindings(), OUTPUT_CONTRACT_INSTRUCTION, OUTPUT_REPAIR_INSTRUCTION, ref_node_buffer
+### Community 460 - "Q: How can insufficient image-derived scan meshes remain visible for diagnosis without being presented as ready dental reconstructions?"
+Cohesion: 0.50
+Nodes (3): Answer, Outcome, Q: How can insufficient image-derived scan meshes remain visible for diagnosis without being presented as ready dental reconstructions?
 
 ### Community 461 - "🔐 Security Best Practices"
 Cohesion: 0.50
@@ -2267,13 +2282,13 @@ Nodes (7): 🔴 1. Authentication (2-3 days), 🔴 2. Payments (3-5 days), 🔴 
 Cohesion: 0.18
 Nodes (11): Mobile Team (15-20 hours), Mobile Team (20-25 hours), Mobile Team (25-30 hours), Mobile Team (25-30 hours), Mobile Team (25-30 hours), 🚀 PHASE 2: Mobile Development (Weeks 2-6), Week 2: Project Setup & Design System 🎨, Week 3: Authentication & Onboarding 🔐 (+3 more)
 
-### Community 481 - "deepDentalSchemas.mjs"
-Cohesion: 0.31
-Nodes (9): ALLOWED_IMAGE_MIME_TYPES, buildAnnotatedImageDataUrl(), DEFAULT_ANNOTATED_IMAGE_MIME_TYPE, getAnnotatedImageMimeType(), normalizeMimeType(), VISUAL_FINDINGS_SCHEMA_VERSION, concernClasses, formatConfidence() (+1 more)
+### Community 481 - "Important Notes"
+Cohesion: 0.40
+Nodes (5): API Behavior, Data Format Conventions, Database Structure, Important Notes, Mobile App Integration
 
-### Community 482 - "@kitware/vtk.js"
-Cohesion: 0.29
-Nodes (7): @kitware/vtk.js, LinkedViewer(), AXES, buildColorFunction(), buildOpacityFunction(), clamp(), SliceViewerMini()
+### Community 482 - "🚀 Quick Start for Backend Team"
+Cohesion: 0.40
+Nodes (5): Data Flow, Key Points, Quick Implementation Steps, 🚀 Quick Start for Backend Team, What You Need to Implement
 
 ### Community 483 - "🔐 Security Best Practices"
 Cohesion: 0.50
@@ -2316,8 +2331,8 @@ Cohesion: 0.18
 Nodes (11): additionalProperties, required, type, properties, independentMeasurement, provenancePath, reconstructionPath, minLength (+3 more)
 
 ### Community 495 - "properties"
-Cohesion: 0.18
-Nodes (11): type, items, type, metrics, reference, registration, validation, type (+3 more)
+Cohesion: 0.22
+Nodes (9): type, metrics, reference, registration, validation, type, enum, properties (+1 more)
 
 ### Community 496 - "🎯 PHASE 1: Backend Preparation (Weeks 1-3)"
 Cohesion: 0.25
@@ -2348,8 +2363,8 @@ Cohesion: 0.20
 Nodes (10): minItems, type, properties, captures, protocolId, references, minLength, type (+2 more)
 
 ### Community 511 - "Scan3DMeshViewer"
-Cohesion: 0.35
-Nodes (8): MAX_SCAN_ASSET_BYTES, readBoundedAsset(), resolveScanAssetCapability(), scanAnnotationStorageKey(), scanAssetPath(), Scan3DMeshViewer(), createScanViewerTelemetry(), useToothInstances()
+Cohesion: 0.24
+Nodes (10): MAX_SCAN_ASSET_BYTES, readBoundedAsset(), resolveScanAssetCapability(), scanAnnotationStorageKey(), scanAssetPath(), Scan3DMeshViewer(), createScanViewerTelemetry(), web_src_styles_index (+2 more)
 
 ### Community 512 - "1️⃣ BACKEND API INFRASTRUCTURE"
 Cohesion: 0.25
@@ -2375,13 +2390,13 @@ Nodes (7): minLength, type, evidence, scaleCalibration, properties, required, ty
 Cohesion: 0.29
 Nodes (7): referenceSource, sha256, properties, required, type, pattern, type
 
-### Community 518 - "toastBus.js"
-Cohesion: 0.36
-Nodes (7): emitToastEvent(), listeners, logInternalError(), normalizeEvent(), queuedEvents, subscribeToToastEvents(), toastService
+### Community 518 - "frames"
+Cohesion: 0.40
+Nodes (5): items, maxItems, minItems, type, frames
 
-### Community 519 - "ai/index.jsx"
-Cohesion: 0.12
-Nodes (16): lucide-react, AuditTrailPanel(), formatTime(), labelEvent(), CaseExportPanel(), formatExportTime(), ClinicianFindingPanel(), SEVERITIES (+8 more)
+### Community 519 - "🔧 Bugs Fixed"
+Cohesion: 0.40
+Nodes (5): 1. Database Column Error, 2. Avatar Storage Location, 3. User ID Access, 4. Multer Configuration, 🔧 Bugs Fixed
 
 ### Community 520 - "test-scan3d-integrity.sh"
 Cohesion: 0.33
@@ -2395,9 +2410,9 @@ Nodes (5): additionalProperties, required, $schema, title, type
 Cohesion: 0.33
 Nodes (5): description, required, $schema, title, type
 
-### Community 523 - "vtk_runtime.py"
-Cohesion: 0.20
-Nodes (9): Headless VTK geometry imports; do not initialize rendering/UI plugins in…, vtkmodules_vtkcommoncore, vtkmodules_vtkcommondatamodel, vtkmodules_vtkcommontransforms, vtkmodules_vtkfilterscore, vtkmodules_vtkfiltersgeneral, vtkmodules_vtkfilterssources, vtkmodules_vtkiogeometry (+1 more)
+### Community 523 - "**Flutter Implementation**"
+Cohesion: 0.18
+Nodes (11): **1. Install Dependencies**, **1. Install Dependencies**, **2. Add Translation Files**, **2. Create i18n Configuration**, **3. Initialize in App.js**, **3. Initialize in main.dart**, **4. Usage in Components**, **4. Usage in Widgets** (+3 more)
 
 ### Community 524 - "Q: Why did the live 3D scan report acquisition unavailable and what backend diagnostics prevent recurrence?"
 Cohesion: 0.40
@@ -2419,29 +2434,29 @@ Nodes (4): required, $schema, title, type
 Cohesion: 0.40
 Nodes (4): Answer, Outcome, Q: Why did a failed 3D scan appear as a mesh in X-Core Gallery and how does the portal now refresh status?, Source Nodes
 
-### Community 529 - "dentistClinicContextService.js"
-Cohesion: 0.52
-Nodes (5): addressText(), idValue(), resolveDentistClinicContext(), syncDentistProfileClinicAssignment(), __testables
+### Community 529 - "scripts"
+Cohesion: 0.25
+Nodes (8): scripts, android, ios, lint:report, maintainability:eslint, start, test, web
 
 ### Community 530 - "Q: Why did the real Android camera scan repeatedly fail with ACQUISITION_UNAVAILABLE and how was it recovered?"
 Cohesion: 0.40
 Nodes (4): Answer, Outcome, Q: Why did the real Android camera scan repeatedly fail with ACQUISITION_UNAVAILABLE and how was it recovered?, Source Nodes
 
-### Community 531 - "profile-scan3d-fixtures.mjs"
-Cohesion: 0.29
-Nodes (6): ref_node_module, outputFlag, report, require, results, stateTimings
+### Community 531 - "Prisma Models and Physical Tables"
+Cohesion: 0.13
+Nodes (15): `ai_analysis_results`, `ai_chat_messages`, `dentist_emr_records`, `dentist_schedule_entries`, `notification_devices`, `notification_jobs`, `notification_preferences`, Notifications (+7 more)
 
-### Community 532 - "cleanup-benchmark-artifacts.js"
-Cohesion: 0.33
-Nodes (6): __dirname, __filename, getDirSizeBytes(), prisma, run(), UPLOAD_DIR
+### Community 532 - "admin-dashboard.js"
+Cohesion: 0.22
+Nodes (8): formatIdr(), PAID_INVOICE_STATUSES, PENDING_INVOICE_STATUSES, PENDING_PAYMENT_STATUSES, prisma, router, SETTLED_PAYMENT_STATUSES, toNumber()
 
 ### Community 533 - "Q: Why did X-Core scan status show Unexpected token HTML after phone upload?"
 Cohesion: 0.50
 Nodes (3): Answer, Outcome, Q: Why did X-Core scan status show Unexpected token HTML after phone upload?
 
-### Community 534 - "maxFrames"
-Cohesion: 0.50
-Nodes (4): maximum, minimum, type, maxFrames
+### Community 534 - "SkeletonLoader.jsx"
+Cohesion: 0.20
+Nodes (6): ✅ Core Features Implemented, ErrorState(), styles, RiskBadge(), SkeletonLoader(), styles
 
 ### Community 535 - "surfaceSamples"
 Cohesion: 0.50
@@ -2451,13 +2466,17 @@ Nodes (4): surfaceSamples, maximum, minimum, type
 Cohesion: 0.40
 Nodes (4): Answer, Outcome, Q: What mobile capture and queue integrity gaps were fixed for real dental 3D scans?, Source Nodes
 
-### Community 538 - "🔍 What Document Should I Read?"
-Cohesion: 0.29
-Nodes (7): Scenario 1: "I need to integrate patient registration NOW", Scenario 2: "I'm getting errors and don't know why", Scenario 3: "I need to understand all validation rules", Scenario 4: "I want to add medical history and insurance info", Scenario 5: "How do I handle errors properly?", Scenario 6: "I need to test the backend", 🔍 What Document Should I Read?
+### Community 537 - "Mobile Integration"
+Cohesion: 0.50
+Nodes (4): EditProfileScreen Integration, Mobile Integration, Redux Integration, Service Layer (patientService.js)
 
-### Community 539 - "metro.config.js"
-Cohesion: 0.33
-Nodes (4): config, { getDefaultConfig }, path, expo
+### Community 538 - "run-latency-tests.js"
+Cohesion: 0.27
+Nodes (9): { exec }, fs, generateReports(), parseDuration(), path, run(), runCommand(), tests (+1 more)
+
+### Community 539 - "@kitware/vtk.js"
+Cohesion: 0.29
+Nodes (7): @kitware/vtk.js, LinkedViewer(), AXES, buildColorFunction(), buildOpacityFunction(), clamp(), SliceViewerMini()
 
 ### Community 540 - "device"
 Cohesion: 0.67
@@ -2551,53 +2570,53 @@ Nodes (4): Answer, Outcome, Q: Why did the real mobile scan fail and how was sca
 Cohesion: 0.50
 Nodes (4): react-app, react-app/jest, eslintConfig, extends
 
-### Community 566 - "devDependencies"
-Cohesion: 0.33
-Nodes (6): devDependencies, @babel/core, babel-preset-expo, baseline-browser-mapping, jest, jest-expo
+### Community 566 - "ai-analysis.js"
+Cohesion: 0.25
+Nodes (4): prisma, router, sanitizeImageValue(), sanitizeValue()
 
-### Community 567 - "init.js"
-Cohesion: 0.33
-Nodes (4): cornerstone-math, cornerstone-wado-image-loader, dicom-parser, hammerjs
+### Community 567 - "ClinicScheduleStats.jsx"
+Cohesion: 0.31
+Nodes (5): ClinicScheduleStats(), formatCurrency(), formatDuration(), RECOMMENDATION_TONES, STATUS_ITEMS
 
-### Community 568 - "Manual Testing with cURL"
-Cohesion: 0.33
-Nodes (6): 1. Register Patient, 2. Update Profile, 3. Upload Avatar, Manual Testing with cURL, Testing Guide, Using HTML Test Interface
+### Community 568 - "emitPortalInvalidation"
+Cohesion: 0.36
+Nodes (7): emitAppointmentRealtimeUpdate(), emitClinicConfigurationUpdate(), emitClinicStaffRealtimeUpdate(), emitClinicalPortalInvalidation(), emitPortalInvalidation(), idValue(), resolveClinicalCollaborationClinicIds()
 
-### Community 569 - "Error Responses"
-Cohesion: 0.33
-Nodes (6): 400 Bad Request - File Too Large, 400 Bad Request - Invalid File Type, 400 Bad Request - No File, 401 Unauthorized, 403 Forbidden - Not a Patient, Error Responses
+### Community 569 - "Patient Data Continuity Implementation Note"
+Cohesion: 0.25
+Nodes (7): 1. Components Still Using Mock Or Static Data, 2. Components Already Fetching Real API Data, 3. Backend Entities Already Existing, 4. Backend Endpoints Already Existing, 5. Socket Events Already Existing, 6. Broken Or Duplicated Data Flow, Patient Data Continuity Implementation Note
 
-### Community 570 - "Notifications"
-Cohesion: 0.40
-Nodes (5): `notification_devices`, `notification_jobs`, `notification_preferences`, Notifications, `notifications`
+### Community 570 - "run-cdss-async-latency.js"
+Cohesion: 0.29
+Nodes (7): fs, generateReports(), path, { performance }, run(), SAMPLE_IMAGE_PATH, ref_perf_hooks
 
 ### Community 571 - "Q: Why did main.py, vti_converter.py, and reconstruction_service.py show errors, and what runtime integrity fixes were made?"
 Cohesion: 0.40
 Nodes (4): Answer, Outcome, Q: Why did main.py, vti_converter.py, and reconstruction_service.py show errors, and what runtime integrity fixes were made?, Source Nodes
 
-### Community 572 - "Field Specifications"
-Cohesion: 0.40
-Nodes (5): Address Object (JSONB), Emergency Contact Object (JSONB), Field Specifications, Medical Details Object (JSONB), Root Level Fields (snake_case for database columns)
-
-### Community 573 - "browserslist"
+### Community 572 - "browserslist"
 Cohesion: 0.67
 Nodes (3): browserslist, development, production
 
-### Community 574 - "Important Notes"
+### Community 573 - "Error Responses"
 Cohesion: 0.40
-Nodes (5): API Behavior, Data Format Conventions, Database Structure, Important Notes, Mobile App Integration
+Nodes (5): 400 Bad Request - Invalid Date Format, 400 Bad Request - Invalid Gender, 401 Unauthorized, 403 Forbidden - Not a Patient, Error Responses
 
-### Community 575 - "🚀 Quick Start for Backend Team"
-Cohesion: 0.40
-Nodes (5): Data Flow, Key Points, Quick Implementation Steps, 🚀 Quick Start for Backend Team, What You Need to Implement
+### Community 574 - "run-single-folder-repeated-benchmark.js"
+Cohesion: 0.32
+Nodes (7): ref_form_data, ref_http, __dirname, __filename, getFilesRecursive(), run(), uploadFolder()
 
-### Community 576 - "🔧 Bugs Fixed"
-Cohesion: 0.40
-Nodes (5): 1. Database Column Error, 2. Avatar Storage Location, 3. User ID Access, 4. Multer Configuration, 🔧 Bugs Fixed
+### Community 575 - "Implementation Checklist"
+Cohesion: 0.50
+Nodes (4): Backend ✅, Database Verification ✅, Frontend (Mobile) ✅, Implementation Checklist
 
-### Community 577 - "AnnotationHistoryPanel.jsx"
-Cohesion: 0.70
-Nodes (4): AnnotationHistoryPanel(), buildDiffSummary(), compactDateTime(), snapshotIds()
+### Community 576 - "push.js"
+Cohesion: 0.43
+Nodes (6): chunkExpoMessages(), chunkTokens(), initFirebaseApp(), sendExpoPushNotification(), sendPushNotification(), firebase-admin
+
+### Community 577 - "scan3d.full-arch-pair.test.js"
+Cohesion: 0.38
+Nodes (5): badPair(), resolveFullArchPair(), lowerProtocol, recordedUpper, upperProtocol
 
 ### Community 578 - "ImplantPlanner.jsx"
 Cohesion: 0.70
@@ -2607,29 +2626,65 @@ Nodes (4): IMPLANT_BRANDS, IMPLANT_DIAMETERS, IMPLANT_LENGTHS, ImplantPlanner()
 Cohesion: 0.50
 Nodes (3): Answer, Outcome, Q: Why did the first real smartphone 3D scan show non-tooth mesh and what engineering improvements were made?
 
-### Community 580 - "Mobile Integration"
-Cohesion: 0.50
-Nodes (4): EditProfileScreen Integration, Mobile Integration, Redux Integration, Service Layer (patientService.js)
+### Community 580 - "BookingSlotScreen.jsx"
+Cohesion: 0.08
+Nodes (38): ImagePreviewScreen(), normalize(), styles, { width: SCREEN_WIDTH }, DENTISTS, BookingSlotScreen(), buildAvatarUrl(), formatTime() (+30 more)
+
+### Community 581 - "xcore-analysis-pdf-visual.test.js"
+Cohesion: 0.38
+Nodes (5): buildXCoreExampleFixture(), baseline, dHash(), makeVisualFixturePdf(), pageMetrics()
+
+### Community 582 - "cleanup-benchmark-artifacts.js"
+Cohesion: 0.33
+Nodes (6): __dirname, __filename, getDirSizeBytes(), prisma, run(), UPLOAD_DIR
+
+### Community 583 - "prices/index.jsx"
+Cohesion: 0.43
+Nodes (5): AnimatedPrice(), cn(), formatRupiah(), PricingCard(), PricingPage()
+
+### Community 584 - "templates.js"
+Cohesion: 0.40
+Nodes (4): DATE_FORMATTER, formatDate(), getTemplate(), templates
+
+### Community 585 - "metro.config.js"
+Cohesion: 0.33
+Nodes (4): config, { getDefaultConfig }, path, expo
+
+### Community 586 - "🎯 **Common Use Cases**"
+Cohesion: 0.33
+Nodes (6): **1. Login Screen**, **2. OTP Verification**, **3. Error Handling**, **4. Appointment Status**, **5. Date Formatting**, 🎯 **Common Use Cases**
+
+### Community 587 - "StaffProfileDrawer.jsx"
+Cohesion: 0.83
+Nodes (3): formatDate(), normalizePermissions(), StaffProfileDrawer()
+
+### Community 588 - "specialistWorkspace.contract.test.mjs"
+Cohesion: 0.67
+Nodes (3): here, readSource(), readTreeSource()
+
+### Community 589 - "**Available Categories**"
+Cohesion: 0.67
+Nodes (3): **Available Categories**, **Key Naming Convention**, 📚 **Translation Structure**
 
 ## Knowledge Gaps
-- **3627 isolated node(s):** `{ exec }`, `fs`, `path`, `tests`, `PATIENT_EMAIL` (+3622 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 4604 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **80 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **3671 isolated node(s):** `{ exec }`, `fs`, `path`, `tests`, `PATIENT_EMAIL` (+3666 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 4668 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **75 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `users` connect `users` to `clinic_staff`, `patient_profiles`, `payment_intents`, `034_create_treatment_plans.sql`, `060_create_xcore_analysis_cases.sql`, `023_add_in_app_notifications.sql`, `dentist_profiles`, `clinic_branches`, `appointments`, `029_create_dentist_emr_records.sql`, `030_create_ai_analysis_results.sql`, `020_create_notifications_tables.sql`, `imaging_studies`, `20260701000000_add_dentist_emr_records/migration.sql`, `20260701010000_add_specialist_workspace/migration.sql`, `chat_messages`?**
-  _High betweenness centrality (0.063) - this node is a cross-community bridge._
+  _High betweenness centrality (0.059) - this node is a cross-community bridge._
 - **Why does `notifications` connect `023_add_in_app_notifications.sql` to `mobile/package.json`, `users`?**
-  _High betweenness centrality (0.062) - this node is a cross-community bridge._
-- **Why does `image` connect `main.py` to `expo`, `aiDiagnosisService.js`?**
-  _High betweenness centrality (0.060) - this node is a cross-community bridge._
+  _High betweenness centrality (0.058) - this node is a cross-community bridge._
+- **Why does `process_3d_scan_reconstruction()` connect `reconstruction_service.py` to `scan3d.integrity.test.js`, `test_scan3d_research.py`, `main.py`?**
+  _High betweenness centrality (0.054) - this node is a cross-community bridge._
 - **What connects `{ exec }`, `fs`, `path` to the rest of the system?**
-  _3627 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _3671 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `reconcileJob.js` be split into smaller, more focused modules?**
+  _Cohesion score 0.1010752688172043 - nodes in this community are weakly interconnected._
 - **Should `ref_react` be split into smaller, more focused modules?**
-  _Cohesion score 0.034636871508379886 - nodes in this community are weakly interconnected._
-- **Should `@expo/vector-icons` be split into smaller, more focused modules?**
-  _Cohesion score 0.04675387596899225 - nodes in this community are weakly interconnected._
-- **Should `ref_node_assert` be split into smaller, more focused modules?**
-  _Cohesion score 0.033783783783783786 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.03860062893081761 - nodes in this community are weakly interconnected._
+- **Should `react-native` be split into smaller, more focused modules?**
+  _Cohesion score 0.05504587155963303 - nodes in this community are weakly interconnected._

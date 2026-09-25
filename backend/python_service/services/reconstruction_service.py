@@ -1,8 +1,7 @@
-"""Experimental sparse SfM from decoded video; no procedural geometry fallback.
+"""Experimental ROI-limited SfM and CPU dense stereo, with sparse diagnostics.
 
-The mesh interpolates sparse, measured feature tracks from one camera pair.
-Additional frames can verify pose but do not densify this mesh.
-It is a partial visualization, not a dense dental surface or a validated measurement.
+Only a dense result supported by multiple registered views can replace the
+best-pair diagnostic mesh. Neither output establishes dental accuracy or scale.
 """
 import json
 import os
@@ -33,9 +32,13 @@ class ReconstructionBest(TypedDict):
 
 from .dental_filter_service import export_binary_stl
 from .lidra_service import DEFAULT_CONFIG as LIDRA_DEFAULT_CONFIG, VERSION as LIDRA_VERSION, analyze_video_acquisition, file_sha256
+from .multiview_tracks import build_multiview_tracks, bundle_adjust_tracks
+from .dense_multiview_stereo import dense_multiview_surface
+from .per_tooth_support import summarize_tooth_support
+from .mesh_surface_audit import self_intersection_report
 
 ENGINE = "opencv_sparse_sfm"
-VERSION = "2.2.0"
+VERSION = "2.5.0"
 DEFAULT_CONFIG = {"maxViews": 8, "maxImageDimension": 1600, "maxFeatures": 6000,
                   "ratioThreshold": 0.72, "ransacThresholdPx": 1.0,
                   "maxReprojectionErrorPx": 2.0, "minPoints": 20,
@@ -45,6 +48,34 @@ DEFAULT_CONFIG = {"maxViews": 8, "maxImageDimension": 1600, "maxFeatures": 6000,
 
 class ReconstructionUnavailable(ValueError):
     """The real input cannot support the requested reconstruction."""
+
+
+def select_reconstruction_views(selected, maximum):
+    """Keep coverage labels and viewpoint proxies when a frame budget is required.
+
+    These are acquisition proxies, not solved camera baselines or tooth identity.
+    """
+    if len(selected) <= maximum:
+        return selected, {"method": "all_accepted_frames", "discardedFrameIndices": []}
+    chosen = {0, len(selected) - 1}
+    all_span = max(1, selected[-1]["frameIndex"] - selected[0]["frameIndex"])
+    while len(chosen) < maximum:
+        covered = {label for index in chosen for label in selected[index].get("visibleRegions", [])}
+        def gain(index):
+            frame = selected[index]
+            new_labels = len(set(frame.get("visibleRegions", [])) - covered)
+            separation = min(abs(frame["frameIndex"] - selected[other]["frameIndex"])
+                             for other in chosen) / all_span
+            displacement = min(float(frame.get("medianDentalDisplacementPx") or 0), 40) / 40
+            features = min(float(frame.get("dentalFeatureCount") or 0), 500) / 500
+            return (new_labels * 3 + separation * 2 + displacement + features * 0.25,
+                    -frame["frameIndex"])
+        chosen.add(max((index for index in range(len(selected)) if index not in chosen), key=gain))
+    kept = [selected[index] for index in sorted(chosen)]
+    return kept, {"method": "greedy_declared_coverage_temporal_diversity_and_image_displacement_proxy_v1",
+                  "selectedFrameIndices": [item["frameIndex"] for item in kept],
+                  "discardedFrameIndices": [item["frameIndex"] for index, item in enumerate(selected) if index not in chosen],
+                  "translationStatus": "physical_camera_translation_not_measured"}
 
 
 def _verified_acquisition(study_dir, video_path, scan_scope, frame_sampling):
@@ -58,7 +89,7 @@ def _verified_acquisition(study_dir, video_path, scan_scope, frame_sampling):
         raise ReconstructionUnavailable("Acquisition report cannot be read") from error
     expected_config = {**LIDRA_DEFAULT_CONFIG, **(frame_sampling or {})}
     if (not isinstance(report, dict) or report.get("version") != LIDRA_VERSION
-            or report.get("status") != "ready" or report.get("scanScope") != scan_scope
+            or report.get("status") not in ("ready", "rejected") or report.get("scanScope") != scan_scope
             or report.get("configuration") != expected_config):
         raise ReconstructionUnavailable("Acquisition report does not match this scan configuration")
     media = report.get("videoMetadata") or {}
@@ -154,9 +185,26 @@ def mesh_topology_diagnostics(vertex_count, faces):
         components[component] = components.get(component, 0) + 1
     largest_faces = max(components.values(), default=0)
     used_vertices = len(set(int(i) for i in faces.flat))
+    edge_incidence = {}
+    unique_faces = set()
+    for triangle in faces:
+        ids = tuple(int(i) for i in triangle)
+        unique_faces.add(tuple(sorted(ids)))
+        for a, b in zip(ids, ids[1:] + ids[:1]):
+            key = (min(a, b), max(a, b))
+            edge_incidence.setdefault(key, []).append((a, b))
+    boundary_edges = sum(len(entries) == 1 for entries in edge_incidence.values())
+    non_manifold_edges = sum(len(entries) > 2 for entries in edge_incidence.values())
+    winding_conflicts = sum(len(entries) == 2 and entries[0] == entries[1]
+                            for entries in edge_incidence.values())
     return {"connectedComponents": len(components), "largestComponentFaces": largest_faces,
             "largestComponentFaceFraction": largest_faces / len(faces) if len(faces) else 0.0,
-            "usedVertices": used_vertices, "isolatedVertices": vertex_count - used_vertices}
+            "usedVertices": used_vertices, "isolatedVertices": vertex_count - used_vertices,
+            "boundaryEdges": boundary_edges, "nonManifoldEdges": non_manifold_edges,
+            "inconsistentWindingEdges": winding_conflicts,
+            "duplicateFaces": len(faces) - len(unique_faces),
+            "watertight": bool(faces.size) and boundary_edges == 0 and non_manifold_edges == 0,
+            "selfIntersections": {"status": "not_evaluated"}}
 
 
 def process_3d_scan_reconstruction(study_dir, scan_scope="full", video_path=None, configuration=None):
@@ -186,13 +234,16 @@ def process_3d_scan_reconstruction(study_dir, scan_scope="full", video_path=None
     acquisition_source = "verified_persisted_report" if acquisition is not None else "fresh_analysis"
     if acquisition is None:
         acquisition = analyze_video_acquisition(video_path, study_dir, scan_scope, configuration.get("frameSampling"))
-    if acquisition["status"] != "ready":
+    diagnostic_only = (acquisition["status"] == "rejected"
+                       and acquisition.get("configuration", {}).get("strategy", "uniform") == "uniform"
+                       and len(acquisition.get("selectedFrames", [])) >= 2)
+    if acquisition["status"] != "ready" and not diagnostic_only:
         raise ReconstructionUnavailable(acquisition.get("reason", "Insufficient distinct usable video frames"))
     extraction_ms = acquisition["durationMs"]
     selected = acquisition["selectedFrames"]
-    views = [selected[int(i)] for i in np.linspace(0, len(selected) - 1, min(len(selected), int(config["maxViews"])), dtype=int)]
+    views, view_selection = select_reconstruction_views(selected, int(config["maxViews"]))
     detector = cv2.SIFT.create(nfeatures=int(config["maxFeatures"]))
-    features, images = [], []
+    features, images, dental_masks = [], [], []
     original_width = acquisition["videoMetadata"]["width"]
     original_height = acquisition["videoMetadata"]["height"]
     scale = min(1.0, float(config["maxImageDimension"]) / max(original_width, original_height))
@@ -205,7 +256,15 @@ def process_3d_scan_reconstruction(study_dir, scan_scope="full", video_path=None
             raise ReconstructionUnavailable('Selected frame cannot be decoded')
         frame = cv2.resize(frame, (round(original_width * scale), round(original_height * scale)))
         images.append(frame)
-        features.append(detector.detectAndCompute(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), None))
+        from .dental_region_evidence import region_mask
+        polygon = view.get("polygon")
+        if diagnostic_only:
+            mask = np.full(frame.shape[:2], 255, np.uint8)
+        else:
+            if view.get("regionSource") != "operator_annotated_unverified" or polygon is None:
+                raise ReconstructionUnavailable("Selected frame has no reviewed dental-region evidence")
+            mask = region_mask(frame.shape, np.asarray(polygon, dtype=float))
+        dental_masks.append(mask)
     height, width = images[0].shape[:2]
     intrinsics_config = configuration.get("cameraIntrinsics")
     if intrinsics_config is not None:
@@ -224,6 +283,19 @@ def process_3d_scan_reconstruction(study_dir, scan_scope="full", video_path=None
     else:
         intrinsic = np.array([[max(width, height), 0, width / 2], [0, max(width, height), height / 2], [0, 0, 1]], dtype=float)
         intrinsics_source = "estimated_focal_equals_max_image_dimension"
+    distortion = None
+    if intrinsics_config is not None and "distortion" in intrinsics_config:
+        values = intrinsics_config["distortion"]
+        if not isinstance(values, list) or len(values) not in (4, 5):
+            raise ValueError("Lens distortion requires [k1,k2,p1,p2,(k3)]")
+        distortion = np.asarray(values, dtype=float)
+        if not np.isfinite(distortion).all():
+            raise ValueError("Lens distortion coefficients must be finite")
+    for index, frame in enumerate(images):
+        if distortion is not None:
+            images[index] = cv2.undistort(frame, intrinsic, distortion)
+            dental_masks[index] = cv2.undistort(dental_masks[index], intrinsic, distortion)
+        features.append(detector.detectAndCompute(cv2.cvtColor(images[index], cv2.COLOR_BGR2GRAY), dental_masks[index]))
     pose_started = time.perf_counter()
     matcher = cv2.BFMatcher(cv2.NORM_L2)
     best: ReconstructionBest | None = None
@@ -311,30 +383,62 @@ def process_3d_scan_reconstruction(study_dir, scan_scope="full", video_path=None
         if not np.isfinite(errors).all() or float(np.median(errors)) > float(config["maxReprojectionErrorPx"]):
             continue
         registered_views.append((view_index, cv2.Rodrigues(rvec)[0], tvec.reshape(3), len(inliers), float(np.median(errors))))
-    obj_lines = ["# Experimental sparse two-view reconstruction; units arbitrary; visualization only"]
+    registered_poses = {best["first"]: (np.eye(3), np.zeros(3)),
+                        best["second"]: (best["rotation"], best["translation"].reshape(3))}
+    registered_poses.update({index: (rotation, translation) for index, rotation, translation, _, _ in registered_views})
+    multiview_points, multiview_tracks, multiview_pairs = build_multiview_tracks(
+        features, registered_poses, intrinsic, ratio=float(config["ratioThreshold"]),
+        max_error=float(config["maxReprojectionErrorPx"]),
+        min_parallax=float(config["minParallaxDegrees"]), seed=int(config["seed"]))
+    multiview_points, registered_poses, bundle_adjustment = bundle_adjust_tracks(
+        multiview_points, multiview_tracks, registered_poses, intrinsic,
+        best["first"], best["second"])
+    dense_result, dense_diagnostics = (None, {"status": "disabled_global_diagnostic", "pairsExecuted": 0}) if diagnostic_only else \
+        dense_multiview_surface(images, dental_masks, intrinsic, registered_poses)
+    if dense_result is not None:
+        points, faces, vertex_view_bits, vertex_pair_counts, face_pair_ids = dense_result
+        topology = mesh_topology_diagnostics(len(points), faces)
+        topology["selfIntersections"] = self_intersection_report(points, faces)
+        mesh_method = "opencv_rectified_sgbm_multiview_supported_patch_union_no_hole_fill"
+    else:
+        mesh_method = "image_plane_delaunay_sparse_diagnostic_only"
+    per_tooth = summarize_tooth_support(points, faces, views, registered_poses,
+        intrinsic, acquisition["configuration"].get("dentalRegions"), images[0].shape,
+        vertex_view_bits=vertex_view_bits if dense_result is not None else None)
+    if dense_result is not None:
+        support_path = os.path.join(study_dir, "vertex_support.npz")
+        np.savez_compressed(support_path, view_bits=vertex_view_bits, pair_counts=vertex_pair_counts,
+                            face_source_pair=face_pair_ids)
+        dense_diagnostics["supportArtifact"] = {"fileName": "vertex_support.npz",
+            "sha256": file_sha256(support_path), "sizeInBytes": os.path.getsize(support_path),
+            "viewSlots": {str(index): views[index]["frameIndex"] for index in range(len(views))},
+            "encoding": "uint16_bit_per_view_slot_uint8_pair_count_int16_face_source_pair"}
+    obj_lines = [f"# Experimental {mesh_method}; units arbitrary; visualization only"]
     obj_lines += ["v " + " ".join(f"{x:.12g}" for x in point) for point in points]
     obj_lines += ["f " + " ".join(str(int(x) + 1) for x in face) for face in faces]
     with open(os.path.join(study_dir, "mesh.obj"), "w") as stream:
         stream.write("\n".join(obj_lines) + "\n")
-    colors = images[best["first"]][np.clip(best["pixels"][:, 1].astype(int), 0, height - 1),
-                                  np.clip(best["pixels"][:, 0].astype(int), 0, width - 1)][:, ::-1]
-    ply = ["ply", "format ascii 1.0", "comment real feature triangulation; arbitrary scale",
-           f"element vertex {len(points)}", "property float x", "property float y", "property float z",
+    point_cloud = points if dense_result is not None else (multiview_points if len(multiview_points) else points)
+    point_cloud_source = ("three_view_consensus_dense_vertices" if dense_result is not None else
+                          "verified_three_plus_view_tracks" if len(multiview_points) else "best_pair_sparse_diagnostic")
+    colors = np.full((len(point_cloud), 3), 220, dtype=np.uint8)
+    ply = ["ply", "format ascii 1.0", f"comment {point_cloud_source}; arbitrary scale",
+           f"element vertex {len(point_cloud)}", "property float x", "property float y", "property float z",
            "property uchar red", "property uchar green", "property uchar blue", "end_header"]
-    ply += [" ".join([*(f"{x:.12g}" for x in point), *(str(int(c)) for c in color)]) for point, color in zip(points, colors)]
+    ply += [" ".join([*(f"{x:.12g}" for x in point), *(str(int(c)) for c in color)]) for point, color in zip(point_cloud, colors)]
     with open(os.path.join(study_dir, "points.ply"), "w") as stream:
         stream.write("\n".join(ply) + "\n")
     with open(os.path.join(study_dir, "mesh.stl"), "wb") as stream:
-        stream.write(export_binary_stl(points.tolist(), faces.tolist(), header_text="Experimental sparse SfM; arbitrary units"))
+        stream.write(export_binary_stl(points.tolist(), faces.tolist(), header_text="Experimental observed geometry; arbitrary units"))
     if not cv2.imwrite(os.path.join(study_dir, "preview.png"), images[best["first"]]):
         raise OSError("Could not write reconstruction preview")
     mesh_ms = (time.perf_counter() - mesh_started) * 1000
     bounds = {"min": points.min(axis=0).tolist(), "max": points.max(axis=0).tolist()}
     trajectory = []
-    base_views = [(best["first"], np.eye(3), np.zeros(3), "reference_camera"),
-                  (best["second"], best["rotation"], best["translation"].reshape(3), "essential_matrix_recoverPose")]
-    verified_views = [(idx, rotation, translation, "pnp_ransac")
-                      for idx, rotation, translation, _, _ in registered_views]
+    base_views = [(best["first"], *registered_poses[best["first"]], "reference_camera"),
+                  (best["second"], *registered_poses[best["second"]], "essential_matrix_recoverPose")]
+    verified_views = [(idx, *registered_poses[idx], "pnp_ransac")
+                      for idx, _, _, _, _ in registered_views]
     for idx, rotation, translation, provenance in base_views + verified_views:
         trajectory.append({"frameIndex": views[idx]["frameIndex"], "fileName": views[idx]["fileName"],
             "timestampMs": views[idx]["timestampMs"], "pose": {"worldToCameraRotation": rotation.tolist(),
@@ -353,39 +457,73 @@ def process_3d_scan_reconstruction(study_dir, scan_scope="full", video_path=None
         "gpuMemoryBytes": None,
     }
     metadata: dict[str, Any] = {"engine": ENGINE, "engineVersion": VERSION, "version": VERSION, "opencvVersion": cv2.__version__,
-        "implementationStatus": "experimental", "synthetic": False, "geometrySource": "image_derived", "validated": False,
+        "implementationStatus": "experimental_diagnostic" if diagnostic_only else "experimental",
+        "diagnosticOnly": diagnostic_only, "synthetic": False, "geometrySource": "image_derived", "validated": False,
         "clinicalStatus": "experimental", "measurementCapability": "visualization_only", "units": "arbitrary",
         "coordinateSystem": "first_camera_right_down_forward", "scale": {"status": "uncalibrated", "baseline": 1.0},
         "input": {"sha256": acquisition["videoMetadata"]["sha256"], "media": acquisition["videoMetadata"]},
         "configuration": {**configuration, "frameSampling": acquisition['configuration'],
                           "reconstruction": {"engine": ENGINE, "parameters": config}},
         "selectedFrames": selected,
+        "reconstructionViewSelection": view_selection,
         "reproducibility": {"python": platform.python_version(), "platform": platform.platform(),
             "numpy": np.__version__, "opencv": cv2.__version__, "opencvThreads": cv2.getNumThreads(),
             "opencvBuildSha256": hashlib.sha256(cv2.getBuildInformation().encode()).hexdigest(),
             "sourceSha256": {name: file_sha256(str(Path(__file__).with_name(name))) for name in
-                             ('reconstruction_service.py', 'lidra_service.py', 'dental_filter_service.py')},
+                             ('reconstruction_service.py', 'lidra_service.py', 'dental_filter_service.py',
+                              'dental_region_evidence.py', 'multiview_tracks.py', 'dense_multiview_stereo.py',
+                              'per_tooth_support.py', 'mesh_surface_audit.py')},
             "determinismScope": "Same input/configuration/runtime; cross-platform bitwise identity not guaranteed"}, "cameraIntrinsics": intrinsic.tolist(),
-        "intrinsicsSource": intrinsics_source, "lensDistortion": "not_corrected",
+        "intrinsicsSource": intrinsics_source,
+        "lensDistortion": {"status": "corrected_with_supplied_coefficients" if distortion is not None else "not_corrected",
+                           "coefficients": distortion.tolist() if distortion is not None else None},
         "frameExtractionVersion": acquisition["version"], "acquisitionSource": acquisition_source, "scanScope": scan_scope,
         "sampledFrames": len(selected), "registeredFrames": len(trajectory), "vertexCount": len(points), "faceCount": len(faces),
         "meshTopology": topology,
+        "denseMultiView": {**dense_diagnostics,
+            "attemptedPairFrameIndices": [[views[i]["frameIndex"], views[j]["frameIndex"]]
+                                           for i, j in dense_diagnostics.get("attemptedPairFrames", [])],
+            "pairFrameIndices": [[views[i]["frameIndex"], views[j]["frameIndex"]]
+                                 for i, j in dense_diagnostics.get("pairFrames", [])],
+            "surfacePatchFrameIndices": [[views[patch["firstView"]]["frameIndex"],
+                                          views[patch["secondView"]]["frameIndex"]]
+                                         for patch in dense_diagnostics.get("surfacePatches", [])]},
+        "perToothSupport": per_tooth,
         "additionalViewEvidence": [{"frameIndex": views[idx]["frameIndex"], "matchedPoints": count,
                                     "medianReprojectionErrorPx": error} for idx, _, _, count, error in registered_views],
+        "multiViewSparse": {"status": "measured" if len(multiview_points) else "insufficient",
+            "pointCloudSource": point_cloud_source, "pointCount": len(multiview_points),
+            "contributingFrames": sorted({views[i]["frameIndex"] for track in multiview_tracks for i in track["views"]}),
+            "trackLengthHistogram": {str(length): sum(track["length"] == length for track in multiview_tracks)
+                                     for length in sorted({track["length"] for track in multiview_tracks})},
+            "medianReprojectionErrorPx": float(np.median([track["maxReprojectionErrorPx"] for track in multiview_tracks])) if multiview_tracks else None,
+            "medianParallaxDegrees": float(np.median([track["parallaxDegrees"] for track in multiview_tracks])) if multiview_tracks else None,
+            "pairEvidence": [{**item, "firstFrame": views[item["firstView"]]["frameIndex"],
+                              "secondFrame": views[item["secondView"]]["frameIndex"]} for item in multiview_pairs],
+            "bundleAdjustment": bundle_adjustment, "denseMvs": dense_diagnostics["status"]},
         "featureSupport": {"normalizedBounds": [float(best["pixels"][:, 0].min() / width),
                                                   float(best["pixels"][:, 1].min() / height),
                                                   float(best["pixels"][:, 0].max() / width),
                                                   float(best["pixels"][:, 1].max() / height)]},
         "bestPair": {"firstFrame": views[best["first"]]["frameIndex"],
                      "secondFrame": views[best["second"]]["frameIndex"],
-                     "acceptedPoints": len(points)},
+                     "acceptedPoints": len(best["points"])},
         "bounds": bounds, "cameraTrajectory": trajectory, "pairDiagnostics": pair_diagnostics,
         "meanReprojectionErrorPx": float(best["errors"].mean()), "medianParallaxDegrees": float(np.median(best["parallax"])),
         "dentalFiltering": {"enabled": False, "reason": "No anatomical transformations applied"},
-        "meshMethod": "image_plane_delaunay_of_verified_sparse_points_with_edge_and_depth_limits",
-        "limitations": ["Two views only; partial sparse scene, not full arch", "Uncalibrated intrinsics and unknown scale",
+        "meshMethod": mesh_method,
+        "dentalEvidence": acquisition.get("dentalEvidence"),
+        "geometryEvidence": {"pointSource": "dense_multiview_stereo" if dense_result is not None else "best_pair_sparse_triangulation",
+            "contributingViews": len({view for view in range(len(views))
+                                      if any(int(bits) & (1 << view) for bits in vertex_view_bits)}) if dense_result is not None else 2,
+            "denseStatus": dense_diagnostics["status"], "denseSupportedPoints": dense_diagnostics.get("supportedVertices", 0),
+            "meshFromDense": dense_result is not None,
+            "perToothCoverageStatus": per_tooth["status"], "inferredGeometry": False},
+        "limitations": ["Global image features can describe chin, skin, clothing or background; never dental evidence" if diagnostic_only else
+                        "Operator-annotated dental ROI is not independently verified anatomy",
+            "Sparse initialization uses a best pair; joint bundle adjustment is local to registered views and may be rejected", "Physical scale remains unvalidated",
             "Reflective enamel, deforming tissues, lighting and pure rotation can defeat SfM",
-            "Triangle interpolation can cross unobserved anatomy; no watertightness or dental segmentation guaranteed"],
+            "Dental identity is operator-declared and unverified; anatomical surface completeness and watertightness are not established"],
         "timings": timings,
         "memory": memory,
         "completedAt": datetime.now(timezone.utc).isoformat()}

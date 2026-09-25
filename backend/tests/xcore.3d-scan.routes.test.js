@@ -71,9 +71,13 @@ test('isolated DB: patient ownership, duplicate reuse, upload inspection and fai
       const created = await request('/patients', identity); assert.equal(created.status, 201); userIds.push(BigInt(created.json.patient.id));
       const reused = await request('/patients', identity); assert.equal(reused.json.patient.id, created.json.patient.id);
       const scansBefore = await prisma.imagingStudy.count({ where: { dentistId: owner.id, modality: '3D_SCAN' } }); assert.equal(scansBefore, 1);
-      const scanResponse = await request('/scans', { patientId: created.json.patient.id, scanScope: 'upper', metadata: { assets: { mesh: 'injected' }, provenance: { synthetic: false } } });
+      const scanResponse = await request('/scans', { patientId: created.json.patient.id, scanScope: 'upper', metadata: {
+        assets: { mesh: 'injected' }, provenance: { synthetic: false },
+        captureProtocol: { mode: 'full_arch_pair', sequence: 1, arch: 'upper' },
+      } });
       assert.equal(scanResponse.status, 201); const scan = scanResponse.json.scan; scanFolders.push(scan.scanIdentifier);
       assert.equal(scan.assets, null); assert.equal(scan.capabilities.measurementCapability, 'visualization_only');
+      assert.equal(scan.metadata.fullArchPair.pairGroupId, scan.scanIdentifier);
       assert.equal(await prisma.imagingStudy.count({ where: { dentistId: owner.id, modality: '3D_SCAN' } }), 1);
       assert.equal((await request(`/scans/${scan.id}/queue`, {})).status, 409);
       const fake = new FormData(); fake.append('video', new Blob(['fake-mp4-bytes'], { type: 'video/mp4' }), 'video.mp4');
@@ -85,6 +89,15 @@ test('isolated DB: patient ownership, duplicate reuse, upload inspection and fai
       const uploaded = await fetch(`${base}/scans/${scan.id}/video`, { method: 'POST', body: form }); const uploadedBody = await uploaded.json();
       assert.equal(uploaded.status, 200); assert.equal(uploadedBody.scan.video.durationMs, 1000); assert.equal(uploadedBody.scan.video.fps, 12);
       assert.equal(uploadedBody.scan.video.resolution, '128x128'); assert.match(uploadedBody.scan.video.fileName, /^raw_[a-f0-9-]+\.mp4$/);
+      const invalidPair = await request('/scans', { patientId: created.json.patient.id, scanScope: 'lower',
+        metadata: { captureProtocol: { mode: 'full_arch_pair', sequence: 2, arch: 'lower', pairedUpperScanId: '999999999' } } });
+      assert.equal(invalidPair.status, 400); assert.equal(invalidPair.json.code, 'FULL_ARCH_UPPER_REQUIRED');
+      const pairedLower = await request('/scans', { patientId: created.json.patient.id, scanScope: 'lower',
+        metadata: { captureProtocol: { mode: 'full_arch_pair', sequence: 2, arch: 'lower', pairedUpperScanId: scan.id } } });
+      assert.equal(pairedLower.status, 201);
+      assert.equal(pairedLower.json.scan.metadata.fullArchPair.upperScanId, scan.id);
+      assert.equal(pairedLower.json.scan.metadata.fullArchPair.pairGroupId, scan.scanIdentifier);
+      assert.equal(pairedLower.json.scan.metadata.fullArchPair.associationVerifiedByServer, true);
       assert.equal((await request(`/scans/${scan.id}/assets/mesh.obj`)).status, 404);
       assert.equal((await request(`/scans/${scan.id}/tooth-instances`)).status, 503);
       assert.equal((await request(`/scans/${scan.id}/tooth-instances/segment`, {})).status, 503);

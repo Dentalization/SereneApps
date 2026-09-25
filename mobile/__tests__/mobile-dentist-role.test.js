@@ -2,10 +2,16 @@ import React from 'react';
 import { Text } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
 import { useSelector } from 'react-redux';
-import { PaperProvider } from 'react-native-paper';
+import { PaperProvider, Button } from 'react-native-paper';
 import { isDentistUser, getPrimaryRole } from '../src/utils/authUtils';
 import api from '../src/services/api';
+import { notifySessionExpired } from '../src/services/authSessionEvents';
 jest.mock('../src/services/api', () => ({ get: jest.fn() }));
+jest.mock('../src/services/authSessionEvents', () => ({
+  notifySessionExpired: jest.fn(),
+  notifyTokenRefreshed: jest.fn(),
+  configureAuthSessionHandlers: jest.fn(),
+}));
 
 import DentistRoleGuard from '../src/features/dentist/components/DentistRoleGuard';
 
@@ -157,6 +163,92 @@ describe('Mobile Dentist Role Foundation (Phase 1)', () => {
       const textValues = collectText(tree.toJSON());
       expect(textValues).not.toContain('Secret Dentist Content');
       expect(textValues).toContain('Akses Dibatasi');
+    });
+
+    test('navigates to DentistHomeTab when inside dentist navigation', () => {
+      useSelector.mockImplementation((selector) => selector({
+        auth: { user: { id: 10, roles: ['dentist'] }, accessToken: 'token' },
+      }));
+      const mockNavigation = {
+        getState: jest.fn().mockReturnValue({ routeNames: ['DentistHomeTab', 'DentistScanTab'] }),
+        navigate: jest.fn(),
+        canGoBack: jest.fn().mockReturnValue(false),
+      };
+
+      let tree;
+      act(() => {
+        tree = renderer.create(
+          <PaperProvider>
+            <DentistRoleGuard navigation={mockNavigation}>
+              <Text>Secret Content</Text>
+            </DentistRoleGuard>
+          </PaperProvider>
+        );
+      });
+
+      const buttons = tree.root.findAllByType(Button);
+      const homeBtn = buttons.find((b) => collectText(b).includes('Kembali ke Beranda'));
+      expect(homeBtn).toBeDefined();
+      act(() => {
+        homeBtn.props.onPress();
+      });
+      expect(mockNavigation.navigate).toHaveBeenCalledWith('DentistHomeTab');
+      expect(mockNavigation.navigate).not.toHaveBeenCalledWith('DashboardTab');
+    });
+
+    test('navigates to DashboardTab when inside patient navigation', () => {
+      useSelector.mockImplementation((selector) => selector({
+        auth: { user: { id: 20, roles: ['patient'] }, accessToken: 'token' },
+      }));
+      const mockNavigation = {
+        getState: jest.fn().mockReturnValue({ routeNames: ['DashboardTab', 'AppointmentTab'] }),
+        navigate: jest.fn(),
+        canGoBack: jest.fn().mockReturnValue(false),
+      };
+
+      let tree;
+      act(() => {
+        tree = renderer.create(
+          <PaperProvider>
+            <DentistRoleGuard navigation={mockNavigation}>
+              <Text>Secret Content</Text>
+            </DentistRoleGuard>
+          </PaperProvider>
+        );
+      });
+
+      const buttons = tree.root.findAllByType(Button);
+      const homeBtn = buttons.find((b) => collectText(b).includes('Kembali ke Beranda'));
+      expect(homeBtn).toBeDefined();
+      act(() => {
+        homeBtn.props.onPress();
+      });
+      expect(mockNavigation.navigate).toHaveBeenCalledWith('DashboardTab');
+    });
+
+    test('allows user to logout via Keluar / Ganti Akun button when blocked', () => {
+      useSelector.mockImplementation((selector) => selector({
+        auth: { user: { id: 20, roles: ['patient'] }, accessToken: 'token' },
+      }));
+
+      let tree;
+      act(() => {
+        tree = renderer.create(
+          <PaperProvider>
+            <DentistRoleGuard>
+              <Text>Secret Content</Text>
+            </DentistRoleGuard>
+          </PaperProvider>
+        );
+      });
+
+      const buttons = tree.root.findAllByType(Button);
+      const logoutBtn = buttons.find((b) => collectText(b).includes('Keluar / Ganti Akun'));
+      expect(logoutBtn).toBeDefined();
+      act(() => {
+        logoutBtn.props.onPress();
+      });
+      expect(notifySessionExpired).toHaveBeenCalled();
     });
   });
 

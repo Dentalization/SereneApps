@@ -11,6 +11,7 @@ import { reconstructionEngineRegistry } from '../services/scan3D/engines/reconst
 import { privateScanDirectory, scanDirectory, confinedExistingFile, registeredAsset, safeComponent, sha256File } from '../services/scan3D/scanStorage.js';
 import { inspectVideo } from '../services/scan3D/videoInspection.js';
 import { clientScanMetadata, publicScanState, associatedPatientWhere, EXPERIMENTAL_CAPABILITIES } from '../services/scan3D/scanIntegrity.js';
+import { resolveFullArchPair } from '../services/scan3D/fullArchPair.js';
 
 import { auditScanEvent, auditedScanUpdate } from '../services/scan3D/scanAudit.js';
 const prisma = new PrismaClient();
@@ -132,8 +133,15 @@ export async function create3DScan(req, res) {
     if (!patient) throw problem(404, 'Patient not found or unauthorized', 'PATIENT_NOT_FOUND');
     const clinicId = await clinicIdFor(ownerId);
     const scan = await prisma.$transaction(async tx => {
+      const fullArchPair = await resolveFullArchPair(metadata.captureProtocol, scanScope, id, ownerId,
+        ({ id: upperId, patientId: linkedPatientId, dentistId: linkedDentistId }) => tx.imagingStudy.findFirst({
+          where: { id: upperId, patientId: linkedPatientId, dentistId: linkedDentistId, modality: '3D_SCAN' },
+          select: { id: true, folderName: true, metadata: true },
+        }));
       const draft = await tx.imagingStudy.findFirst({ where: { patientId: id, dentistId: ownerId, modality: '3D_SCAN', status: 'created', metadata: { path: ['patientRegistrationDraft'], equals: true } } });
       const data = scanData(patient, ownerId, clinicId, metadata, scanScope);
+      if (fullArchPair) data.metadata.fullArchPair = { ...fullArchPair,
+        pairGroupId: fullArchPair.pairGroupId || (draft?.folderName || data.folderName) };
       data.metadata.notes = typeof notes === 'string' ? notes.slice(0, 2000) : null;
       if (draft) {
         const draftMetadata = { ...data.metadata, scanIdentifier: draft.folderName };

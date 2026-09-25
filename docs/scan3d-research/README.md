@@ -1,5 +1,7 @@
 # Smartphone 3D research runbook
 
+Current implementation, exact executed path, and private operator review: [ENGINEERING_IMPLEMENTATION_WALKTHROUGH.md](ENGINEERING_IMPLEMENTATION_WALKTHROUGH.md).
+
 Latest baseline audit and replay instructions: [BASELINE_INTEGRITY_AUDIT.md](BASELINE_INTEGRITY_AUDIT.md).
 
 IMPLEMENTED ≠ EXPERIMENTALLY VALIDATED ≠ CLINICALLY VALIDATED.

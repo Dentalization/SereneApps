@@ -665,6 +665,8 @@ const Scan3DMeshViewer = ({
 
           {geometryInsufficient && <div className="bg-slate-950/70 border border-amber-500/20 rounded-xl p-3 text-left text-xs text-slate-300 space-y-1">
             <div>Frame terdaftar: {geometryQuality?.registeredFrames ?? '—'} · Vertex: {geometryQuality?.vertexCount ?? '—'} · Face: {geometryQuality?.faceCount ?? '—'}</div>
+            {geometryQuality?.reasons?.includes('CAPTURE_TARGET_SCREEN_SUSPECTED') && <div>Video tampak merekam layar. Rekam permukaan gigi atau model fisik secara langsung.</div>}
+            {geometryQuality?.reasons?.length > 0 && <div>Alasan pemeriksaan: {geometryQuality.reasons.join(', ')}</div>}
             <div>Cakupan gigi belum dapat diverifikasi. Aset percobaan ini tidak dipublikasikan sebagai mesh siap pakai.</div>
           </div>}
           {scanStatus === 'failed' && !geometryInsufficient && <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-left text-xs text-slate-400 space-y-1">
@@ -699,6 +701,8 @@ const Scan3DMeshViewer = ({
       {diagnosticMode && <div className="absolute top-20 left-4 right-4 z-20 pointer-events-none max-w-xl rounded-xl border border-amber-400/50 bg-slate-950/90 px-4 py-3 text-amber-100 shadow-xl">
         <div className="text-sm font-bold">Mesh diagnostik — belum merekonstruksi gigi</div>
         <div className="mt-1 text-xs">Frame: {statusData?.qualityAssessment?.registeredFrames ?? '—'} · Vertex: {statusData?.qualityAssessment?.vertexCount ?? '—'} · Face: {statusData?.qualityAssessment?.faceCount ?? '—'}. Bentuk ini hanya untuk menelusuri kegagalan, bukan pengukuran atau diagnosis.</div>
+        {geometryQuality?.reasons?.includes('CAPTURE_TARGET_SCREEN_SUSPECTED') && <div className="mt-1 text-xs font-semibold">Video tampak merekam layar. Kamera perlu diarahkan ke gigi atau model fisik langsung untuk memperoleh permukaan 3D.</div>}
+        {geometryQuality?.reasons?.length > 0 && <div className="mt-1 text-xs">{geometryQuality.reasons.length} pemeriksaan belum lolos. Buka Info Rekonstruksi untuk rincian teknis.</div>}
       </div>}
 
       {/* Measurement + Annotation Overlay */}
@@ -1027,6 +1031,16 @@ const Scan3DMeshViewer = ({
               <p>Heap JS: {telemetrySnapshot?.facts?.jsHeapUsedBytes ?? 'API tidak tersedia'} bytes</p>
               <p className="text-slate-400">Durasi CPU lokal, bukan validasi klinis atau waktu selesai GPU.</p>
             </div>
+
+            {/* Quality diagnostics */}
+            {geometryQuality?.reasons?.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alasan pemeriksaan</div>
+                <div className="bg-slate-950/60 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-100 break-words">
+                  {geometryQuality.reasons.map(reason => <div key={reason}>{reason}</div>)}
+                </div>
+              </div>
+            )}
 
             {/* Geometry Specs */}
             <div className="space-y-3">

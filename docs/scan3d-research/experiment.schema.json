@@ -37,6 +37,13 @@
         },
         "cy": {
           "type": "number"
+        },
+        "distortion": {
+          "type": "array",
+          "description": "Optional OpenCV [k1,k2,p1,p2,(k3)] coefficients for this exact lens, resolution and orientation; operator-supplied until independently verified",
+          "items": { "type": "number" },
+          "minItems": 4,
+          "maxItems": 5
         }
       }
     },
@@ -45,7 +52,8 @@
       "additionalProperties": false,
       "properties": {
         "strategy": {
-          "const": "uniform"
+          "enum": ["uniform", "geometry_aware"],
+          "description": "uniform is global-image diagnostic only and cannot mark capture ready"
         },
         "maxFrames": {
           "type": "integer",
@@ -67,6 +75,47 @@
         "minPixelDifference": {
           "type": "number",
           "minimum": 0
+        },
+        "dentalRegions": {
+          "type": "object",
+          "description": "Auditable manually reviewed frame polygons bound to the source video hash. Client declaration does not by itself prove anatomical identity.",
+          "required": ["source", "reviewer", "videoSha256", "expectedRegions", "frames"],
+          "properties": {
+            "source": { "const": "operator_annotated_unverified" },
+            "reviewer": { "type": "string", "minLength": 1 },
+            "videoSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "expectedRegions": { "type": "array", "minItems": 1, "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 } },
+            "expectedToothIds": { "type": "array", "uniqueItems": true, "maxItems": 32,
+              "description": "Optional reviewer-declared FDI identifiers; not independently verified tooth identity",
+              "items": { "type": "integer", "minimum": 11, "maximum": 48 } },
+            "frames": { "type": "array", "minItems": 2, "maxItems": 120,
+              "items": { "type": "object", "required": ["frameIndex", "polygon", "mouthStable", "visibleRegions"],
+                "properties": {
+                  "frameIndex": { "type": "integer", "minimum": 0 },
+                  "polygon": { "type": "array", "minItems": 3, "maxItems": 64,
+                    "items": { "type": "array", "prefixItems": [
+                      { "type": "number", "minimum": 0, "maximum": 1 },
+                      { "type": "number", "minimum": 0, "maximum": 1 }
+                    ], "minItems": 2, "maxItems": 2 } },
+                  "mouthStable": { "type": "boolean" },
+                  "visibleRegions": { "type": "array", "items": { "type": "string" } },
+                  "toothRegions": { "type": "array", "maxItems": 32,
+                    "items": { "type": "object", "required": ["fdi", "polygon"],
+                      "properties": {
+                        "fdi": { "type": "integer", "minimum": 11, "maximum": 48 },
+                        "polygon": { "type": "array", "minItems": 3, "maxItems": 64,
+                          "items": { "type": "array", "prefixItems": [
+                            { "type": "number", "minimum": 0, "maximum": 1 },
+                            { "type": "number", "minimum": 0, "maximum": 1 }
+                          ], "minItems": 2, "maxItems": 2 } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
