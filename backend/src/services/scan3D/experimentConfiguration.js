@@ -1,4 +1,4 @@
-export const PROCESSING_VERSION = 'scan3d-research-2';
+export const PROCESSING_VERSION = 'scan3d-research-3';
 
 /** Resolve only supported operations. Unsupported options must not silently disappear. */
 export function resolveExperimentConfiguration(study, requested = {}) {

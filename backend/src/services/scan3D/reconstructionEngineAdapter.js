@@ -41,14 +41,21 @@ export async function runReconstruction(study, options = {}) {
   const log = (stage, message) => logs.push({ timestamp: new Date().toISOString(), stage, level: 'info', message });
   log('pipeline_start', 'Starting experimental video reconstruction');
   const lidra = await runLidraAcquisition(study, runOptions);
-  if (lidra.status !== 'ready' || !Array.isArray(lidra.selectedFrames) || lidra.selectedFrames.length < 2) {
+  const globalDiagnostic = lidra.status === 'rejected' && lidra.configuration?.strategy === 'uniform'
+    && Array.isArray(lidra.selectedFrames) && lidra.selectedFrames.length >= 2;
+  if ((lidra.status !== 'ready' && !globalDiagnostic)
+      || !Array.isArray(lidra.selectedFrames) || lidra.selectedFrames.length < 2) {
     throw Object.assign(new Error(`Acquisition ${lidra.status}: ${lidra.qualityDecision?.reason || 'No usable frames'}`), {
-      code: lidra.failureCode || (lidra.status === 'rejected' ? 'CAPTURE_QUALITY_REJECTED' : 'ACQUISITION_UNAVAILABLE'),
+      code: lidra.failureCode || (lidra.status === 'rejected'
+        ? (lidra.dentalEvidence?.status === 'unavailable' ? 'DENTAL_REGION_REVIEW_REQUIRED' : 'CAPTURE_QUALITY_REJECTED')
+        : 'ACQUISITION_UNAVAILABLE'),
       retryable: lidra.status !== 'rejected' &&
         ['ACQUISITION_SERVICE_UNAVAILABLE', 'ACQUISITION_TIMEOUT'].includes(lidra.failureCode),
     });
   }
-  log('acquisition_complete', `Measured ${lidra.selectedFrames.length} selected video frames; anatomical coverage unavailable`);
+  log('acquisition_complete', globalDiagnostic
+    ? `Measured ${lidra.selectedFrames.length} global-image diagnostic frames; dental source unknown`
+    : `Measured ${lidra.selectedFrames.length} operator-annotated dental-region frames; tooth identity unverified`);
   const engineStart = performance.now();
   const result = await engine.process({ study, studyDir, frames: lidra.selectedFrames,
     cameraMetadata: input, scanScope: study.metadata?.scanScope || 'full', lidraReport: lidra, options: runOptions });
@@ -74,6 +81,10 @@ export async function runReconstruction(study, options = {}) {
     configuration: result.metadata.configuration, reproducibility: result.metadata.reproducibility,
     selectedFrames: result.metadata.selectedFrames, cameraIntrinsics: result.metadata.cameraIntrinsics,
     intrinsicsSource: result.metadata.intrinsicsSource, cameraTrajectory: result.cameraTrajectory,
+    dentalEvidence: lidra.dentalEvidence || null, captureTarget: lidra.captureTarget || null,
+    geometryEvidence: result.metadata.geometryEvidence || null,
+    sparseEvidence: result.metadata.multiViewSparse || null, denseEvidence: result.metadata.denseMultiView || null,
+    perToothSupport: result.metadata.perToothSupport || null, meshTopology: result.metadata.meshTopology || null,
     processingTimestamp: completedAt,
     dentalProcessing: { enabled: false, version: 'identity-1', coordinateTransform: 'identity', rawPreserved: true },
     segmentationModel: null, fdiMethod: null, validation: { status: 'not_evaluated' },
@@ -95,7 +106,9 @@ export async function runReconstruction(study, options = {}) {
     assetBytes: Object.values(assets).filter(Boolean).reduce((n, a) => n + a.sizeInBytes, 0),
     gpuMemoryBytes: null, pythonTimings: result.metadata.timings || null, pythonMemory: result.metadata.memory || null,
   };
-  log('reconstruction_completed', 'Real video-derived experimental geometry created; scale and accuracy remain unvalidated');
+  log('reconstruction_completed', globalDiagnostic
+    ? 'Real video-derived global diagnostic only; geometry may come from non-dental objects'
+    : 'Real video-derived experimental geometry created; scale and accuracy remain unvalidated');
   const manifest = { ...provenance, assets, capabilities, postProcessing, performance: timings };
   await fs.writeFile(path.join(outputDir, 'provenance.json'), JSON.stringify(manifest, null, 2), { flag: 'wx' });
   return { success: true, assets, lidra, confidence: null, cameraTrajectory: result.cameraTrajectory,

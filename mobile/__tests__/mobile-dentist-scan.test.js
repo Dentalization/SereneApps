@@ -6,7 +6,7 @@ import { TouchableOpacity } from 'react-native';
 
 import * as scan3DService from '../src/services/scan3DService';
 import api from '../src/services/api';
-import DentistScan3DScreen, { captureGuideMessage, captureReviewWarnings, formatScanIdentifier, scanFailureMessage } from '../src/features/dentist/screens/3D/DentistScan3DScreen';
+import DentistScan3DScreen, { captureGuideMessage, captureReviewWarnings, formatScanIdentifier, scanFailureMessage, scanShouldRecapture } from '../src/features/dentist/screens/3D/DentistScan3DScreen';
 import DentistHomeScreen from '../src/features/dentist/screens/DentistHome/DentistHomeScreen';
 jest.mock('../src/services/authService', () => ({ logoutPatient: jest.fn().mockResolvedValue({ success: true }) }));
 
@@ -509,7 +509,16 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
       expect(scanFailureMessage('SCAN_SERVICE_NOT_CONFIGURED')).toContain('administrator');
       expect(scanFailureMessage('ACQUISITION_SERVICE_UNAVAILABLE')).toContain('Rekaman sudah tersimpan');
       expect(scanFailureMessage('CAPTURE_QUALITY_REJECTED')).toContain('Rekam video baru');
-      expect(scanFailureMessage('RECONSTRUCTION_GEOMETRY_INSUFFICIENT')).toContain('Rekam video baru');
+      expect(scanFailureMessage('RECONSTRUCTION_GEOMETRY_INSUFFICIENT')).toContain('alasan tahap');
+      expect(scanShouldRecapture('RECONSTRUCTION_GEOMETRY_INSUFFICIENT')).toBe(false);
+      const missingRoi = { reasons: ['DENTAL_REGION_UNVERIFIED', 'GEOMETRY_STILL_BEST_PAIR'] };
+      expect(scanFailureMessage('RECONSTRUCTION_GEOMETRY_INSUFFICIENT', null, missingRoi)).toContain('merekam ulang saja');
+      const screenCapture = { reasons: ['DENTAL_REGION_UNVERIFIED', 'CAPTURE_TARGET_SCREEN_SUSPECTED'] };
+      expect(scanFailureMessage('RECONSTRUCTION_GEOMETRY_INSUFFICIENT', null, screenCapture)).toContain('layar');
+      expect(scanShouldRecapture('RECONSTRUCTION_GEOMETRY_INSUFFICIENT', screenCapture)).toBe(true);
+      expect(scanFailureMessage('CAPTURE_TARGET_SCREEN_SUSPECTED')).toContain('monitor');
+      expect(scanShouldRecapture('RECONSTRUCTION_GEOMETRY_INSUFFICIENT', missingRoi)).toBe(false);
+      expect(scanShouldRecapture('RECONSTRUCTION_GEOMETRY_INSUFFICIENT', { reasons: ['TOO_FEW_REGISTERED_VIEWS'] })).toBe(true);
       expect(scanFailureMessage('OTHER_ERROR', 'Alasan dari server')).toBe('Alasan dari server');
     });
 
@@ -518,7 +527,8 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
       expect(captureGuideMessage(8)).toContain('gigi depan');
       expect(captureGuideMessage(16)).toContain('geraham kanan');
       expect(captureGuideMessage(24)).toContain('sisi kunyah');
-      expect(captureReviewWarnings({ durationSec: 15, requestedResolution: '720p' })).toHaveLength(2);
+      expect(captureReviewWarnings({ durationSec: 10, requestedResolution: '720p' })).toHaveLength(2);
+      expect(captureReviewWarnings({ durationSec: 15, requestedResolution: '1080p' })).toEqual([]);
       expect(captureReviewWarnings({ durationSec: 25, requestedResolution: '1080p' })).toEqual([]);
     });
 
@@ -550,7 +560,7 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
       await act(async () => { tree = renderer.create(<PaperProvider><DentistScan3DScreen navigation={{}} /></PaperProvider>); });
       await pressNamed(tree, 'Budi Handoko');
       const fullArch = tree.root.findAllByType(TouchableOpacity).find((node) => containsText(node, 'Full Arch'));
-      expect(fullArch.props.disabled).toBe(true);
+      expect(fullArch.props.disabled).not.toBe(true);
       await pressNamed(tree, 'Mulai Sesi 3D Scan');
       expect(api.post).toHaveBeenNthCalledWith(1, '/x-core/3d-scans', expect.objectContaining({ scanScope: 'upper' }));
       const continueButton = tree.root.findAllByProps({ children: 'Lanjutkan ke Perekaman Video' }).find((node) => node.props.onPress);
@@ -570,6 +580,58 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
       expect(words).toContain('Coba Jadwalkan Lagi');
       expect(words).not.toContain('Rekonstruksi 3D Berhasil!');
       expect(api.post).toHaveBeenCalledTimes(3);
+      await act(async () => tree.unmount());
+    });
+
+    test('Full Arch selection creates separate linked upper and lower capture sessions', async () => {
+      useSelector.mockImplementation((selector) => selector({ auth: {
+        authLevel: 'full_account', accessToken: 'test-session',
+        user: { id: 10, name: 'Dr. Sarah', roles: ['dentist'] },
+      } }));
+      api.get.mockImplementation((url) => {
+        if (url === '/auth/me') return Promise.resolve({ data: { id: 10, roles: ['dentist'] } });
+        if (url === '/x-core/3d-scans/patients') return Promise.resolve({ data: { patients: [{ id: 42, name: 'Budi Handoko' }] } });
+        return Promise.reject(new Error(`Unexpected GET ${url}`));
+      });
+      const upper = { id: '501', scanIdentifier: 'SCAN-3D-UPPER', scanScope: 'upper', patient: { id: 42, name: 'Budi Handoko' } };
+      const lower = { id: '502', scanIdentifier: 'SCAN-3D-LOWER', scanScope: 'lower', patient: upper.patient };
+      api.post
+        .mockResolvedValueOnce({ data: { scan: { ...upper, status: 'created' } } })
+        .mockResolvedValueOnce({ data: { scan: { ...upper, status: 'uploaded' } } })
+        .mockResolvedValueOnce({ data: { scan: { ...upper, status: 'queued' }, job: { status: 'queued' } } })
+        .mockResolvedValueOnce({ data: { scan: { ...lower, status: 'created' } } });
+      const containsText = (node, wanted) => node.children.some((child) =>
+        typeof child === 'string' ? child === wanted : containsText(child, wanted));
+      const pressTouch = async (tree, label) => {
+        const control = tree.root.findAllByType(TouchableOpacity).find((node) => containsText(node, label));
+        expect(control).toBeDefined();
+        await act(async () => control.props.onPress());
+      };
+      let tree;
+      await act(async () => { tree = renderer.create(<PaperProvider><DentistScan3DScreen navigation={{}} /></PaperProvider>); });
+      await pressTouch(tree, 'Budi Handoko');
+      await pressTouch(tree, 'Full Arch');
+      await pressTouch(tree, 'Mulai Sesi 3D Scan');
+      expect(api.post).toHaveBeenNthCalledWith(1, '/x-core/3d-scans', expect.objectContaining({
+        scanScope: 'upper', metadata: { captureProtocol: expect.objectContaining({ mode: 'full_arch_pair', sequence: 1 }) },
+      }));
+      const recordButton = tree.root.findAllByProps({ children: 'Lanjutkan ke Perekaman Video' }).find((node) => node.props.onPress);
+      await act(async () => recordButton.props.onPress());
+      const camera = tree.root.findAllByProps({ testID: 'camera-view' })[0];
+      await act(async () => camera.props.onCameraReady());
+      const shutter = tree.root.findAllByType(TouchableOpacity).find((node) => node.props.style?.width === 72);
+      await act(async () => shutter.props.onPress());
+      const upload = tree.root.findAllByProps({ children: 'Unggah & Mulai Rekonstruksi' }).find((node) => node.props.onPress);
+      await act(async () => upload.props.onPress());
+      const nextArch = tree.root.findAllByProps({ children: 'Lanjut Rekam Rahang Bawah' }).find((node) => node.props.onPress);
+      expect(nextArch).toBeDefined();
+      await act(async () => nextArch.props.onPress());
+      expect(api.post).toHaveBeenNthCalledWith(4, '/x-core/3d-scans', expect.objectContaining({
+        scanScope: 'lower', metadata: { captureProtocol: expect.objectContaining({
+          mode: 'full_arch_pair', sequence: 2, pairedUpperScanId: '501',
+        }) },
+      }));
+      expect(collectText(tree.toJSON()).join(' ')).toContain('FULL ARCH · BAWAH 2/2');
       await act(async () => tree.unmount());
     });
 

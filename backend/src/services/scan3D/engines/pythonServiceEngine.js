@@ -18,12 +18,12 @@ export function scanServiceSignal(options = {}, timeoutMs = 120000) {
 
 export class PythonServiceEngine extends BaseReconstructionEngine {
   constructor(name = 'opencv_sparse_sfm') {
-    super({ name, displayName: 'OpenCV sparse two-view reconstruction (experimental)',
-      version: 'opencv-sparse-sfm-1', implementationStatus: 'experimental', isAvailable: null,
+    super({ name, displayName: 'OpenCV dental ROI SfM and dense stereo (experimental)',
+      version: 'opencv-dental-multiview-2.5', implementationStatus: 'experimental', isAvailable: null,
       executionBackend: 'python_opencv_cpu', outputFormats: ['obj', 'ply', 'stl', 'png'],
-      capabilities: ['sparse_point_cloud', 'experimental_surface_mesh', 'estimated_camera_poses'],
-      inputRequirements: ['verified_video', 'sufficient_texture', 'camera_translation', 'authenticated_python_service'],
-      description: 'Computes feature matches, relative camera pose and triangulated geometry from video. Arbitrary scale; no full-arch or clinical validation.' });
+      capabilities: ['dental_masked_sparse_tracks', 'experimental_cpu_dense_stereo', 'estimated_camera_poses', 'diagnostic_mesh'],
+      inputRequirements: ['verified_video', 'operator_annotated_dental_regions', 'sufficient_texture', 'camera_translation', 'authenticated_python_service'],
+      description: 'Runs dental-ROI SfM and CPU multi-view stereo when supported; otherwise retains a sparse diagnostic. Arbitrary scale; anatomy and clinical accuracy unvalidated.' });
   }
 
   async process({ study, studyDir, options = {}, scanScope = 'full', lidraReport }) {
@@ -72,6 +72,21 @@ export class PythonServiceEngine extends BaseReconstructionEngine {
       throw Object.assign(new Error('Reconstruction frames do not match measured acquisition'), {
         code: 'ACQUISITION_FRAME_MISMATCH', retryable: false,
       });
+    }
+    const supportArtifact = metadata.denseMultiView?.supportArtifact;
+    if (metadata.denseMultiView?.status === 'executed') {
+      if (supportArtifact?.fileName !== 'vertex_support.npz' || !/^[a-f0-9]{64}$/.test(supportArtifact.sha256 || '')) {
+        throw Object.assign(new Error('Dense view-support artifact missing from reconstruction report'), {
+          code: 'RECONSTRUCTION_PROVENANCE_MISMATCH', retryable: false,
+        });
+      }
+      const supportFile = await confinedExistingFile(outputDir, supportArtifact.fileName);
+      const supportSize = (await fs.stat(supportFile)).size;
+      if (supportSize !== supportArtifact.sizeInBytes || await sha256File(supportFile) !== supportArtifact.sha256) {
+        throw Object.assign(new Error('Dense view-support artifact checksum mismatch'), {
+          code: 'RECONSTRUCTION_ASSET_MISMATCH', retryable: false,
+        });
+      }
     }
     const wrap = async (asset) => {
       if (!asset) return null;

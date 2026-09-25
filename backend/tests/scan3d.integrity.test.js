@@ -48,7 +48,19 @@ function memoryStore(initial) {
 }
 const realResult = { success: true, assets: { mesh: { fileName: 'mesh.obj', checksum: 'b'.repeat(64), vertexCount: 120, faceCount: 140 } },
   provenance: { geometrySource: 'image_derived', synthetic: false },
-  metrics: { registeredFrames: 3, vertexCount: 120, faceCount: 140 }, lidra: {}, performance: {} };
+  metrics: { registeredFrames: 3, vertexCount: 120, faceCount: 140,
+    geometryEvidence: { pointSource: 'dense_multiview_stereo', contributingViews: 3, denseStatus: 'executed',
+      denseSupportedPoints: 120, meshFromDense: true, perToothCoverageStatus: 'observed_multiview_support_only' },
+    denseMultiView: { minimumIndependentViewCount: 3, minimumSupportingPairCount: 2,
+      supportArtifact: { sha256: 'c'.repeat(64) } },
+    perToothSupport: { status: 'observed_multiview_support_only', missingExpectedTeeth: [],
+      teeth: [{ fdi: 11, labelVerified: false, verticesInThreeOrMoreViews: 120,
+        facesWithThreeViewVertexSupport: 140, anatomicalSurfaceCompleteness: null }] },
+    meshTopology: { nonManifoldEdges: 0, inconsistentWindingEdges: 0,
+      selfIntersections: { status: 'evaluated', count: 0 } },
+    multiViewSparse: { bundleAdjustment: { status: 'executed' } } },
+  lidra: { dentalEvidence: { status: 'operator_annotated_unverified' },
+    qualityDecision: { status: 'accepted_for_experimental_geometry' } }, performance: {} };
 
 test('queue rejects missing verified input, unknown engines, simulations and scaffolds', async () => {
   for (const engine of ['missing', 'photogrammetry_v1', 'dust3r']) {
@@ -183,8 +195,45 @@ test('geometry gate is an engineering floor, never anatomical or clinical valida
   assert.equal(candidate.anatomicalCoverage, 'unavailable');
   assert.equal(candidate.validated, false);
   assert.equal(candidate.clinicallyValidated, false);
+  const goodInitial = assessScanGeometry({ ...realResult, metrics: { ...realResult.metrics,
+    multiViewSparse: { bundleAdjustment: { status: 'initial_solution_retained', evaluatedTracks: 80,
+      initialMedianReprojectionPx: .6, initialRobustLoss: .5 } } } });
+  assert.equal(goodInitial.status, 'candidate');
+  const poorInitial = assessScanGeometry({ ...realResult, metrics: { ...realResult.metrics,
+    multiViewSparse: { bundleAdjustment: { status: 'initial_solution_retained', evaluatedTracks: 80,
+      initialMedianReprojectionPx: 1.8, initialRobustLoss: 1.3 } } } });
+  assert(poorInitial.reasons.includes('BUNDLE_ADJUSTMENT_NOT_EXECUTED'));
   assert.equal(assessScanGeometry({ ...realResult, assets: { mesh: { ...realResult.assets.mesh, faceCount: 139 } } }).status, 'insufficient');
   assert.equal(assessScanGeometry({ ...realResult, metrics: {} }).status, 'insufficient');
+  const bestPairOnly = assessScanGeometry({ ...realResult, metrics: { ...realResult.metrics,
+    geometryEvidence: { pointSource: 'best_pair_sparse_triangulation', contributingViews: 2,
+      denseStatus: 'not_executed', denseSupportedPoints: 0, meshFromDense: false } } });
+  assert(bestPairOnly.reasons.includes('GEOMETRY_STILL_BEST_PAIR'));
+  assert(bestPairOnly.reasons.includes('DENSE_MULTIVIEW_NOT_EXECUTED'));
+  const noSupportFile = assessScanGeometry({ ...realResult, metrics: { ...realResult.metrics,
+    denseMultiView: { ...realResult.metrics.denseMultiView, supportArtifact: null } } });
+  assert(noSupportFile.reasons.includes('VERTEX_VIEW_SUPPORT_UNVERIFIED'));
+  const missingTooth = assessScanGeometry({ ...realResult, metrics: { ...realResult.metrics,
+    perToothSupport: { ...realResult.metrics.perToothSupport, missingExpectedTeeth: [11] } } });
+  assert(missingTooth.reasons.includes('PER_TOOTH_OBSERVED_PATCH_UNAVAILABLE'));
+  assert.equal(assessScanGeometry({ ...realResult, lidra: {} }).status, 'insufficient');
+  const displayCapture = assessScanGeometry({ ...realResult, lidra: { ...realResult.lidra,
+    captureTarget: { status: 'suspected_display_capture', confirmed: false } } });
+  assert.equal(displayCapture.status, 'insufficient');
+  assert(displayCapture.reasons.includes('CAPTURE_TARGET_SCREEN_SUSPECTED'));
+});
+
+test('current dental acquisition diagnostics remain visible after a failed candidate gate', () => {
+  const state = publicScanMetadata({ ...realResult.metrics, provenance: realResult.provenance,
+    lidra: { version: 'lidra_dental_evidence_v3', status: 'rejected', qualityScore: null,
+      frameSelection: { selectedFramesCount: 12 }, qualityDecision: { status: 'rejected' } } });
+  assert.equal(state.lidra.version, 'lidra_dental_evidence_v3');
+  assert.equal(state.lidra.frameSelection.selectedFramesCount, 12);
+  assert.equal(state.lidra.qualityScore, null);
+  const current = publicScanMetadata({ provenance: realResult.provenance,
+    lidra: { version: 'lidra_dental_evidence_v4', status: 'rejected', qualityScore: null,
+      captureTarget: { status: 'suspected_display_capture' } } });
+  assert.equal(current.lidra.captureTarget.status, 'suspected_display_capture');
 });
 
 test('worker permanently fails missing dependencies instead of retrying indefinitely', async () => {

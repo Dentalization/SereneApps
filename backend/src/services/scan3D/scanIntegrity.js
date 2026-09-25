@@ -20,7 +20,7 @@ export function publicScanMetadata(metadata = {}) {
         && metadata.qualityAssessment.status === 'insufficient'
         ? metadata.qualityAssessment : assessScanGeometry(metadata))
     : null;
-  const measuredAcquisition = metadata.lidra?.version === 'lidra_measured_v2'
+  const measuredAcquisition = ['lidra_measured_v2', 'lidra_dental_evidence_v3', 'lidra_dental_evidence_v4'].includes(metadata.lidra?.version)
     && ['ready', 'rejected', 'unavailable'].includes(metadata.lidra?.status);
   const assets = real && qualityAssessment.status === 'candidate' ? Object.fromEntries(Object.entries(metadata.assets || {}).map(([key, asset]) => [key,
     asset && typeof asset === 'object' ? { ...asset, capabilities: EXPERIMENTAL_CAPABILITIES, clinicalStatus: 'experimental' } : asset])) : null;

@@ -23,6 +23,8 @@ const failureMessage = code => ({
   ACQUISITION_TIMEOUT: 'The scan processing service timed out. Retry after it recovers.',
   ACQUISITION_UNAVAILABLE: 'The capture could not be analyzed. Check the processing service and try again.',
   CAPTURE_QUALITY_REJECTED: 'The recording did not provide enough usable distinct frames. Record a new video.',
+  CAPTURE_TARGET_SCREEN_SUSPECTED: 'The video appears to record a display. Record physical teeth or a physical dental model directly.',
+  DENTAL_REGION_REVIEW_REQUIRED: 'The video was saved, but tooth regions have not been reviewed. Submit reviewed frame regions before reconstruction.',
   VIDEO_NOT_VERIFIED: 'The uploaded video could not be verified. Upload a new recording.',
   VIDEO_CORRUPT: 'The uploaded video changed or is damaged. Upload a new recording.',
   RECONSTRUCTION_TIMEOUT: 'Reconstruction timed out. Retry after the service recovers.',

@@ -19,6 +19,7 @@ import ValidationToast from '../components/ValidationToast';
 import { emailSchema, passwordSchema, phoneSchema } from '../../../utils/validation';
 import { loginSuccess } from '../../../store/slices/authSlice';
 import { registerPatient } from '../../../services/authService';
+import { isDentistUser } from '../../../utils/authUtils';
 
 const REQUIRED_FIELDS = ['name', 'email', 'phoneNumber', 'password', 'confirmPassword'];
 
@@ -229,11 +230,12 @@ const RegisterScreen = ({ navigation }) => {
           message: `Selamat datang, ${result.data.user.name}! Akun berhasil dibuat.`
         });
 
-        // Navigate to dashboard after 1 second
+        // Navigate to appropriate home after registration
+        const targetRoute = isDentistUser(result.data.user) ? 'DentistHomeTab' : 'DashboardTab';
         setTimeout(() => {
           navigation.reset({
             index: 0,
-            routes: [{ name: 'DashboardTab' }],
+            routes: [{ name: targetRoute }],
           });
         }, 1500);
       } else {

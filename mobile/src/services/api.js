@@ -36,13 +36,16 @@ const guessExpoHost = () => {
 };
 
 const buildDevBaseUrl = () => {
-  if (ENV_API_BASE_URL) {
-    return ENV_API_BASE_URL;
-  }
-
   const host = guessExpoHost();
   if (host) {
-    return `http://${host}:4000`;
+    // If ENV_API_BASE_URL is unset or is a private LAN IP, prefer the active Metro host
+    if (!ENV_API_BASE_URL || /^(https?:\/\/)?(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(ENV_API_BASE_URL)) {
+      return `http://${host}:4000`;
+    }
+  }
+
+  if (ENV_API_BASE_URL) {
+    return ENV_API_BASE_URL;
   }
 
   if (Platform.OS === 'android') {

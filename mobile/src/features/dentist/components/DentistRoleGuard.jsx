@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, AppState } from 'react-native';
+import { View, StyleSheet, AppState, ActivityIndicator } from 'react-native';
 import { Text, Button, useTheme, Card } from 'react-native-paper';
 import { useSelector } from 'react-redux';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { isDentistUser } from '../../../utils/authUtils';
 import api from '../../../services/api';
+import { notifySessionExpired } from '../../../services/authSessionEvents';
 
 /**
  * DentistRoleGuard protects screens and components that are restricted to Dentist users.
@@ -56,41 +57,95 @@ const DentistRoleGuard = ({ children, navigation, fallback = null }) => {
   }
 
   const handleGoHome = () => {
-    if (navigation?.navigate) {
-      navigation.navigate('DashboardTab');
-    } else if (navigation?.goBack) {
-      navigation.goBack();
+    const routeNames = navigation?.getState?.()?.routeNames || [];
+    if (routeNames.includes('DentistHomeTab')) {
+      navigation.navigate('DentistHomeTab');
+      return;
     }
+    if (routeNames.includes('DashboardTab')) {
+      navigation.navigate('DashboardTab');
+      return;
+    }
+    if (navigation?.canGoBack?.()) {
+      navigation.goBack();
+      return;
+    }
+    if (isDentist) {
+      try {
+        navigation?.navigate?.('DentistHomeTab');
+      } catch (_) { }
+    } else {
+      try {
+        navigation?.navigate?.('DashboardTab');
+      } catch (_) { }
+    }
+  };
+
+  const handleLogout = () => {
+    notifySessionExpired();
   };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background || '#F8FAFC' }]}>
       <Card style={[styles.card, { backgroundColor: theme.colors.surface || '#FFFFFF' }]} elevation={2}>
         <Card.Content style={styles.cardContent}>
-          <View style={[styles.iconWrapper, { backgroundColor: '#FEE2E2' }]}>
-            <MaterialCommunityIcons name="shield-lock-outline" size={48} color="#EF4444" />
+          <View style={[styles.iconWrapper, { backgroundColor: checking ? '#EDE9FE' : '#FEE2E2' }]}>
+            <MaterialCommunityIcons
+              name={checking ? 'account-sync-outline' : 'shield-lock-outline'}
+              size={48}
+              color={checking ? theme.colors.primary : '#EF4444'}
+            />
           </View>
 
           <Text variant="titleMedium" style={styles.title}>
             {checking ? 'Memverifikasi Sesi Dokter' : 'Akses Dibatasi'}
           </Text>
 
+          {checking && (
+            <ActivityIndicator
+              size="small"
+              color={theme.colors.primary}
+              style={{ marginVertical: 12 }}
+            />
+          )}
+
           {isDentist && !checking && (
-            <Button onPress={() => setAttempt((value) => value + 1)}>Coba Verifikasi Ulang</Button>
+            <Button
+              mode="text"
+              onPress={() => setAttempt((value) => value + 1)}
+              style={styles.retryButton}
+            >
+              Coba Verifikasi Ulang
+            </Button>
           )}
 
           <Text variant="bodyMedium" style={styles.description}>
-            Fitur 3D Dental Scan dan modul klinis dokter gigi hanya dapat diakses oleh akun Dokter Gigi yang terverifikasi di Serene.
+            {checking
+              ? 'Menghubungkan ke server untuk memvalidasi otorisasi akun dokter gigi...'
+              : 'Fitur 3D Dental Scan dan modul klinis dokter gigi hanya dapat diakses oleh akun Dokter Gigi yang terverifikasi di Serene.'}
           </Text>
 
-          <Button
-            mode="contained"
-            onPress={handleGoHome}
-            style={styles.button}
-            buttonColor={theme.colors.primary}
-          >
-            Kembali ke Beranda
-          </Button>
+          {!checking && (
+            <>
+              <Button
+                mode="contained"
+                onPress={handleGoHome}
+                style={styles.button}
+                buttonColor={theme.colors.primary}
+              >
+                Kembali ke Beranda
+              </Button>
+
+              <Button
+                mode="outlined"
+                onPress={handleLogout}
+                style={[styles.button, styles.logoutButton]}
+                textColor="#EF4444"
+              >
+                Keluar / Ganti Akun
+              </Button>
+            </>
+          )}
         </Card.Content>
       </Card>
     </View>
@@ -138,6 +193,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     width: '100%',
     paddingVertical: 4,
+    marginBottom: 8,
+  },
+  retryButton: {
+    marginBottom: 8,
+  },
+  logoutButton: {
+    borderColor: '#FCA5A5',
+    marginTop: 4,
   },
 });
 
