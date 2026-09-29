@@ -669,6 +669,24 @@ const Scan3DMeshViewer = ({
             {geometryQuality?.reasons?.length > 0 && <div>Alasan pemeriksaan: {geometryQuality.reasons.join(', ')}</div>}
             <div>Cakupan gigi belum dapat diverifikasi. Aset percobaan ini tidak dipublikasikan sebagai mesh siap pakai.</div>
           </div>}
+          {lidra?.frameSelection && <div className="bg-slate-950/70 border border-slate-700 rounded-xl p-3 text-left text-xs text-slate-300">
+            Akuisisi: {lidra.frameSelection.totalFrames ?? '—'} frame sumber · {lidra.frameSelection.analyzedFrames ?? '—'} dianalisis · {lidra.frameSelection.selectedFramesCount ?? '—'} dipilih.
+            {lidra.captureTarget?.status === 'suspected_display_capture' && <div className="text-amber-200 mt-1">Pola tepi layar terdeteksi; target fisik belum terbukti.</div>}
+            {Array.isArray(lidra.frameQuality?.observations) && <details className="mt-2">
+              <summary className="cursor-pointer text-cyan-300">Alasan per frame ({lidra.frameQuality.observations.length})</summary>
+              <div className="mt-2 max-h-40 overflow-y-auto space-y-1 font-mono text-[10px]">
+                {lidra.frameQuality.observations.map((frame, index) => <div key={`${frame.frameIndex}-${index}`}>
+                  #{frame.frameIndex} · {typeof frame.timestampMs === 'number' ? (frame.timestampMs / 1000).toFixed(2) : '—'}s · {frame.status || 'unknown'} ·
+                  tajam {typeof frame.sharpness === 'number' ? frame.sharpness.toFixed(1) : '—'} ·
+                  cahaya {typeof frame.luminance === 'number' ? frame.luminance.toFixed(1) : '—'} ·
+                  fitur {frame.globalFeatureCount ?? frame.dentalFeatureCount ?? '—'} ·
+                  match {frame.globalMatchCount ?? frame.dentalMatchCount ?? '—'} ·
+                  geser {frame.medianImageDisplacementPx ?? frame.medianDentalDisplacementPx ?? '—'}px ·
+                  {frame.selectionReason || frame.rejectionReasons?.join('|') || '—'}
+                </div>)}
+              </div>
+            </details>}
+          </div>}
           {scanStatus === 'failed' && !geometryInsufficient && <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-left text-xs text-slate-400 space-y-1">
             <div>• Pastikan video mencakup lengkung gigi secara perlahan.</div>
             <div>• Hindari pencahayaan terlalu gelap atau gerakan buram.</div>
@@ -1020,6 +1038,25 @@ const Scan3DMeshViewer = ({
                 </div>
               </div>
             </div>
+
+            {lidra?.frameSelection && <div className="space-y-2">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bukti Akuisisi</div>
+              <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 space-y-1">
+                <div>Sumber: {lidra.frameSelection.totalFrames ?? '—'} · Dianalisis: {lidra.frameSelection.analyzedFrames ?? '—'} · Dipilih: {lidra.frameSelection.selectedFramesCount ?? '—'}</div>
+                <div>Video: {lidra.videoMetadata?.width ?? '—'}×{lidra.videoMetadata?.height ?? '—'} · {typeof lidra.videoMetadata?.fps === 'number' ? lidra.videoMetadata.fps.toFixed(2) : '—'} fps · {typeof lidra.videoMetadata?.durationSec === 'number' ? lidra.videoMetadata.durationSec.toFixed(1) : '—'} dtk</div>
+                <div>Metode: {lidra.frameSelection.method || 'tidak tersedia'}</div>
+                <div>Target layar: {lidra.captureTarget?.status === 'suspected_display_capture' ? 'dicurigai' : 'tidak terdeteksi; target fisik belum otomatis diverifikasi'}</div>
+                <p className="text-slate-400">Fitur/overlap global dan perpindahan piksel bukan bukti cakupan gigi atau translasi kamera fisik.</p>
+                {Array.isArray(lidra.frameQuality?.observations) && <details>
+                  <summary className="cursor-pointer text-cyan-300">Frame diterima/ditolak ({lidra.frameQuality.observations.length})</summary>
+                  <div className="mt-2 max-h-52 overflow-y-auto space-y-1 font-mono text-[10px]">
+                    {lidra.frameQuality.observations.map((frame, index) => <div key={`${frame.frameIndex}-${index}`} className="border-b border-slate-800 pb-1">
+                      #{frame.frameIndex} · {typeof frame.timestampMs === 'number' ? (frame.timestampMs / 1000).toFixed(2) : '—'}s · {frame.status || 'unknown'} · tajam {typeof frame.sharpness === 'number' ? frame.sharpness.toFixed(1) : '—'} · cahaya {typeof frame.luminance === 'number' ? frame.luminance.toFixed(1) : '—'} · fitur {frame.globalFeatureCount ?? frame.dentalFeatureCount ?? '—'} · match {frame.globalMatchCount ?? frame.dentalMatchCount ?? '—'} · geser {frame.medianImageDisplacementPx ?? frame.medianDentalDisplacementPx ?? '—'}px · {frame.selectionReason || frame.rejectionReasons?.join('|') || '—'}
+                    </div>)}
+                  </div>
+                </details>}
+              </div>
+            </div>}
 
             <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-xs space-y-2">
               <button onClick={() => setTelemetrySnapshot(telemetryRef.current.snapshot())} className="text-cyan-300">Perbarui pengukuran viewer</button>

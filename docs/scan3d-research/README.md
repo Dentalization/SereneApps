@@ -1,5 +1,7 @@
 # Smartphone 3D research runbook
 
+Current Phase 1 physical-capture milestone and controlled-cast protocol: [PHASE1_PHYSICAL_CAPTURE.md](PHASE1_PHYSICAL_CAPTURE.md).
+
 Current implementation, exact executed path, and private operator review: [ENGINEERING_IMPLEMENTATION_WALKTHROUGH.md](ENGINEERING_IMPLEMENTATION_WALKTHROUGH.md).
 
 Latest baseline audit and replay instructions: [BASELINE_INTEGRITY_AUDIT.md](BASELINE_INTEGRITY_AUDIT.md).
@@ -21,7 +23,7 @@ For a local backend with the repository `.venv`, run `cd backend && npm run star
 
 JSON Schemas describe experiment requests, complete physical-validation inputs, and validation outputs. They are interchange contracts; runtime validators enforce semantic constraints such as calibrated provenance and rigid transforms. The intentionally incomplete `validation.example.json` does not pass the complete-input schema until real inputs and study decisions are supplied.
 
-`experiment.example.json` is a request template, not a capture record. Fill the protocol and requested settings; the server stores observed video metadata separately. Submit the configuration with enqueue. Supported frame sampling is uniform; algorithm parameter validation is implemented by `services/reconstruction_service.py`. Requested model versions are not proof of execution: engine/runtime versions come from the actual result provenance. Output contains hashes, configuration, measured stages, coordinate system and uncalibrated scale. Original assets and attempt provenance are preserved.
+`experiment.example.json` is a request template, not a capture record. Fill the protocol and requested settings; the server stores observed video metadata separately. Submit the configuration with enqueue. Frame sampling supports legacy `uniform`, Phase 1 whole-image `capture_evidence`, and separately reviewed `geometry_aware`; only the last can pass the dental-region acquisition gate. Algorithm parameter validation is implemented by the Python services. Requested model versions are not proof of execution: engine/runtime versions come from the actual result provenance. Output contains hashes, configuration, measured stages, coordinate system and uncalibrated scale. Original assets and attempt provenance are preserved.
 
 Current OpenCV output is a partial two-view sparse reconstruction in arbitrary units. It cannot enter physical-scale evaluation just by setting `units: mm` in a config. First provide independent calibration, version the transformed geometry and its provenance, and review the experiment. No automatic clinical promotion exists.
 

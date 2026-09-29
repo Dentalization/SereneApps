@@ -19,7 +19,7 @@ const ContactSupportScreen = ({ navigation }) => {
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
-      
+
       {/* PERBAIKAN: 
         Hapus padding top manual di sini. 
         Biarkan InfoScreenLayout mengisi layar penuh (immersive) agar background header menyentuh status bar.

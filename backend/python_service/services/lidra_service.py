@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 from .dental_region_evidence import normalize_regions, region_mask, region_digest
 
-VERSION = "lidra_dental_evidence_v4"
+VERSION = "lidra_capture_evidence_v5"
 DEFAULT_CONFIG = {"maxFrames": 48, "minSharpness": 30.0, "minLuminance": 20.0,
                   "maxLuminance": 235.0, "minPixelDifference": 3.0}
 
@@ -55,7 +55,7 @@ def analyze_video_acquisition(video_path=None, study_dir="", scan_scope="full", 
     if not isinstance(requested, dict) or set(requested) - (set(DEFAULT_CONFIG) | {"strategy", "dentalRegions"}):
         raise ValueError("Unsupported frame sampling parameters")
     strategy = requested.get("strategy", "uniform")
-    if strategy not in ("uniform", "geometry_aware"):
+    if strategy not in ("uniform", "geometry_aware", "capture_evidence"):
         raise ValueError("Unsupported frame sampling strategy")
     config = {**DEFAULT_CONFIG, **requested}
     for key in ("minSharpness", "minLuminance", "maxLuminance", "minPixelDifference"):
@@ -125,19 +125,23 @@ def analyze_video_acquisition(video_path=None, study_dir="", scan_scope="full", 
                 "toothIdentity": "unavailable", "perToothCoverage": "unavailable",
                 "physicalTranslation": "unavailable"}
         else:
-            indices = np.linspace(0, frame_count - 1, min(frame_count, int(config["maxFrames"])), dtype=int)
+            candidate_count = int(config["maxFrames"]) * (3 if strategy == "capture_evidence" else 1)
+            indices = np.linspace(0, frame_count - 1, min(frame_count, candidate_count), dtype=int)
         frames_dir = os.path.join(study_dir, "frames")
         os.makedirs(frames_dir, exist_ok=True)
         observations, differences = [], []
         previous = None
         dropped = {"blur": 0, "exposure": 0, "redundancy": 0, "decode": 0,
                    "glare": 0, "mouth_motion": 0, "overlap": 0, "parallax": 0,
-                   "dental_features": 0, "frame_limit": 0}
+                   "dental_features": 0, "global_features": 0, "frame_limit": 0}
         roi_features = None
+        previous_global_features = None
         detector = cv2.ORB.create(nfeatures=1500)
         matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
         annotation_by_index = {item["frameIndex"]: item for item in config.get("dentalRegions", {}).get("frames", [])} if regions else {}
-        minimum_spacing = max(1, (indices[-1] - indices[0]) // int(config["maxFrames"])) if regions else 1
+        minimum_spacing = (max(1, round((frame_count - 1) / max(1, int(config["maxFrames"]) - 1) * .7))
+                           if strategy == "capture_evidence" else
+                           max(1, (indices[-1] - indices[0]) // int(config["maxFrames"])) if regions else 1)
         for index in indices:
             cap.set(cv2.CAP_PROP_POS_FRAMES, int(index))
             ok, frame = cap.read()
@@ -159,6 +163,27 @@ def analyze_video_acquisition(video_path=None, study_dir="", scan_scope="full", 
                     "provenance": "measured",
                     "qualityScore": None}
             item["displayBorderEvidence"] = display_border_evidence(frame)
+            global_features = None
+            if not regions:
+                feature_scale = min(1.0, 640.0 / max(frame.shape[:2]))
+                feature_gray = cv2.resize(gray, None, fx=feature_scale, fy=feature_scale) if feature_scale < 1 else gray
+                global_features = detector.detectAndCompute(feature_gray, None)
+                global_keypoints, global_descriptors = global_features
+                item["globalFeatureCount"] = len(global_keypoints)
+                item["globalFeatureImageScale"] = round(feature_scale, 6)
+                item["featureRegion"] = "whole_image_not_dental_verified"
+                if previous_global_features is not None and global_descriptors is not None:
+                    old_keypoints, old_descriptors = previous_global_features
+                    pairs = matcher.knnMatch(old_descriptors, global_descriptors, k=2)
+                    matches = [a for pair in pairs if len(pair) == 2 for a, b in [pair] if a.distance < .75 * b.distance]
+                    item["globalMatchCount"] = len(matches)
+                    item["overlapProxy"] = round(len(matches) / max(1, len(old_keypoints)), 5)
+                    if matches:
+                        first = np.float32([old_keypoints[m.queryIdx].pt for m in matches])
+                        second = np.float32([global_keypoints[m.trainIdx].pt for m in matches])
+                        item["medianImageDisplacementPx"] = round(float(np.median(np.linalg.norm(first - second, axis=1))), 4)
+                        item["displacementImageScale"] = item["globalFeatureImageScale"]
+                item["physicalTranslationStatus"] = "not_measured"
             if regions:
                 item["visibleRegions"] = annotation_by_index[index].get("visibleRegions", [])
                 item["mouthStableReview"] = annotation_by_index[index].get("mouthStable") is True
@@ -197,6 +222,32 @@ def analyze_video_acquisition(video_path=None, study_dir="", scan_scope="full", 
                 item.update(status="rejected", rejectionReasons=["global_redundancy"])
                 observations.append(item)
                 continue
+            if strategy == "capture_evidence":
+                if item["globalFeatureCount"] < 40:
+                    dropped["global_features"] += 1
+                    item.update(status="rejected", rejectionReasons=["too_few_global_features_not_dental_features"])
+                    observations.append(item)
+                    continue
+                if report["selectedFrames"] and index - report["selectedFrames"][-1]["frameIndex"] < minimum_spacing:
+                    dropped["redundancy"] += 1
+                    item.update(status="rejected", rejectionReasons=["temporal_spacing_for_view_diversity"])
+                    observations.append(item)
+                    continue
+                if previous_global_features is not None and item.get("globalMatchCount", 0) < 12:
+                    dropped["overlap"] += 1
+                    item.update(status="rejected", rejectionReasons=["insufficient_global_feature_overlap"])
+                    observations.append(item)
+                    continue
+                if previous_global_features is not None and item.get("medianImageDisplacementPx", 0) < 2:
+                    dropped["parallax"] += 1
+                    item.update(status="rejected", rejectionReasons=["insufficient_image_displacement_not_physical_parallax"])
+                    observations.append(item)
+                    continue
+                if len(report["selectedFrames"]) >= int(config["maxFrames"]):
+                    dropped["frame_limit"] += 1
+                    item.update(status="rejected", rejectionReasons=["frame_limit"])
+                    observations.append(item)
+                    continue
             features = detector.detectAndCompute(gray, mask) if regions else None
             if regions:
                 keypoints, descriptors = features
@@ -243,12 +294,17 @@ def analyze_video_acquisition(video_path=None, study_dir="", scan_scope="full", 
             if not cv2.imwrite(os.path.join(frames_dir, filename), frame, [cv2.IMWRITE_JPEG_QUALITY, 95]):
                 raise ValueError("Cannot persist decoded frame")
             item.update(fileName=filename, status="accepted_by_reviewed_region_geometry" if regions else "accepted_global_diagnostic_only",
-                        rejectionReasons=[], sha256=file_sha256(os.path.join(frames_dir, filename)))
+                        rejectionReasons=[], sha256=file_sha256(os.path.join(frames_dir, filename)),
+                        selectionReason="reviewed_region_overlap_and_declared_coverage" if regions else
+                                        "global_feature_overlap_and_image_displacement_proxy" if strategy == "capture_evidence" else
+                                        "uniform_schedule_global_diagnostic")
             report["selectedFrames"].append(item)
             observations.append(item.copy())
             previous = small
             if regions:
                 roi_features = features
+            else:
+                previous_global_features = global_features
         count = len(report["selectedFrames"])
         display_frames = [item["frameIndex"] for item in observations
                           if item["displayBorderEvidence"]["suspectedDisplayBorder"]]
@@ -261,6 +317,8 @@ def analyze_video_acquisition(video_path=None, study_dir="", scan_scope="full", 
                       "No persistent display border detected; physical dental target remains unverified"}
         if display_suspected:
             report["failureCode"] = "CAPTURE_TARGET_SCREEN_SUSPECTED"
+        elif strategy == "capture_evidence" and count < 2:
+            report["failureCode"] = "CAPTURE_MULTIVIEW_EVIDENCE_INSUFFICIENT"
         blur = {"status": "measured", "method": "grayscale_laplacian_variance",
                 "averageSharpness": float(np.mean([x["sharpness"] for x in observations])) if observations else None,
                 "units": "intensity_squared", "interpretation": "Uncalibrated focus proxy"}
@@ -274,10 +332,15 @@ def analyze_video_acquisition(video_path=None, study_dir="", scan_scope="full", 
             redundancy={"status": "estimated", "method": "mean_absolute_160x90_pixel_difference",
                         "meanDifference": float(np.mean(differences)) if differences else None},
             frameSelection={"totalFrames": frame_count, "analyzedFrames": len(observations),
-                            "selectedFramesCount": count, "dropped": dropped},
+                            "selectedFramesCount": count, "dropped": dropped,
+                            "method": "global_feature_overlap_temporal_spacing_v1" if strategy == "capture_evidence" else strategy,
+                            "selectedFrameIndices": [item["frameIndex"] for item in report["selectedFrames"]],
+                            "selectedTimestampSpanMs": [report["selectedFrames"][0]["timestampMs"], report["selectedFrames"][-1]["timestampMs"]] if count else None,
+                            "anatomicalCoverage": "unavailable", "physicalCameraTranslation": "not_measured"},
             qualityDecision={"status": "accepted_for_experimental_geometry" if dental_ready else "rejected", "calibrated": False,
                              "method": "reviewed_dental_roi_and_geometric_pair_checks" if regions else "global_diagnostic_only",
                              "reason": "Video appears to show a display; the camera observed its surface, not physical teeth" if display_suspected else
+                                       "Too few frames have measurable global feature overlap and image displacement; dental target remains unverified" if strategy == "capture_evidence" and count < 2 else
                                        "Operator-declared dental regions; at least three connected frames and all declared regions required" if regions else
                                        "No reviewed dental regions: global image quality cannot identify teeth"})
         report["dentalEvidence"].update(acceptedFrames=count, observedRegionLabels=observed_labels,
