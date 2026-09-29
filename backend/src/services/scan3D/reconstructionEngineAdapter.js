@@ -41,7 +41,7 @@ export async function runReconstruction(study, options = {}) {
   const log = (stage, message) => logs.push({ timestamp: new Date().toISOString(), stage, level: 'info', message });
   log('pipeline_start', 'Starting experimental video reconstruction');
   const lidra = await runLidraAcquisition(study, runOptions);
-  const globalDiagnostic = lidra.status === 'rejected' && lidra.configuration?.strategy === 'uniform'
+  const globalDiagnostic = lidra.status === 'rejected' && ['uniform', 'capture_evidence'].includes(lidra.configuration?.strategy)
     && Array.isArray(lidra.selectedFrames) && lidra.selectedFrames.length >= 2;
   if ((lidra.status !== 'ready' && !globalDiagnostic)
       || !Array.isArray(lidra.selectedFrames) || lidra.selectedFrames.length < 2) {
@@ -51,6 +51,7 @@ export async function runReconstruction(study, options = {}) {
         : 'ACQUISITION_UNAVAILABLE'),
       retryable: lidra.status !== 'rejected' &&
         ['ACQUISITION_SERVICE_UNAVAILABLE', 'ACQUISITION_TIMEOUT'].includes(lidra.failureCode),
+      lidraReport: lidra,
     });
   }
   log('acquisition_complete', globalDiagnostic

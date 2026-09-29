@@ -24,6 +24,7 @@ const failureMessage = code => ({
   ACQUISITION_UNAVAILABLE: 'The capture could not be analyzed. Check the processing service and try again.',
   CAPTURE_QUALITY_REJECTED: 'The recording did not provide enough usable distinct frames. Record a new video.',
   CAPTURE_TARGET_SCREEN_SUSPECTED: 'The video appears to record a display. Record physical teeth or a physical dental model directly.',
+  CAPTURE_MULTIVIEW_EVIDENCE_INSUFFICIENT: 'The recording did not provide enough overlapping, distinct image views. Keep the physical target visible and move slowly.',
   DENTAL_REGION_REVIEW_REQUIRED: 'The video was saved, but tooth regions have not been reviewed. Submit reviewed frame regions before reconstruction.',
   VIDEO_NOT_VERIFIED: 'The uploaded video could not be verified. Upload a new recording.',
   VIDEO_CORRUPT: 'The uploaded video changed or is damaged. Upload a new recording.',
@@ -139,6 +140,7 @@ export function createScanWorker(client, reconstruct = runReconstruction, { leas
       const message = exhausted ? failureMessage(error.code) : 'Processing was interrupted. Retrying after a short delay.';
       const saved = await fencedUpdate(study.id, token, current => ({ status, metadata: { ...current.metadata, assets: null,
         qualityAssessment: null,
+        lidra: error.lidraReport || current.metadata.lidra || null,
         performance: { ...current.metadata.performance, lastAttemptMs: performance.now() - started },
         processingJob: { ...current.metadata.processingJob, status, currentStage: exhausted ? 'failed' : 'retry_queued',
           failedAt: exhausted ? new Date().toISOString() : null, progressPercent: exhausted ? 0 : 5,

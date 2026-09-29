@@ -2,7 +2,7 @@
 export function buildScanCaptureMetadata({ platform, osVersion, deviceModel, requested, sizeInBytes,
   startedAt, elapsedMs, viewport }) {
   return {
-    schemaVersion: 'capture-1',
+    schemaVersion: 'capture-2',
     source: 'client_capture',
     serverVerified: false,
     device: { model: deviceModel || null }, // Never collect serial, advertising ID or device ID.
@@ -17,8 +17,10 @@ export function buildScanCaptureMetadata({ platform, osVersion, deviceModel, req
       orientation: viewport?.width > viewport?.height ? 'landscape' : 'portrait',
       orientationSource: 'screen_dimensions_not_video_rotation',
     },
-    media: { resolution: null, fps: null, durationMs: null, codec: null, container: null, lens: null,
+    media: { resolution: null, fps: null, frameCount: null, durationMs: null, codec: null, container: null, lens: null,
       stabilization: null, exposure: null, autofocus: null },
+    calibration: { status: 'unknown', intrinsics: null, distortion: null, metricScale: 'unvalidated' },
+    lensIdentity: { requested: requested?.selectedLens || null, observed: null, verified: false },
     mediaStatus: 'awaiting_server_inspection',
   };
 }

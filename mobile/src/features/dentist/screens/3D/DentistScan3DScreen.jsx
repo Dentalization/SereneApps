@@ -91,6 +91,7 @@ export const scanFailureMessage = (code, reason, qualityAssessment) => {
     ACQUISITION_UNAVAILABLE: 'Video belum dapat dianalisis oleh layanan pemrosesan. Rekaman sudah tersimpan; periksa layanan sebelum mencoba proses ulang.',
     CAPTURE_QUALITY_REJECTED: 'Video tidak memiliki cukup frame yang berbeda dan jelas. Rekam video baru dengan gerakan kamera perlahan.',
     CAPTURE_TARGET_SCREEN_SUSPECTED: 'Video tampak merekam gambar gigi di monitor. Rekam gigi pasien atau model gigi fisik langsung; permukaan layar tidak dapat menjadi scan gigi 3D.',
+    CAPTURE_MULTIVIEW_EVIDENCE_INSUFFICIENT: 'Frame yang tajam dan saling tumpang tindih belum cukup. Pertahankan gigi fisik di bingkai dan geser kamera perlahan dari kiri ke kanan.',
     DENTAL_REGION_REVIEW_REQUIRED: 'Video sudah tersimpan, tetapi area gigi pada frame belum diverifikasi. Rekonstruksi belum boleh dinyatakan siap sebelum area gigi ditinjau.',
     RECONSTRUCTION_GEOMETRY_INSUFFICIENT: 'Bukti geometri belum cukup. Status ini belum menyertakan alasan tahap yang gagal; simpan video dan periksa rincian pemeriksaan sebelum memutuskan perlu rekam ulang atau perbaikan pipeline.',
   };
@@ -99,7 +100,7 @@ export const scanFailureMessage = (code, reason, qualityAssessment) => {
 
 export const scanShouldRecapture = (code, qualityAssessment) => {
   if (code !== 'RECONSTRUCTION_GEOMETRY_INSUFFICIENT') {
-    return ['CAPTURE_QUALITY_REJECTED', 'CAPTURE_TARGET_SCREEN_SUSPECTED', 'VIDEO_NOT_VERIFIED', 'VIDEO_CORRUPT', 'INVALID_VIDEO'].includes(code);
+    return ['CAPTURE_QUALITY_REJECTED', 'CAPTURE_TARGET_SCREEN_SUSPECTED', 'CAPTURE_MULTIVIEW_EVIDENCE_INSUFFICIENT', 'VIDEO_NOT_VERIFIED', 'VIDEO_CORRUPT', 'INVALID_VIDEO'].includes(code);
   }
   const reasons = qualityAssessment?.reasons || [];
   if (reasons.includes('CAPTURE_TARGET_SCREEN_SUSPECTED')) return true;
@@ -204,6 +205,9 @@ const DentistScan3DContent = ({ navigation }) => {
   const [enableTorch, setEnableTorch] = useState(false);
   const [recordedVideo, setRecordedVideo] = useState(null);
   const [uploadError, setUploadError] = useState('');
+  const [captureTargetType, setCaptureTargetType] = useState(null);
+  const [physicalTargetReviewed, setPhysicalTargetReviewed] = useState(false);
+  const [reviewedViews, setReviewedViews] = useState([]);
 
   // Asynchronous Processing states (Phase 5)
   const [processingStatus, setProcessingStatus] = useState(null);
@@ -360,6 +364,9 @@ const DentistScan3DContent = ({ navigation }) => {
       setActiveScanSession(result.scan);
       setRecordedVideo(null);
       setRecordingDurationSec(0);
+      setCaptureTargetType(null);
+      setPhysicalTargetReviewed(false);
+      setReviewedViews([]);
       setProcessingStatus(null);
       setScanStage('setup');
     } finally {
@@ -385,6 +392,9 @@ const DentistScan3DContent = ({ navigation }) => {
     setRecordedVideo(null);
     setIsRecording(false);
     setRecordingDurationSec(0);
+    setCaptureTargetType(null);
+    setPhysicalTargetReviewed(false);
+    setReviewedViews([]);
     setProcessingStatus(null);
     setShowFailureDiagnostics(false);
     setScanStage('setup');
@@ -403,6 +413,8 @@ const DentistScan3DContent = ({ navigation }) => {
 
   const handleStartRecording = async () => {
     if (!cameraRef.current || !cameraReady || isRecording) return;
+    setPhysicalTargetReviewed(false);
+    setReviewedViews([]);
     const startedAt = new Date().toISOString();
     const startedClock = performance.now();
     recordingCancelledRef.current = false;
@@ -490,6 +502,8 @@ const DentistScan3DContent = ({ navigation }) => {
   const handleRetryRecording = () => {
     setRecordedVideo(null);
     setRecordingDurationSec(0);
+    setPhysicalTargetReviewed(false);
+    setReviewedViews([]);
     setScanStage('camera');
   };
 
@@ -511,12 +525,15 @@ const DentistScan3DContent = ({ navigation }) => {
 
   // Phase 4 & Phase 5: Upload video and queue for async reconstruction
   const handleUploadVideo = async () => {
-    if (!activeScanSession || !recordedVideo) return;
+    if (!activeScanSession || !recordedVideo || !captureTargetType || !physicalTargetReviewed) return;
     setScanStage('uploading');
     setUploadError('');
 
     const uploadRes = await upload3DScanVideo(activeScanSession.id, recordedVideo.uri, {
-      captureMetadata: recordedVideo.captureMetadata,
+      captureMetadata: { ...recordedVideo.captureMetadata, operatorReview: {
+        targetType: captureTargetType, physicalTargetVisible: true, crownSurfacesVisible: true,
+        reviewedViews, reviewedAt: new Date().toISOString(), status: 'operator_declared_unverified',
+      } },
       scanScope: activeScanSession.scanScope,
     });
 
@@ -537,7 +554,9 @@ const DentistScan3DContent = ({ navigation }) => {
   };
 
   const submitReconstructionQueue = async (scanId) => {
-    const queueRes = await queue3DScan(scanId);
+    const queueRes = await queue3DScan(scanId, { configuration: {
+      frameSampling: { strategy: 'capture_evidence', maxFrames: 24 },
+    } });
     if (queueRes.success) {
       setProcessingStatus({ status: 'queued', progressPercent: queueRes.job?.progressPercent ?? 5,
         currentStage: queueRes.job?.currentStage || 'Antrean Rekonstruksi 3D', job: queueRes.job });
@@ -690,7 +709,7 @@ const DentistScan3DContent = ({ navigation }) => {
                     color="#FFFFFF"
                   />
                   <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>
-                    {isRecording
+                    Panduan perekaman · {isRecording
                       ? captureGuideMessage(recordingDurationSec)
                       : `${fullArchPlan ? `Full Arch ${fullArchPlan.phase === 'upper' ? '1/2' : '2/2'}` : 'Satu rahang'}: ${activeScanSession?.scanScope === 'lower' ? 'BAWAH' : 'ATAS'}. Arahkan ke gigi fisik, bukan foto atau monitor.`}
                   </Text>
@@ -941,12 +960,37 @@ const DentistScan3DContent = ({ navigation }) => {
                   Pastikan video merekam gigi pasien atau model fisik langsung, bukan gigi yang tampil di layar. Aplikasi belum memverifikasi jumlah gigi atau cakupan anatomi.
                 </Text>
 
+                <Text style={{ color: '#1E293B', fontWeight: '700', marginBottom: 6 }}>Target fisik dalam video</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+                  <Button compact mode={captureTargetType === 'physical_cast' ? 'contained' : 'outlined'}
+                    onPress={() => setCaptureTargetType('physical_cast')}>Model gigi fisik</Button>
+                  <Button compact mode={captureTargetType === 'patient_teeth' ? 'contained' : 'outlined'}
+                    onPress={() => setCaptureTargetType('patient_teeth')}>Gigi pasien</Button>
+                </View>
+                <Text style={{ color: '#1E293B', fontWeight: '700', marginBottom: 6 }}>Sudut yang Anda lihat saat merekam</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                  {[["left", "Kiri"], ["front", "Depan"], ["right", "Kanan"], ["occlusal", "Kunyah"]].map(([value, label]) => (
+                    <Button key={value} compact mode={reviewedViews.includes(value) ? 'contained-tonal' : 'outlined'}
+                      onPress={() => setReviewedViews(current => current.includes(value)
+                        ? current.filter(item => item !== value) : [...current, value])}>{label}</Button>
+                  ))}
+                </View>
+                <Button compact mode={physicalTargetReviewed ? 'contained-tonal' : 'outlined'}
+                  icon={physicalTargetReviewed ? 'check-circle' : 'checkbox-blank-circle-outline'}
+                  onPress={() => setPhysicalTargetReviewed(value => !value)}>
+                  Saya melihat mahkota gigi fisik saat merekam, bukan layar
+                </Button>
+                <Text variant="bodySmall" style={{ color: '#64748B', marginTop: 5, marginBottom: 8 }}>
+                  Pilihan ini deklarasi operator, bukan deteksi otomatis. Jika target atau mahkota tidak jelas, ulangi rekaman.
+                </Text>
+
                 {/* Actions */}
                 <View style={styles.cardActionGroup}>
                   <Button
                     mode="contained"
                     icon="cloud-upload"
                     onPress={handleUploadVideo}
+                    disabled={!captureTargetType || !physicalTargetReviewed}
                     style={styles.actionBtnPrimary}
                     buttonColor="#16A34A"
                   >
@@ -1146,6 +1190,22 @@ const DentistScan3DContent = ({ navigation }) => {
                     </View>
                   </View>
 
+                  {processingStatus?.lidra?.frameSelection && (
+                    <View style={styles.linkageBox}>
+                      <Text style={styles.linkageHeaderTitle}>BUKTI AKUISISI · DIAGNOSTIK</Text>
+                      <Text style={styles.failureCode}>
+                        Frame sumber: {processingStatus.lidra.frameSelection.totalFrames ?? '—'} ·
+                        Dianalisis: {processingStatus.lidra.frameSelection.analyzedFrames ?? '—'} ·
+                        Dipilih: {processingStatus.lidra.frameSelection.selectedFramesCount ?? '—'}
+                      </Text>
+                      <Text style={styles.failureCode}>
+                        Target layar: {processingStatus.lidra.captureTarget?.status === 'suspected_display_capture'
+                          ? 'dicurigai — tinjau video asli' : 'tidak terdeteksi; target fisik belum diverifikasi otomatis'}
+                      </Text>
+                      <Text style={styles.failureCode}>Fitur dan overlap global belum membuktikan asal geometri dari gigi.</Text>
+                    </View>
+                  )}
+
                   <View style={styles.cardActionGroup}>
                     {scanShouldRecapture(processingStatus?.job?.failureCode, processingStatus?.qualityAssessment) ? (
                       <Button mode="contained" icon="video" onPress={handleRetryRecording}
@@ -1276,6 +1336,13 @@ const DentistScan3DContent = ({ navigation }) => {
                       {activeScanSession.status || 'created'} (Siap Rekam)
                     </Text>
                   </View>
+                </View>
+
+                <View style={[styles.guidanceBox, { backgroundColor: '#F5F3FF' }]}>
+                  <MaterialCommunityIcons name="camera-outline" size={18} color="#62109F" />
+                  <Text style={[styles.guidanceText, { color: '#4C1D95' }]}>
+                    Panduan perekaman: gunakan model gigi fisik untuk uji pertama. Rekam satu rahang kontinu dengan cahaya stabil dan lensa wide tanpa zoom. Geser pelan kiri → depan → kanan sambil menjaga gigi sebelumnya terlihat; tambah sudut kunyah. Lintasan belum diverifikasi otomatis.
+                  </Text>
                 </View>
 
                 <View style={styles.cardActionGroup}>

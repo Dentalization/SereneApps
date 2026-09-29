@@ -235,7 +235,7 @@ def process_3d_scan_reconstruction(study_dir, scan_scope="full", video_path=None
     if acquisition is None:
         acquisition = analyze_video_acquisition(video_path, study_dir, scan_scope, configuration.get("frameSampling"))
     diagnostic_only = (acquisition["status"] == "rejected"
-                       and acquisition.get("configuration", {}).get("strategy", "uniform") == "uniform"
+                       and acquisition.get("configuration", {}).get("strategy", "uniform") in ("uniform", "capture_evidence")
                        and len(acquisition.get("selectedFrames", [])) >= 2)
     if acquisition["status"] != "ready" and not diagnostic_only:
         raise ReconstructionUnavailable(acquisition.get("reason", "Insufficient distinct usable video frames"))

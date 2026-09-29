@@ -573,13 +573,21 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
       expect(shutter.props.disabled).toBe(false);
       await act(async () => { await shutter.props.onPress(); });
       const uploadButton = tree.root.findAllByProps({ children: 'Unggah & Mulai Rekonstruksi' }).find((node) => node.props.onPress);
-      await act(async () => { await uploadButton.props.onPress(); });
+      expect(uploadButton.props.disabled).toBe(true);
+      const castTarget = tree.root.findAllByProps({ children: 'Model gigi fisik' }).find((node) => node.props.onPress);
+      const physicalReview = tree.root.findAllByProps({ children: 'Saya melihat mahkota gigi fisik saat merekam, bukan layar' }).find((node) => node.props.onPress);
+      await act(async () => { castTarget.props.onPress(); physicalReview.props.onPress(); });
+      expect(tree.root.findAllByProps({ children: 'Unggah & Mulai Rekonstruksi' }).find((node) => node.props.onPress).props.disabled).toBe(false);
+      await act(async () => { await tree.root.findAllByProps({ children: 'Unggah & Mulai Rekonstruksi' }).find((node) => node.props.onPress).props.onPress(); });
 
       const words = collectText(tree.toJSON()).join(' ');
       expect(words).toContain('Video Tersimpan, Rekonstruksi Belum Dimulai');
       expect(words).toContain('Coba Jadwalkan Lagi');
       expect(words).not.toContain('Rekonstruksi 3D Berhasil!');
       expect(api.post).toHaveBeenCalledTimes(3);
+      expect(api.post).toHaveBeenNthCalledWith(3, '/x-core/3d-scans/501/queue', expect.objectContaining({
+        configuration: { frameSampling: { strategy: 'capture_evidence', maxFrames: 24 } },
+      }));
       await act(async () => tree.unmount());
     });
 
@@ -622,7 +630,14 @@ describe('Dentist 3D Scan Mobile Service & Flow (Phase 2)', () => {
       const shutter = tree.root.findAllByType(TouchableOpacity).find((node) => node.props.style?.width === 72);
       await act(async () => shutter.props.onPress());
       const upload = tree.root.findAllByProps({ children: 'Unggah & Mulai Rekonstruksi' }).find((node) => node.props.onPress);
-      await act(async () => upload.props.onPress());
+      expect(upload.props.disabled).toBe(true);
+      const castTarget = tree.root.findAllByProps({ children: 'Model gigi fisik' }).find((node) => node.props.onPress);
+      const physicalReview = tree.root.findAllByProps({ children: 'Saya melihat mahkota gigi fisik saat merekam, bukan layar' }).find((node) => node.props.onPress);
+      await act(async () => { castTarget.props.onPress(); physicalReview.props.onPress(); });
+      await act(async () => tree.root.findAllByProps({ children: 'Unggah & Mulai Rekonstruksi' }).find((node) => node.props.onPress).props.onPress());
+      expect(api.post).toHaveBeenNthCalledWith(3, '/x-core/3d-scans/501/queue', expect.objectContaining({
+        configuration: { frameSampling: { strategy: 'capture_evidence', maxFrames: 24 } },
+      }));
       const nextArch = tree.root.findAllByProps({ children: 'Lanjut Rekam Rahang Bawah' }).find((node) => node.props.onPress);
       expect(nextArch).toBeDefined();
       await act(async () => nextArch.props.onPress());

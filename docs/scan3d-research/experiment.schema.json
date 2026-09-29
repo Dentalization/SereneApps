@@ -52,8 +52,8 @@
       "additionalProperties": false,
       "properties": {
         "strategy": {
-          "enum": ["uniform", "geometry_aware"],
-          "description": "uniform is global-image diagnostic only and cannot mark capture ready"
+          "enum": ["uniform", "capture_evidence", "geometry_aware"],
+          "description": "uniform and capture_evidence use whole-image diagnostics only and cannot establish dental readiness; geometry_aware requires reviewed dental regions"
         },
         "maxFrames": {
           "type": "integer",

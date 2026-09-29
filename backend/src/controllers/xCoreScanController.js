@@ -10,6 +10,7 @@ import { processScanNow } from '../services/scan3D/scan3DWorker.js';
 import { reconstructionEngineRegistry } from '../services/scan3D/engines/reconstructionEngineRegistry.js';
 import { privateScanDirectory, scanDirectory, confinedExistingFile, registeredAsset, safeComponent, sha256File } from '../services/scan3D/scanStorage.js';
 import { inspectVideo } from '../services/scan3D/videoInspection.js';
+import { normalizeOperatorCaptureReview } from '../services/scan3D/operatorCaptureReview.js';
 import { clientScanMetadata, publicScanState, associatedPatientWhere, EXPERIMENTAL_CAPABILITIES } from '../services/scan3D/scanIntegrity.js';
 import { resolveFullArchPair } from '../services/scan3D/fullArchPair.js';
 
@@ -185,10 +186,14 @@ export async function upload3DScanVideo(req, res) {
     if (req.body?.captureMetadata) {
       try { captureMetadata = JSON.parse(req.body.captureMetadata); } catch { throw problem(400, 'Invalid capture metadata'); }
       if (!captureMetadata || typeof captureMetadata !== 'object' || Array.isArray(captureMetadata)) throw problem(400, 'Invalid capture metadata');
+      const operatorReview = normalizeOperatorCaptureReview(captureMetadata.operatorReview);
       captureMetadata = { ...clientScanMetadata({ device: captureMetadata.device, platform: captureMetadata.platform }),
-        schemaVersion: 'capture-1', source: 'client_capture', serverVerified: false,
+        schemaVersion: operatorReview ? 'capture-2' : 'capture-1', source: 'client_capture', serverVerified: false,
         captureTimestamp: captureMetadata.captureTimestamp || null, osVersion: captureMetadata.osVersion || null,
-        requested: captureMetadata.requested || null, observed: captureMetadata.observed || null };
+        requested: captureMetadata.requested || null, observed: captureMetadata.observed || null,
+        lensIdentity: { requested: captureMetadata.requested?.selectedLens || null, observed: null, verified: false },
+        calibration: { status: 'unknown', intrinsics: null, distortion: null, metricScale: 'unvalidated' },
+        operatorReview };
     }
     const clientDeclared = { durationMs: req.body?.durationMs || null, resolution: req.body?.resolution || null, fps: req.body?.fps || null };
     const current = scan.metadata || {};

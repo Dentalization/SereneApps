@@ -97,6 +97,35 @@ class SurfaceSoftwareTests(unittest.TestCase):
 
 
 class AcquisitionSoftwareTests(unittest.TestCase):
+    def test_global_capture_evidence_is_deterministic_and_never_dental_coverage(self):
+        # Translated random texture is a software fixture, not a dental capture.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            video = root / 'translated-texture.avi'
+            writer = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*'MJPG'), 10, (320, 240))
+            self.assertTrue(writer.isOpened())
+            texture = np.random.default_rng(19).integers(40, 220, (240, 320), dtype=np.uint8)
+            for index in range(60):
+                frame = cv2.warpAffine(texture, np.float32([[1, 0, index], [0, 1, 0]]), (320, 240),
+                                       borderMode=cv2.BORDER_REFLECT)
+                writer.write(cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR))
+            writer.release()
+            settings = {"strategy": "capture_evidence", "maxFrames": 8, "minPixelDifference": .1}
+            first = analyze_video_acquisition(str(video), str(root / 'first'), configuration=settings)
+            second = analyze_video_acquisition(str(video), str(root / 'second'), configuration=settings)
+            first_indices = [frame['frameIndex'] for frame in first['selectedFrames']]
+            self.assertEqual(first_indices, [frame['frameIndex'] for frame in second['selectedFrames']])
+            self.assertGreaterEqual(len(first_indices), 3)
+            self.assertLessEqual(len(first_indices), 8)
+            self.assertGreater(first_indices[-1] - first_indices[0], 25)
+            self.assertTrue(all(frame['globalFeatureCount'] >= 40 and frame['selectionReason']
+                                for frame in first['selectedFrames']))
+            self.assertTrue(all('rejectionReasons' in frame for frame in first['frameQuality']['observations']))
+            self.assertEqual(first['coverage']['status'], 'unavailable')
+            self.assertEqual(first['dentalEvidence']['status'], 'unavailable')
+            self.assertEqual(first['qualityDecision']['status'], 'rejected')
+            self.assertEqual(first['frameSelection']['physicalCameraTranslation'], 'not_measured')
+
     def test_display_border_requires_two_persistent_frame_edges(self):
         image = np.full((400, 240, 3), 130, np.uint8)
         image[78:100] = 8

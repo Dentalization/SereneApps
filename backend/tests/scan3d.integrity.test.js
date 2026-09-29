@@ -151,6 +151,24 @@ test('worker rejects synthetic output and records no assets', async () => {
   assert.equal(store.get().metadata.processingJob.recoverable, false);
 });
 
+test('acquisition rejection retains the measured report without manufacturing a mesh', async () => {
+  const store = memoryStore(scanFixture('queued'));
+  const lidraReport = { version: 'lidra_capture_evidence_v5', status: 'rejected', synthetic: false,
+    frameSelection: { totalFrames: 450, selectedFramesCount: 1, method: 'global_feature_overlap_temporal_spacing_v1' },
+    captureTarget: { status: 'not_determined', confirmed: false },
+    qualityDecision: { status: 'rejected', reason: 'Insufficient global overlap' } };
+  const result = await createScanWorker(store, async () => {
+    throw Object.assign(new Error('Measured acquisition rejected'), {
+      code: 'CAPTURE_MULTIVIEW_EVIDENCE_INSUFFICIENT', retryable: false, lidraReport,
+    });
+  }).processStudy(store.get());
+  assert.equal(result.status, 'failed');
+  assert.equal(store.get().metadata.assets, null);
+  assert.deepEqual(store.get().metadata.lidra, lidraReport);
+  assert.equal(publicScanState(store.get()).metadata.lidra.frameSelection.selectedFramesCount, 1);
+  assert.equal(store.get().metadata.processingJob.failureCode, 'CAPTURE_MULTIVIEW_EVIDENCE_INSUFFICIENT');
+});
+
 test('sparse two-view geometry fails closed, retains diagnostics, and is not retried with the same capture', async () => {
   const store = memoryStore(scanFixture('queued'));
   const sparse = { ...realResult,

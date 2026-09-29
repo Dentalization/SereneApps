@@ -21,8 +21,15 @@ export function parseVideoProbe(probe) {
   const format = String(probe.format?.format_name);
   const webm = format.includes('webm') && ['vp8', 'vp9', 'av1'].includes(stream.codec_name);
   if (!webm && !/(?:^|,)(mov|mp4)(?:,|$)/.test(format)) throw Object.assign(new Error('Unsupported video container'), { status: 422, code: 'INVALID_VIDEO' });
+  const probedFrames = Number(stream.nb_frames);
+  const frameCount = Number.isSafeInteger(probedFrames) && probedFrames > 0 ? probedFrames : null;
+  const rawRotation = stream.side_data_list?.find(item => item.rotation != null && Number.isFinite(Number(item.rotation)))?.rotation ?? stream.tags?.rotate;
+  const rotation = Number(rawRotation);
+  const rotationDegrees = rawRotation != null && Number.isInteger(rotation) ? ((rotation % 360) + 360) % 360 : null;
   return { codec: stream.codec_name, width: stream.width, height: stream.height,
     resolution: `${stream.width}x${stream.height}`, durationMs: Math.round(duration * 1000), fps,
+    frameCount, frameCountSource: frameCount === null ? 'unavailable' : 'ffprobe_stream_metadata_not_decoder_count',
+    rotationDegrees, rotationSource: rotationDegrees === null ? 'unavailable' : 'ffprobe_display_transform',
     format: probe.format?.format_name, extension: webm ? '.webm' : '.mp4',
     mimeType: webm ? 'video/webm' : 'video/mp4', inspectedBy: 'ffprobe', metadataSource: 'server_probe' };
 }

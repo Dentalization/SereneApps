@@ -6,11 +6,14 @@ test('requested camera settings never become actual FPS, codec or media resoluti
   expect(result.requested.resolution).toBe('1080p');
   expect(result.media.resolution).toBeNull();
   expect(result.media.fps).toBeNull();
+  expect(result.media.frameCount).toBeNull();
   expect(result.media.durationMs).toBeNull();
   expect(result.observed.elapsedDurationMs).toBe(4321);
   expect(result.observed.durationSource).toBe('client_monotonic_elapsed_estimate');
   expect(result.observed.fileSizeBytes).toBe(1000);
   expect(result.serverVerified).toBe(false);
+  expect(result.calibration).toEqual({ status: 'unknown', intrinsics: null, distortion: null, metricScale: 'unvalidated' });
+  expect(result.lensIdentity.verified).toBe(false);
   expect(result.device).toEqual({ model: null });
 });
 
