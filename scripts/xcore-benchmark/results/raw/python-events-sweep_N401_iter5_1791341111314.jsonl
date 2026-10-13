@@ -1,0 +1,5 @@
+{"runId": "sweep_N401_iter5_1791341111314", "eventType": "dicom_scan_start", "timestamp": "2026-10-07T02:45:18.060198Z", "details": {"studyId": "1791341117841"}}
+{"runId": "sweep_N401_iter5_1791341111314", "eventType": "dicom_scan_end", "timestamp": "2026-10-07T02:45:18.153211Z", "details": {"studyId": "1791341117841", "series_count": 1}}
+{"runId": "sweep_N401_iter5_1791341111314", "eventType": "series_grouping_start", "timestamp": "2026-10-07T02:45:18.154223Z", "details": {"studyId": "1791341117841"}}
+{"runId": "sweep_N401_iter5_1791341111314", "eventType": "series_grouping_end", "timestamp": "2026-10-07T02:45:18.154787Z", "details": {"studyId": "1791341117841", "series": {"1.2.826.0.1.3680043.8.498.73439676514676553785059992317123455441": {"modality": "CT", "classification": "3D", "num_files": 401}}}}
+{"runId": "sweep_N401_iter5_1791341111314", "eventType": "volume_preparation_start", "timestamp": "2026-10-07T02:45:18.161540Z", "details": {"studyId": "1791341117841", "seriesUid": "1.2.826.0.1.3680043.8.498.73439676514676553785059992317123455441", "start_rss_bytes": 117587968}}
