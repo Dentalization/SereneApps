@@ -1,0 +1,7 @@
+scipy
+statsmodels
+scikit-posthocs
+pandas
+matplotlib
+psutil
+requests

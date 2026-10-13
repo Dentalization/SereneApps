@@ -1,0 +1,52 @@
+{
+  "experiment_name": "cdss_xcore_abc_architecture_benchmark",
+  "branch": "experiment/abc-architecture",
+  "target_journal": "JUTIF",
+  "architectures": ["sync", "background", "celery"],
+  "architecture_labels": {
+    "sync": "A (Synchronous)",
+    "background": "B (FastAPI BackgroundTasks)",
+    "celery": "C (Celery + Redis Queue)"
+  },
+  "n_tiers": [25, 100, 200],
+  "vu_levels": [10, 50, 100, 200],
+  "runs_per_cell": 5,
+  "randomization_seed": 20261013,
+  "worker_concurrency": 4,
+  "worker_pool": "threads",
+  "cooldown_seconds": 10,
+  "gate": {
+    "max_swap_used_mb": 500.0,
+    "min_available_memory_mb": 3000.0,
+    "require_ac_power": true,
+    "min_disk_free_gb": 5.0,
+    "max_retries": 3,
+    "retry_delay_seconds": 15
+  },
+  "k6": {
+    "poll_interval_ms": 500,
+    "poll_timeout_s": 180,
+    "request_timeout_s": 120
+  },
+  "services": {
+    "api_base_url": "http://127.0.0.1:4000/v1",
+    "python_service_url": "http://127.0.0.1:8000",
+    "redis_url": "redis://127.0.0.1:6379/0"
+  },
+  "auth": {
+    "dentist_email": "dentist1@test.com",
+    "dentist_password": "password"
+  },
+  "paths": {
+    "phantom_root": ".experiment-scratch",
+    "uploads_dir": "backend/uploads/x-core",
+    "python_service_dir": "backend/python_service",
+    "backend_dir": "backend",
+    "venv_python": "backend/python_service/venv/bin/python",
+    "venv_celery": "backend/python_service/venv/bin/celery",
+    "redis_cli": "redis-cli",
+    "results_raw_dir": "experiments/results/raw",
+    "results_summary_csv": "experiments/results/summary.csv",
+    "results_stats_csv": "experiments/results/stats.csv"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "run_id": "run_20261013_205500_celery_N25_VU10_rep1",
+  "status": "success",
+  "arch": "celery",
+  "n_slices": 25,
+  "vus": 10,
+  "repetition": 1,
+  "timestamp": "20261013_205500",
+  "duration_seconds": 6.69,
+  "gate_readings": {
+    "swap_used_mb": 7755.75,
+    "available_memory_mb": 2415.890625,
+    "ac_power_connected": false,
+    "disk_free_gb": 1.661590576171875,
+    "thermal_state": "Note: No thermal warning level has been recorded; Note: No performance warning level has been recorded; Note: No CPU power status has been recorded",
+    "gate_skipped": true
+  },
+  "worker_concurrency": 4,
+  "worker_pool": "threads",
+  "k6_stats": {
+    "e2e_p50": 4705,
+    "e2e_p95": 5695,
+    "e2e_p99": 5695,
+    "e2e_mean": 4929.8,
+    "upload_p50": 161,
+    "upload_p95": 175,
+    "poll_p50": 4556,
+    "poll_p95": 5534,
+    "total_requests": 10,
+    "successful_conversions": 10,
+    "failure_rate": 0.0
+  },
+  "telemetry": {
+    "peak_rss_mb": 1448.97,
+    "avg_cpu_pct": 29.75,
+    "peak_cpu_pct": 70.6,
+    "swap_growth_mb": 5.37,
+    "throughput_req_per_s": 1.49
+  }
+}
