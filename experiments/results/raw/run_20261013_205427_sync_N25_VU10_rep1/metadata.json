@@ -1,0 +1,40 @@
+{
+  "run_id": "run_20261013_205427_sync_N25_VU10_rep1",
+  "status": "success",
+  "arch": "sync",
+  "n_slices": 25,
+  "vus": 10,
+  "repetition": 1,
+  "timestamp": "20261013_205427",
+  "duration_seconds": 6.91,
+  "gate_readings": {
+    "swap_used_mb": 7231.31,
+    "available_memory_mb": 1907.21875,
+    "ac_power_connected": false,
+    "disk_free_gb": 2.682403564453125,
+    "thermal_state": "Note: No thermal warning level has been recorded; Note: No performance warning level has been recorded; Note: No CPU power status has been recorded",
+    "gate_skipped": true
+  },
+  "worker_concurrency": 4,
+  "worker_pool": "threads",
+  "k6_stats": {
+    "e2e_p50": 5800,
+    "e2e_p95": 5922,
+    "e2e_p99": 5922,
+    "e2e_mean": 5784.6,
+    "upload_p50": 5771,
+    "upload_p95": 5894,
+    "poll_p50": 17,
+    "poll_p95": 19,
+    "total_requests": 10,
+    "successful_conversions": 10,
+    "failure_rate": 0.0
+  },
+  "telemetry": {
+    "peak_rss_mb": 1005.34,
+    "avg_cpu_pct": 35.57,
+    "peak_cpu_pct": 91.4,
+    "swap_growth_mb": 1084.44,
+    "throughput_req_per_s": 1.45
+  }
+}

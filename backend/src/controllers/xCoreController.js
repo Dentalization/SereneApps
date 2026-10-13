@@ -32,6 +32,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const UPLOAD_DIR = path.join(__dirname, '../../uploads/x-core');
 const PY_SERVICE_BASE_URL = process.env.XCORE_PY_API_BASE_URL?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
+// Experiment switch (A/B/C). 'sync' holds the upload response until the
+// volume conversion finishes; 'background' and 'celery' return immediately.
+const XCORE_CONVERSION_ARCH = (process.env.XCORE_CONVERSION_ARCH || 'background').toLowerCase();
 const ANNOTATION_TYPES = new Set(['arrow', 'circle', 'text', 'freehand', 'region', 'brush', 'measurement']);
 const REVIEW_STATUSES = new Set(['draft', 'submitted', 'approved', 'rejected']);
 
@@ -413,24 +416,31 @@ export const uploadStudy = async (req, res) => {
             clinicProfileId: result.clinicId,
         });
 
-        // Trigger background VTI conversion (fire-and-forget)
-        // This pre-computes the 3D .vti file so it's ready when user opens the viewer
-        try {
-            const headersToSend = {};
-            if (runId) {
-                headersToSend['x-benchmark-run-id'] = runId;
-                if (caseId) headersToSend['x-benchmark-case-id'] = caseId;
-                if (iteration) headersToSend['x-benchmark-iteration'] = iteration;
+        // Trigger VTI conversion. This pre-computes the 3D .vti file so it is
+        // ready when the user opens the viewer.
+        // - background / celery: fire-and-forget, the upload response returns now.
+        // - sync: the upload response waits for the conversion to finish.
+        const conversionRequest = (async () => {
+            try {
+                const headersToSend = {};
+                if (runId) {
+                    headersToSend['x-benchmark-run-id'] = runId;
+                    if (caseId) headersToSend['x-benchmark-case-id'] = caseId;
+                    if (iteration) headersToSend['x-benchmark-iteration'] = iteration;
+                }
+                const r = await fetch(`${PY_SERVICE_BASE_URL}/convert/${batchId}`, {
+                    method: 'POST',
+                    headers: headersToSend
+                });
+                const data = await r.json();
+                console.log(`[X-Core] VTI conversion triggered (${XCORE_CONVERSION_ARCH}): ${JSON.stringify(data)}`);
+            } catch (err) {
+                console.warn(`[X-Core] VTI conversion trigger failed (non-critical): ${err.message}`);
             }
-            fetch(`${PY_SERVICE_BASE_URL}/convert/${batchId}`, {
-                method: 'POST',
-                headers: headersToSend
-            })
-                .then(r => r.json())
-                .then(data => console.log(`[X-Core] VTI conversion triggered: ${JSON.stringify(data)}`))
-                .catch(err => console.warn(`[X-Core] VTI conversion trigger failed (non-critical): ${err.message}`));
-        } catch (e) {
-            console.warn('[X-Core] Could not trigger VTI conversion:', e.message);
+        })();
+
+        if (XCORE_CONVERSION_ARCH === 'sync') {
+            await conversionRequest;
         }
 
         res.json(response);

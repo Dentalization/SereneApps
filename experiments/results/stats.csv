@@ -1,0 +1,4 @@
+n_slices,vus,comparison,sample_size_1,sample_size_2,kruskal_h_stat,kruskal_p_value,kruskal_epsilon_squared,dunn_holm_p_value,cliffs_delta,median_diff_ms,bootstrap_ci_95_lower,bootstrap_ci_95_upper
+25,10,sync_vs_background,3,3,3.4667,0.176694,0.2444,0.359425,0.5556,863.0,-600.0,2192.0
+25,10,sync_vs_celery,3,3,3.4667,0.176694,0.2444,0.220915,1.0,732.0,227.0,3306.0
+25,10,background_vs_celery,3,3,3.4667,0.176694,0.2444,0.654721,0.1111,-131.0,-366.0,2307.0

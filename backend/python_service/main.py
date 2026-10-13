@@ -136,6 +136,15 @@ _conversion_waiters = {}
 _conversion_progress = {}
 _CONVERSION_WAIT_TIMEOUT_SECONDS = 300
 
+# Concurrency throttle for background conversion tasks (e.g. during benchmarks).
+# Unset or <= 0 means unbounded (default production behavior).
+_XCORE_BACKGROUND_CONCURRENCY = int(os.environ.get("XCORE_BACKGROUND_CONCURRENCY", "0"))
+_conversion_semaphore = (
+    threading.Semaphore(_XCORE_BACKGROUND_CONCURRENCY)
+    if _XCORE_BACKGROUND_CONCURRENCY > 0
+    else None
+)
+
 # Shared viewer assets fan out into many Python requests. Cache successful
 # Node share-token validations until JWT expiry to avoid re-validating every
 # VTI/image/thumb/metadata/gallery asset request.
@@ -550,6 +559,10 @@ def _ensure_vti_conversion_singleflight(
     if should_run:
         conversion_failed = False
         failure_message = None
+        sem_acquired = False
+        if _conversion_semaphore is not None:
+            _conversion_semaphore.acquire()
+            sem_acquired = True
 
         try:
             conversion_kwargs = {
@@ -575,6 +588,8 @@ def _ensure_vti_conversion_singleflight(
             failure_message = f"{type(exc).__name__}: {exc}"
             raise
         finally:
+            if sem_acquired:
+                _conversion_semaphore.release()
             with _conversion_state_lock:
                 if conversion_failed:
                     _conversion_failures[study_path] = failure_message
@@ -1654,7 +1669,38 @@ def trigger_vti_conversion(
     except Exception as thumb_error:
         print(f"[THUMB] Pre-generation failed for {study_id}: {thumb_error}")
     
-    # Run conversion in background so the upload response returns immediately
+    architecture = _conversion_architecture()
+
+    if architecture == "sync":
+        # Architecture A: the request (and therefore the Node upload response,
+        # which awaits this call in sync mode) returns only after conversion.
+        _ensure_vti_conversion_singleflight(
+            study_path, force, True, segment, quality, run_id, case_id, iteration
+        )
+        return {
+            "status": "ready",
+            "study_id": study_id,
+            "architecture": architecture,
+            "segment": segment,
+            "quality": quality,
+        }
+
+    if architecture == "celery":
+        # Architecture C: enqueue to the broker; a separate worker process converts.
+        from services.conversion_worker import convert_study_task
+        convert_study_task.delay(
+            study_path, force, segment, quality, run_id, case_id, iteration
+        )
+        return {
+            "status": "converting",
+            "study_id": study_id,
+            "architecture": architecture,
+            "message": "VTI conversion enqueued",
+            "segment": segment,
+            "quality": quality,
+        }
+
+    # Architecture B (default): FastAPI BackgroundTasks, returns immediately.
     background_tasks.add_task(
         _ensure_vti_conversion_singleflight,
         study_path,
@@ -1666,14 +1712,29 @@ def trigger_vti_conversion(
         case_id,
         iteration
     )
-    
+
     return {
         "status": "converting",
         "study_id": study_id,
+        "architecture": architecture,
         "message": "VTI conversion started in background",
         "segment": segment,
         "quality": quality,
     }
+
+
+_CONVERSION_ARCHITECTURES = ("sync", "background", "celery")
+
+
+def _conversion_architecture() -> str:
+    """Experiment switch read from XCORE_CONVERSION_ARCH (sync | background | celery)."""
+    value = os.environ.get("XCORE_CONVERSION_ARCH", "background").strip().lower()
+    if value not in _CONVERSION_ARCHITECTURES:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unknown XCORE_CONVERSION_ARCH={value!r}; expected one of {_CONVERSION_ARCHITECTURES}",
+        )
+    return value
 
 
 @app.get("/instances/{study_id}/{series_uid}")

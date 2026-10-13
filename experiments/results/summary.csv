@@ -1,0 +1,4 @@
+n_slices,vus,architecture,sample_size_n,is_pilot_validation,e2e_latency_mean_ms,e2e_latency_sd_ms,e2e_latency_median_ms,e2e_latency_p90_ms,e2e_latency_p95_ms,e2e_latency_p99_ms,throughput_mean_req_s,failure_rate_mean,peak_uvicorn_rss_mean_mb,peak_total_stack_rss_mean_mb,cpu_util_mean_pct,cpu_util_peak_pct,swap_growth_mean_mb
+25,10,background,3,True,5797.0,636.67,5540.0,6325.6,6423.8,6502.36,1.56,0.0,,1338.15,38.26,97.1,637.11
+25,10,celery,3,True,5193.67,847.64,5671.0,5690.2,5692.6,5694.52,1.68,0.0,,1641.16,30.72,81.6,-43.54
+25,10,sync,3,True,6615.33,820.37,6403.0,7297.4,7409.2,7498.64,1.27,0.0,,1037.9,34.26,100.0,1150.58
