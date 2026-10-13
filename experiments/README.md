@@ -58,7 +58,7 @@ Before every run, `experiments/scripts/reset_env.js` executes the following sequ
 ## 4. Known Architectural Limitations & Failure Semantics
 
 1. **Architecture C Progress Visibility**: Progress callbacks run inside the isolated Celery worker process and are not shared via IPC with the FastAPI process. The `/status/{folderName}` endpoint infers readiness from the existence of `volume.vti`. Consequently, an in-progress Celery job reads as `pending` rather than `converting`. Failure detection for Architecture C is audited through Celery worker logs and internal event streams rather than `/status`.
-2. **Architecture A Failure Semantics**: In Architecture A, an internal conversion failure does not cause the HTTP upload request to fail with a 500 status code. This preserves parity with the non-blocking upload semantics of Architecture B.
+2. **Architecture A Execution & Latency Properties**: In Architecture A, volume conversion executes inline within the upload request thread; the upload response returns only after reconstruction completes. This upload latency is an inherent property of the architecture by design, not a measured system failure or Service Level Objective (SLO) degradation. Additionally, internal conversion errors do not return HTTP 500, preserving parity with Architecture B's non-blocking upload semantics.
 3. **Closed-Loop Load Testing**: Load is generated using k6 with closed-loop Virtual Users (`per-vu-iterations`). While arrival rate is load-dependent, closed-loop testing guarantees controlled concurrency levels ($VU \in \{10, 50, 100, 200\}$) without risk of memory thrashing or disk overflow on the 8 GB host.
 4. **Exclusion of N = 401**: The $N = 401$ slice tier requires $> 5.8$ GB RAM per conversion, exceeding available headroom when concurrent processes are active on an 8 GB unified memory system. It is excluded from the primary 3-way factorial design to prevent memory exhaustion.
 
@@ -124,7 +124,7 @@ Outputs `experiments/results/summary.csv`, `experiments/results/stats.csv`, and 
 
 ### 7.1 Memory / RSS Metric Definitions
 To prevent ambiguity between isolated service footprint and whole-stack footprint, the telemetry records both individual and combined resident set sizes:
-- **`peak_uvicorn_rss_mb`**: Peak RSS of the FastAPI/Uvicorn Python service. This isolates the Python CBCT volumetric reconstruction pipeline and is directly comparable with the single-job volume preparation characterization (e.g. 639.1 MB in manuscript Table 4).
+- **`peak_uvicorn_rss_mb`**: Peak RSS of the FastAPI/Uvicorn Python service, isolating the Python CBCT volumetric reconstruction pipeline. Comparison with the single-job volume preparation characterization (639.1 MB in manuscript Table 4) is pending the re-pilot under an enforced host gate; the earlier pilot ran prior to per-process RSS telemetry separation (yielding unpopulated `peak_uvicorn_rss_mean_mb` for the background row in initial summary data) and cannot support the comparison as an empirical finding.
 - **`peak_celery_rss_mb`**: Peak RSS of the Celery worker process (Architecture C only; 0.0 MB for Architectures A and B).
 - **`peak_node_rss_mb`**: Peak RSS of the Node.js API gateway process.
 - **`peak_total_stack_rss_mb`**: Peak combined RSS across all active architecture processes ($\text{Node} + \text{Uvicorn} + \text{Celery}$).
@@ -135,7 +135,8 @@ Reviewer Dr. Abdul Karim mandates a fixed worker concurrency across architecture
 - **Architecture B**: FastAPI `BackgroundTasks` is bounded during benchmarks via `XCORE_BACKGROUND_CONCURRENCY=4`, which acquires an internal semaphore (`threading.Semaphore(4)`) around volume conversions. Unset or 0 in production defaults to unbounded execution.
 - **Architecture A**: Synchronous execution runs inline within the upload request thread.
 
-### 7.3 Pilot Data Status & Provenance
-- Initial pilot runs conducted under uncalibrated host conditions (battery power, swap > 500 MB) are strictly classified as **Harness Validation Only (Non-Evidentiary)** and marked `validation_only: true`.
-- Every run records `harness_git_commit` (`git rev-parse HEAD`), dirty flag, and `harness_script_sha256` of `experiments/run_experiment.py` in `metadata.json` and `master_runs.csv` to ensure complete traceability.
+### 7.3 Pilot Data Status, Host State, & Provenance
+- **Pilot Data Status**: Initial pilot runs conducted under uncalibrated host conditions (battery power, swap > 500 MB) are strictly classified as **Harness Validation Only (Non-Evidentiary)** and marked `validation_only: true`. They confirm test harness mechanics, not experimental findings.
+- **Swap and Latency Context**: Swap at pilot time was 5.3 GB (specifically 5,341.75 MB recorded in `metadata.json` of the initial background run); the link between swap and latency is not yet tested. A reading of 7.4 GB (7,389.94 MB) was observed later during subsequent background host activity rather than at the initial pilot gate. Causal attribution of latency to swap pressure is explicitly withheld pending controlled re-pilot verification.
+- **Traceability**: Every run records `harness_git_commit` (`git rev-parse HEAD`), dirty flag, and `harness_script_sha256` of `experiments/run_experiment.py` in `metadata.json` and `master_runs.csv` to ensure complete traceability.
 - **Host OS Note**: `sw_vers` reports `macOS 26.6.2`, while `uname -r` reports `Darwin Kernel 25.6.0`. Both refer to the same Apple Silicon M3 Darwin environment.
