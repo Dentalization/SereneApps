@@ -105,20 +105,25 @@ def get_thermal_state():
         return "unknown"
 
 
-def check_preflight_gate(config):
+def check_preflight_gate(config, readings=None):
     gate_cfg = config["gate"]
-    swap_used = get_swap_used_mb()
-    avail_mem = get_available_memory_mb()
-    ac_power = is_ac_power_connected()
-    disk_free = get_disk_free_gb()
-
-    readings = {
-        "swap_used_mb": swap_used,
-        "available_memory_mb": avail_mem,
-        "ac_power_connected": ac_power,
-        "disk_free_gb": disk_free,
-        "thermal_state": get_thermal_state(),
-    }
+    if readings is None:
+        swap_used = get_swap_used_mb()
+        avail_mem = get_available_memory_mb()
+        ac_power = is_ac_power_connected()
+        disk_free = get_disk_free_gb()
+        readings = {
+            "swap_used_mb": swap_used,
+            "available_memory_mb": avail_mem,
+            "ac_power_connected": ac_power,
+            "disk_free_gb": disk_free,
+            "thermal_state": get_thermal_state(),
+        }
+    else:
+        swap_used = readings.get("swap_used_mb")
+        avail_mem = readings.get("available_memory_mb")
+        ac_power = readings.get("ac_power_connected")
+        disk_free = readings.get("disk_free_gb")
 
     passed = True
     reasons = []
@@ -135,42 +140,62 @@ def check_preflight_gate(config):
         passed = False
         reasons.append("AC wall power is disconnected")
 
-    if disk_free < gate_cfg["min_disk_free_gb"]:
+    if disk_free is None or disk_free < gate_cfg["min_disk_free_gb"]:
         passed = False
         reasons.append(f"Disk free {disk_free:.2f} GB < {gate_cfg['min_disk_free_gb']} GB")
 
     return passed, readings, reasons
 
 
-def run_preflight_gate_with_retries(config, skip_gate=False):
+def determine_validation_status(gate_passed, skip_gate, failure_reasons=None):
+    """
+    Determines validation_only status and triggers based on host gate state and skip_gate flag.
+    - gate passes and no skip -> validation_only = False
+    - gate fails (with or without skip) -> validation_only = True
+    - skip_gate is True -> validation_only = True
+    Returns (validation_only: bool, triggers: list[str]).
+    """
+    triggers = []
     if skip_gate:
-        print("[Gate] WARNING: Preflight gate explicitly skipped via flag.")
-        return True, {
-            "swap_used_mb": get_swap_used_mb(),
-            "available_memory_mb": get_available_memory_mb(),
-            "ac_power_connected": is_ac_power_connected(),
-            "disk_free_gb": get_disk_free_gb(),
-            "thermal_state": get_thermal_state(),
-            "gate_skipped": True,
-        }
+        triggers.append("skip_gate_flag_enabled")
+    if not gate_passed:
+        if failure_reasons:
+            triggers.extend(failure_reasons)
+        else:
+            triggers.append("gate_threshold_exceeded")
 
+    validation_only = (not gate_passed) or bool(skip_gate)
+    return validation_only, triggers
+
+
+def run_preflight_gate_with_retries(config, skip_gate=False):
     gate_cfg = config["gate"]
+    if skip_gate:
+        print("[Gate] WARNING: Preflight gate explicitly bypassed via --skip-gate flag.")
+        passed, readings, reasons = check_preflight_gate(config)
+        readings["gate_skipped"] = True
+        return True, readings, reasons, passed
+
     max_retries = gate_cfg.get("max_retries", 3)
     retry_delay = gate_cfg.get("retry_delay_seconds", 15)
 
+    last_readings = {}
+    last_reasons = []
     for attempt in range(1, max_retries + 1):
         passed, readings, reasons = check_preflight_gate(config)
+        last_readings = readings
+        last_reasons = reasons
         print(f"[Gate] Check attempt {attempt}/{max_retries}: "
               f"Swap={readings['swap_used_mb']:.1f}MB, AvailRAM={readings['available_memory_mb']:.1f}MB, "
               f"AC={readings['ac_power_connected']}, DiskFree={readings['disk_free_gb']:.1f}GB")
         if passed:
-            return True, readings
+            return True, readings, [], True
         print(f"[Gate] FAILED criteria: {'; '.join(reasons)}")
         if attempt < max_retries:
             print(f"[Gate] Waiting {retry_delay}s before retry...")
             time.sleep(retry_delay)
 
-    return False, readings
+    return False, last_readings, last_reasons, False
 
 
 def kill_process_on_port(port):
@@ -535,13 +560,21 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
     print("=" * 70)
 
     # 1. Preflight Gate
-    gate_passed, gate_readings = run_preflight_gate_with_retries(config, skip_gate=skip_gate)
-    if not gate_passed:
+    gate_proceed, gate_readings, gate_reasons, actual_gate_passed = run_preflight_gate_with_retries(config, skip_gate=skip_gate)
+    validation_only, validation_triggers = determine_validation_status(
+        gate_passed=actual_gate_passed,
+        skip_gate=skip_gate,
+        failure_reasons=gate_reasons
+    )
+    provenance = get_harness_provenance()
+
+    if not gate_proceed:
         print(f"[Run] RECORDING GATE FAILURE for {run_id}. Threshold not met.")
         metadata = {
             "run_id": run_id,
             "status": "gate_failed",
-            "validation_only": skip_gate,
+            "validation_only": validation_only,
+            "validation_triggers": validation_triggers,
             "arch": arch,
             "n_slices": n_slices,
             "vus": vus,
@@ -550,7 +583,9 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
             "gate_readings": gate_readings,
             "worker_concurrency": config.get("worker_concurrency", 4),
             "worker_pool": config.get("worker_pool", "threads"),
-            "harness_provenance": get_harness_provenance(),
+            "git_commit": provenance["git_commit"],
+            "script_sha256": provenance["script_sha256"],
+            "harness_provenance": provenance,
         }
         with open(raw_dir / "metadata.json", "w") as f:
             json.dump(metadata, f, indent=2)
@@ -622,7 +657,8 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
     metadata = {
         "run_id": run_id,
         "status": run_status,
-        "validation_only": skip_gate,
+        "validation_only": validation_only,
+        "validation_triggers": validation_triggers,
         "arch": arch,
         "n_slices": n_slices,
         "vus": vus,
@@ -643,6 +679,8 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
             "swap_growth_mb": round(swap_growth_mb, 2),
             "throughput_req_per_s": round(throughput, 2),
         },
+        "git_commit": provenance["git_commit"],
+        "script_sha256": provenance["script_sha256"],
         "harness_provenance": provenance,
     }
 
@@ -662,7 +700,7 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
                 "avg_cpu_pct", "peak_cpu_pct", "swap_growth_mb", "git_commit", "script_sha256"
             ])
         writer.writerow([
-            run_id, timestamp, arch, n_slices, vus, rep, run_status, skip_gate,
+            run_id, timestamp, arch, n_slices, vus, rep, run_status, validation_only,
             stats["e2e_p50"], stats["e2e_p95"], stats["e2e_p99"], stats["e2e_mean"],
             stats["upload_p95"], stats["poll_p95"], round(throughput, 2), stats["failure_rate"],
             round(peak_uvicorn_rss_mb, 2), round(peak_celery_rss_mb, 2), round(peak_node_rss_mb, 2), round(peak_total_stack_rss_mb, 2),

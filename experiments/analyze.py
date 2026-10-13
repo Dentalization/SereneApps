@@ -140,12 +140,14 @@ def generate_cell_summary(df):
 
         lat_stats = stats(latencies)
 
+        val_only = bool(group.get("validation_only", pd.Series([False])).any())
         summary_rows.append({
             "n_slices": n,
             "vus": vu,
             "architecture": arch,
             "sample_size_n": len(group),
-            "is_pilot_validation": bool(group.get("validation_only", pd.Series([False])).any() or len(group) < 5),
+            "validation_only": val_only,
+            "is_pilot_validation": bool(val_only or len(group) < 5),
             "e2e_latency_mean_ms": lat_stats[0],
             "e2e_latency_sd_ms": lat_stats[1],
             "e2e_latency_median_ms": lat_stats[2],
