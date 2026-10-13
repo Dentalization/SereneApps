@@ -78,6 +78,30 @@ class ConversionArchitectureSwitchTests(unittest.TestCase):
             self._call("broker-typo")
         self.assertEqual(ctx.exception.status_code, 500)
 
+    def test_background_concurrency_semaphore_limits_parallel_runs(self):
+        import threading
+        import time
+
+        sem = threading.Semaphore(1)
+        with patch.object(main, "_conversion_semaphore", sem):
+            running = []
+
+            def fake_convert(*args, **kwargs):
+                running.append(True)
+                time.sleep(0.05)
+                running.pop()
+
+            with patch.object(main, "convert_study_to_vti", side_effect=fake_convert):
+                threads = [
+                    threading.Thread(target=main._ensure_vti_conversion_singleflight, args=(os.path.join(self.upload_root, f"s{i}"), True))
+                    for i in range(2)
+                ]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join()
+            self.assertEqual(len(running), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

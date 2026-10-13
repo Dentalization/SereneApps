@@ -2,6 +2,7 @@
   "os": {
     "platform": "darwin",
     "macos_version": "26.6.2",
+    "darwin_kernel": "25.6.0",
     "macos_build": "25G83",
     "chip": "Apple M3",
     "model": "Mac15,12",

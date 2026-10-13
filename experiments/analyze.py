@@ -80,6 +80,7 @@ def load_all_runs_data():
             if data.get("status") in ["success", "k6_failed"]:
                 k6_stats = data.get("k6_stats", {})
                 tele = data.get("telemetry", {})
+                provenance = data.get("harness_provenance", {})
                 rows.append({
                     "run_id": data["run_id"],
                     "timestamp": data.get("timestamp"),
@@ -88,6 +89,7 @@ def load_all_runs_data():
                     "vus": data["vus"],
                     "repetition": data["repetition"],
                     "status": data["status"],
+                    "validation_only": data.get("validation_only", False),
                     "e2e_p50_ms": k6_stats.get("e2e_p50"),
                     "e2e_p95_ms": k6_stats.get("e2e_p95"),
                     "e2e_p99_ms": k6_stats.get("e2e_p99"),
@@ -96,10 +98,15 @@ def load_all_runs_data():
                     "poll_p95_ms": k6_stats.get("poll_p95"),
                     "throughput_req_s": tele.get("throughput_req_per_s"),
                     "failure_rate": k6_stats.get("failure_rate", 0.0),
-                    "peak_rss_mb": tele.get("peak_rss_mb"),
+                    "peak_uvicorn_rss_mb": tele.get("peak_uvicorn_rss_mb", tele.get("peak_rss_mb")),
+                    "peak_celery_rss_mb": tele.get("peak_celery_rss_mb", 0.0),
+                    "peak_node_rss_mb": tele.get("peak_node_rss_mb", 0.0),
+                    "peak_total_stack_rss_mb": tele.get("peak_total_stack_rss_mb", tele.get("peak_rss_mb")),
                     "avg_cpu_pct": tele.get("avg_cpu_pct"),
                     "peak_cpu_pct": tele.get("peak_cpu_pct"),
                     "swap_growth_mb": tele.get("swap_growth_mb"),
+                    "git_commit": provenance.get("git_commit", "unknown"),
+                    "script_sha256": provenance.get("script_sha256", "unknown"),
                 })
         except Exception:
             continue
@@ -113,7 +120,8 @@ def generate_cell_summary(df):
     for (n, vu, arch), group in grouped:
         latencies = group["e2e_p95_ms"].dropna().tolist()
         tputs = group["throughput_req_s"].dropna().tolist()
-        rss = group["peak_rss_mb"].dropna().tolist()
+        uvi_rss = group["peak_uvicorn_rss_mb"].dropna().tolist() if "peak_uvicorn_rss_mb" in group else []
+        total_rss = group["peak_total_stack_rss_mb"].dropna().tolist() if "peak_total_stack_rss_mb" in group else group.get("peak_rss_mb", pd.Series()).dropna().tolist()
         cpu_avgs = group["avg_cpu_pct"].dropna().tolist()
         cpu_peaks = group["peak_cpu_pct"].dropna().tolist()
         swaps = group["swap_growth_mb"].dropna().tolist()
@@ -137,6 +145,7 @@ def generate_cell_summary(df):
             "vus": vu,
             "architecture": arch,
             "sample_size_n": len(group),
+            "is_pilot_validation": bool(group.get("validation_only", pd.Series([False])).any() or len(group) < 5),
             "e2e_latency_mean_ms": lat_stats[0],
             "e2e_latency_sd_ms": lat_stats[1],
             "e2e_latency_median_ms": lat_stats[2],
@@ -145,8 +154,8 @@ def generate_cell_summary(df):
             "e2e_latency_p99_ms": lat_stats[5],
             "throughput_mean_req_s": round(sum(tputs) / len(tputs), 2) if tputs else None,
             "failure_rate_mean": round(sum(failures) / len(failures), 4) if failures else 0.0,
-            "peak_rss_mean_mb": round(sum(rss) / len(rss), 2) if rss else None,
-            "peak_rss_max_mb": round(max(rss), 2) if rss else None,
+            "peak_uvicorn_rss_mean_mb": round(sum(uvi_rss) / len(uvi_rss), 2) if uvi_rss else None,
+            "peak_total_stack_rss_mean_mb": round(sum(total_rss) / len(total_rss), 2) if total_rss else None,
             "cpu_util_mean_pct": round(sum(cpu_avgs) / len(cpu_avgs), 2) if cpu_avgs else None,
             "cpu_util_peak_pct": round(max(cpu_peaks), 2) if cpu_peaks else None,
             "swap_growth_mean_mb": round(sum(swaps) / len(swaps), 2) if swaps else None,
@@ -240,6 +249,8 @@ def generate_plots(summary_df):
     }
 
     n_tiers = sorted(summary_df["n_slices"].unique())
+    is_pilot = summary_df.get("is_pilot_validation", pd.Series([False])).any()
+    status_suffix = " [VALIDATION PILOT ONLY - NON-EVIDENTIARY]" if is_pilot else " (n = 5 runs)"
 
     # 1. Figure: p95 Latency vs VU across N tiers
     fig, axes = plt.subplots(1, len(n_tiers), figsize=(5.5 * len(n_tiers), 4.5), sharey=True)
@@ -267,7 +278,7 @@ def generate_plots(summary_df):
 
     axes[0].set_ylabel("Median p95 Latency (ms)", fontsize=10)
     axes[0].legend(frameon=True, fontsize=9)
-    fig.suptitle("End-to-End Latency vs Concurrency by Architecture (n = 5 runs)", fontsize=12, y=1.02)
+    fig.suptitle(f"End-to-End Latency vs Concurrency by Architecture{status_suffix}", fontsize=11, y=1.02)
     fig.tight_layout()
     fig1_path = FIGURES_DIR / "p95_latency_vs_vu.png"
     fig.savefig(fig1_path, dpi=300, bbox_inches="tight")
@@ -290,7 +301,7 @@ def generate_plots(summary_df):
                 linewidth=1.8,
                 markersize=6,
             )
-    ax.set_title("System Throughput vs Concurrency (n = 5 runs)", fontsize=11, fontweight="bold")
+    ax.set_title(f"System Throughput vs Concurrency{status_suffix}", fontsize=11, fontweight="bold")
     ax.set_xlabel("Concurrency (Virtual Users)", fontsize=10)
     ax.set_ylabel("Mean Throughput (req / s)", fontsize=10)
     ax.grid(True, linestyle=":", alpha=0.6)
@@ -303,13 +314,14 @@ def generate_plots(summary_df):
 
     # 3. Figure: Peak RSS vs N Slices
     fig, ax = plt.subplots(figsize=(7, 4.5))
-    rss_data = summary_df.groupby(["architecture", "n_slices"])["peak_rss_mean_mb"].mean().reset_index()
+    rss_col = "peak_total_stack_rss_mean_mb" if "peak_total_stack_rss_mean_mb" in summary_df else "peak_rss_mean_mb"
+    rss_data = summary_df.groupby(["architecture", "n_slices"])[rss_col].mean().reset_index()
     for arch, style in arch_styles.items():
         sub = rss_data[rss_data["architecture"] == arch].sort_values("n_slices")
         if not sub.empty:
             ax.plot(
                 sub["n_slices"],
-                sub["peak_rss_mean_mb"],
+                sub[rss_col],
                 label=style["label"],
                 color=style["color"],
                 marker=style["marker"],
@@ -317,9 +329,9 @@ def generate_plots(summary_df):
                 linewidth=1.8,
                 markersize=6,
             )
-    ax.set_title("Peak Resident Memory (RSS) vs Payload Tier (n = 5 runs)", fontsize=11, fontweight="bold")
+    ax.set_title(f"Peak Resident Memory (RSS) vs Payload Tier{status_suffix}", fontsize=11, fontweight="bold")
     ax.set_xlabel("Payload Slices (N)", fontsize=10)
-    ax.set_ylabel("Peak RSS (MB)", fontsize=10)
+    ax.set_ylabel("Peak Total Stack RSS (MB)", fontsize=10)
     ax.grid(True, linestyle=":", alpha=0.6)
     ax.legend(frameon=True, fontsize=9)
     fig.tight_layout()

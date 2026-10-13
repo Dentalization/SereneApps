@@ -117,3 +117,25 @@ python experiments/run_experiment.py --full
 python experiments/analyze.py
 ```
 Outputs `experiments/results/summary.csv`, `experiments/results/stats.csv`, and figures.
+
+---
+
+## 7. Telemetry Definitions, Concurrency Parity, and Provenance
+
+### 7.1 Memory / RSS Metric Definitions
+To prevent ambiguity between isolated service footprint and whole-stack footprint, the telemetry records both individual and combined resident set sizes:
+- **`peak_uvicorn_rss_mb`**: Peak RSS of the FastAPI/Uvicorn Python service. This isolates the Python CBCT volumetric reconstruction pipeline and is directly comparable with the single-job volume preparation characterization (e.g. 639.1 MB in manuscript Table 4).
+- **`peak_celery_rss_mb`**: Peak RSS of the Celery worker process (Architecture C only; 0.0 MB for Architectures A and B).
+- **`peak_node_rss_mb`**: Peak RSS of the Node.js API gateway process.
+- **`peak_total_stack_rss_mb`**: Peak combined RSS across all active architecture processes ($\text{Node} + \text{Uvicorn} + \text{Celery}$).
+
+### 7.2 Worker Concurrency Parity
+Reviewer Dr. Abdul Karim mandates a fixed worker concurrency across architectures:
+- **Architecture C**: Celery worker is spawned with `--concurrency=4 --pool=threads`.
+- **Architecture B**: FastAPI `BackgroundTasks` is bounded during benchmarks via `XCORE_BACKGROUND_CONCURRENCY=4`, which acquires an internal semaphore (`threading.Semaphore(4)`) around volume conversions. Unset or 0 in production defaults to unbounded execution.
+- **Architecture A**: Synchronous execution runs inline within the upload request thread.
+
+### 7.3 Pilot Data Status & Provenance
+- Initial pilot runs conducted under uncalibrated host conditions (battery power, swap > 500 MB) are strictly classified as **Harness Validation Only (Non-Evidentiary)** and marked `validation_only: true`.
+- Every run records `harness_git_commit` (`git rev-parse HEAD`), dirty flag, and `harness_script_sha256` of `experiments/run_experiment.py` in `metadata.json` and `master_runs.csv` to ensure complete traceability.
+- **Host OS Note**: `sw_vers` reports `macOS 26.6.2`, while `uname -r` reports `Darwin Kernel 25.6.0`. Both refer to the same Apple Silicon M3 Darwin environment.

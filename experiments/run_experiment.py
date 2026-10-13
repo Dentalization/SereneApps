@@ -8,6 +8,7 @@ Deterministic randomization with fixed seed, preflight hardware gates, metrics s
 import argparse
 import csv
 import datetime
+import hashlib
 import json
 import os
 import random
@@ -31,6 +32,32 @@ RESET_SCRIPT = REPO_ROOT / "experiments" / "scripts" / "reset_env.js"
 def load_config():
     with open(CONFIG_PATH, "r") as f:
         return json.load(f)
+
+
+def get_harness_provenance():
+    try:
+        git_sha = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=str(REPO_ROOT), text=True
+        ).strip()
+        git_status_out = subprocess.check_output(
+            ["git", "status", "--porcelain"], cwd=str(REPO_ROOT), text=True
+        ).strip()
+        git_dirty = bool(git_status_out)
+    except Exception:
+        git_sha, git_dirty = "unknown", True
+
+    try:
+        script_path = REPO_ROOT / "experiments" / "run_experiment.py"
+        with open(script_path, "rb") as f:
+            script_sha256 = hashlib.sha256(f.read()).hexdigest()
+    except Exception:
+        script_sha256 = "unknown"
+
+    return {
+        "git_commit": git_sha,
+        "git_dirty": git_dirty,
+        "script_sha256": script_sha256,
+    }
 
 
 def get_swap_used_mb():
@@ -202,6 +229,7 @@ class ServiceManager:
         node_env = os.environ.copy()
         node_env["PORT"] = "4000"
         node_env["XCORE_CONVERSION_ARCH"] = arch
+        node_env["XCORE_BACKGROUND_CONCURRENCY"] = str(self.config.get("worker_concurrency", 4))
         node_log = open(self.log_dir / "node.log", "w")
         print(f"[Services] Starting Node.js backend on :4000 with XCORE_CONVERSION_ARCH={arch}...")
         self.node_proc = subprocess.Popen(
@@ -215,9 +243,10 @@ class ServiceManager:
         # Start Uvicorn Python service
         py_env = os.environ.copy()
         py_env["XCORE_CONVERSION_ARCH"] = arch
+        py_env["XCORE_BACKGROUND_CONCURRENCY"] = str(self.config.get("worker_concurrency", 4))
         venv_python = str(REPO_ROOT / self.config["paths"]["venv_python"])
         uvicorn_log = open(self.log_dir / "uvicorn.log", "w")
-        print(f"[Services] Starting FastAPI uvicorn on :8000 with XCORE_CONVERSION_ARCH={arch}...")
+        print(f"[Services] Starting FastAPI uvicorn on :8000 with XCORE_CONVERSION_ARCH={arch} (background_concurrency={self.config.get('worker_concurrency', 4)})...")
         self.uvicorn_proc = subprocess.Popen(
             [venv_python, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"],
             cwd=str(REPO_ROOT / self.config["paths"]["python_service_dir"]),
@@ -512,6 +541,7 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
         metadata = {
             "run_id": run_id,
             "status": "gate_failed",
+            "validation_only": skip_gate,
             "arch": arch,
             "n_slices": n_slices,
             "vus": vus,
@@ -520,6 +550,7 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
             "gate_readings": gate_readings,
             "worker_concurrency": config.get("worker_concurrency", 4),
             "worker_pool": config.get("worker_pool", "threads"),
+            "harness_provenance": get_harness_provenance(),
         }
         with open(raw_dir / "metadata.json", "w") as f:
             json.dump(metadata, f, indent=2)
@@ -560,25 +591,38 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
 
     # Calculate sample statistics
     samples = sampler.samples
-    peak_rss_mb = 0.0
+    peak_uvicorn_rss_mb = 0.0
+    peak_celery_rss_mb = 0.0
+    peak_node_rss_mb = 0.0
+    peak_total_stack_rss_mb = 0.0
     avg_cpu_pct = 0.0
     peak_cpu_pct = 0.0
     swap_growth_mb = 0.0
 
     if samples:
         # Columns: [time, sys_cpu, node_cpu, node_rss, uvi_cpu, uvi_rss, cel_cpu, cel_rss, swap, avail]
+        node_rss_list = [s[3] for s in samples]
+        uvi_rss_list = [s[5] for s in samples]
+        cel_rss_list = [s[7] for s in samples]
         total_rss_bytes = [s[3] + s[5] + s[7] for s in samples]
-        peak_rss_mb = max(total_rss_bytes) / (1024 * 1024)
+
+        peak_node_rss_mb = max(node_rss_list) / (1024 * 1024)
+        peak_uvicorn_rss_mb = max(uvi_rss_list) / (1024 * 1024)
+        peak_celery_rss_mb = max(cel_rss_list) / (1024 * 1024)
+        peak_total_stack_rss_mb = max(total_rss_bytes) / (1024 * 1024)
+
         sys_cpus = [s[1] for s in samples]
         avg_cpu_pct = sum(sys_cpus) / len(sys_cpus)
         peak_cpu_pct = max(sys_cpus)
         swap_growth_mb = samples[-1][8] - samples[0][8]
 
     throughput = stats["total_requests"] / run_duration if run_duration > 0 else 0.0
+    provenance = get_harness_provenance()
 
     metadata = {
         "run_id": run_id,
         "status": run_status,
+        "validation_only": skip_gate,
         "arch": arch,
         "n_slices": n_slices,
         "vus": vus,
@@ -590,12 +634,16 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
         "worker_pool": config.get("worker_pool", "threads"),
         "k6_stats": stats,
         "telemetry": {
-            "peak_rss_mb": round(peak_rss_mb, 2),
+            "peak_uvicorn_rss_mb": round(peak_uvicorn_rss_mb, 2),
+            "peak_celery_rss_mb": round(peak_celery_rss_mb, 2),
+            "peak_node_rss_mb": round(peak_node_rss_mb, 2),
+            "peak_total_stack_rss_mb": round(peak_total_stack_rss_mb, 2),
             "avg_cpu_pct": round(avg_cpu_pct, 2),
             "peak_cpu_pct": round(peak_cpu_pct, 2),
             "swap_growth_mb": round(swap_growth_mb, 2),
             "throughput_req_per_s": round(throughput, 2),
         },
+        "harness_provenance": provenance,
     }
 
     with open(raw_dir / "metadata.json", "w") as f:
@@ -608,19 +656,23 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
         if not file_exists:
             writer.writerow([
                 "run_id", "timestamp", "arch", "n_slices", "vus", "repetition",
-                "status", "e2e_p50_ms", "e2e_p95_ms", "e2e_p99_ms", "e2e_mean_ms",
+                "status", "validation_only", "e2e_p50_ms", "e2e_p95_ms", "e2e_p99_ms", "e2e_mean_ms",
                 "upload_p95_ms", "poll_p95_ms", "throughput_req_s", "failure_rate",
-                "peak_rss_mb", "avg_cpu_pct", "peak_cpu_pct", "swap_growth_mb"
+                "peak_uvicorn_rss_mb", "peak_celery_rss_mb", "peak_node_rss_mb", "peak_total_stack_rss_mb",
+                "avg_cpu_pct", "peak_cpu_pct", "swap_growth_mb", "git_commit", "script_sha256"
             ])
         writer.writerow([
-            run_id, timestamp, arch, n_slices, vus, rep, run_status,
+            run_id, timestamp, arch, n_slices, vus, rep, run_status, skip_gate,
             stats["e2e_p50"], stats["e2e_p95"], stats["e2e_p99"], stats["e2e_mean"],
             stats["upload_p95"], stats["poll_p95"], round(throughput, 2), stats["failure_rate"],
-            round(peak_rss_mb, 2), round(avg_cpu_pct, 2), round(peak_cpu_pct, 2), round(swap_growth_mb, 2)
+            round(peak_uvicorn_rss_mb, 2), round(peak_celery_rss_mb, 2), round(peak_node_rss_mb, 2), round(peak_total_stack_rss_mb, 2),
+            round(avg_cpu_pct, 2), round(peak_cpu_pct, 2), round(swap_growth_mb, 2),
+            provenance["git_commit"], provenance["script_sha256"]
         ])
 
     print(f"[Run] COMPLETE: e2e_p95={stats['e2e_p95']}ms, Throughput={throughput:.2f}req/s, "
-          f"PeakRSS={peak_rss_mb:.1f}MB, FailureRate={stats['failure_rate'] * 100:.1f}%")
+          f"UvicornRSS={peak_uvicorn_rss_mb:.1f}MB, CeleryRSS={peak_celery_rss_mb:.1f}MB, "
+          f"TotalStackRSS={peak_total_stack_rss_mb:.1f}MB, FailureRate={stats['failure_rate'] * 100:.1f}%")
 
     cooldown = config.get("cooldown_seconds", 10)
     print(f"[Run] Cooling down for {cooldown}s...")
