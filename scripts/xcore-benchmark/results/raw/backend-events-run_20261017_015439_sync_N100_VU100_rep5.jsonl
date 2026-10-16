@@ -1,0 +1,10 @@
+{"runId":"run_20261017_015439_sync_N100_VU100_rep5","eventType":"upload_request_received","timestamp":"2026-10-16T18:56:24.829Z","details":{"caseId":"N100_VU100","iteration":"0","fileSize":"63056242","fileCount":100}}
+{"runId":"run_20261017_015439_sync_N100_VU100_rep5","eventType":"upload_saved","timestamp":"2026-10-16T18:56:26.902Z","details":{"folderName":"1792176986840"}}
+{"runId":"run_20261017_015439_sync_N100_VU100_rep5","eventType":"metadata_parse_requested","timestamp":"2026-10-16T18:56:26.903Z","details":{"folderName":"1792176986840"}}
+{"runId":"run_20261017_015439_sync_N100_VU100_rep5","eventType":"metadata_parse_completed","timestamp":"2026-10-16T18:56:27.462Z","details":{"folderName":"1792176986840","modality":"2D"}}
+{"runId":"run_20261017_015439_sync_N100_VU100_rep5","eventType":"conversion_requested","timestamp":"2026-10-16T18:56:30.277Z","details":{"studyId":"3364","folderName":"1792176986840"}}
+{"runId":"run_20261017_015439_sync_N100_VU100_rep5","eventType":"dicom_scan_start","timestamp":"2026-10-16T18:56:32.054Z","details":{"studyId":"1792176986840"}}
+{"runId":"run_20261017_015439_sync_N100_VU100_rep5","eventType":"dicom_scan_end","timestamp":"2026-10-16T18:56:32.086Z","details":{"studyId":"1792176986840","series_count":1}}
+{"runId":"run_20261017_015439_sync_N100_VU100_rep5","eventType":"series_grouping_start","timestamp":"2026-10-16T18:56:32.086Z","details":{"studyId":"1792176986840"}}
+{"runId":"run_20261017_015439_sync_N100_VU100_rep5","eventType":"series_grouping_end","timestamp":"2026-10-16T18:56:32.087Z","details":{"studyId":"1792176986840","series":{"1.2.826.0.1.3680043.8.498.98548551545661311927874680804889414880":{"modality":"CT","classification":"3D","num_files":100}}}}
+{"runId":"run_20261017_015439_sync_N100_VU100_rep5","eventType":"volume_preparation_start","timestamp":"2026-10-16T18:56:32.141Z","details":{"studyId":"1792176986840","seriesUid":"1.2.826.0.1.3680043.8.498.98548551545661311927874680804889414880","start_rss_bytes":67371008}}

@@ -1,0 +1,30 @@
+{
+  "run_id": "run_20261017_024119_sync_N100_VU100_rep2",
+  "status": "gate_failed",
+  "validation_only": true,
+  "validation_triggers": [
+    "Swap used 502.44 MB > 500.0 MB",
+    "Available memory 2878.1 MB < 3000.0 MB"
+  ],
+  "arch": "sync",
+  "n_slices": 100,
+  "vus": 100,
+  "repetition": 2,
+  "timestamp": "20261017_024119",
+  "gate_readings": {
+    "swap_used_mb": 502.44,
+    "available_memory_mb": 2878.140625,
+    "ac_power_connected": true,
+    "disk_free_gb": 10.34537124633789,
+    "thermal_state": "Note: No thermal warning level has been recorded; Note: No performance warning level has been recorded; Note: No CPU power status has been recorded"
+  },
+  "worker_concurrency": 4,
+  "worker_pool": "threads",
+  "git_commit": "67532b1019d702240f4904ac5741bf317ddebd23",
+  "script_sha256": "9c7481de7c0ec28e2b09a4df8794c1ee50711c6daa763448698e70dde3fafd88",
+  "harness_provenance": {
+    "git_commit": "67532b1019d702240f4904ac5741bf317ddebd23",
+    "git_dirty": true,
+    "script_sha256": "9c7481de7c0ec28e2b09a4df8794c1ee50711c6daa763448698e70dde3fafd88"
+  }
+}

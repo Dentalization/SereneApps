@@ -1,0 +1,10 @@
+{"runId":"run_20261017_013557_background_N200_VU50_rep3","eventType":"upload_request_received","timestamp":"2026-10-16T18:36:50.129Z","details":{"caseId":"N200_VU50","iteration":"0","fileSize":"126112838","fileCount":200}}
+{"runId":"run_20261017_013557_background_N200_VU50_rep3","eventType":"upload_saved","timestamp":"2026-10-16T18:36:53.762Z","details":{"folderName":"1792175813712"}}
+{"runId":"run_20261017_013557_background_N200_VU50_rep3","eventType":"metadata_parse_requested","timestamp":"2026-10-16T18:36:53.763Z","details":{"folderName":"1792175813712"}}
+{"runId":"run_20261017_013557_background_N200_VU50_rep3","eventType":"metadata_parse_completed","timestamp":"2026-10-16T18:36:57.260Z","details":{"folderName":"1792175813712","modality":"2D"}}
+{"runId":"run_20261017_013557_background_N200_VU50_rep3","eventType":"conversion_requested","timestamp":"2026-10-16T18:36:59.261Z","details":{"studyId":"2883","folderName":"1792175813712"}}
+{"runId":"run_20261017_013557_background_N200_VU50_rep3","eventType":"dicom_scan_start","timestamp":"2026-10-16T18:37:05.833Z","details":{"studyId":"1792175813712"}}
+{"runId":"run_20261017_013557_background_N200_VU50_rep3","eventType":"dicom_scan_end","timestamp":"2026-10-16T18:37:06.969Z","details":{"studyId":"1792175813712","series_count":1}}
+{"runId":"run_20261017_013557_background_N200_VU50_rep3","eventType":"series_grouping_start","timestamp":"2026-10-16T18:37:07.642Z","details":{"studyId":"1792175813712"}}
+{"runId":"run_20261017_013557_background_N200_VU50_rep3","eventType":"series_grouping_end","timestamp":"2026-10-16T18:37:07.642Z","details":{"studyId":"1792175813712","series":{"1.2.826.0.1.3680043.8.498.55897099643885387612559912734855381787":{"modality":"CT","classification":"3D","num_files":200}}}}
+{"runId":"run_20261017_013557_background_N200_VU50_rep3","eventType":"volume_preparation_start","timestamp":"2026-10-16T18:37:07.758Z","details":{"studyId":"1792175813712","seriesUid":"1.2.826.0.1.3680043.8.498.55897099643885387612559912734855381787","start_rss_bytes":54444032}}
