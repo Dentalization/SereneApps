@@ -14,6 +14,7 @@ dotenv.config({ path: path.join(backendDir, '.env') });
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const UPLOAD_DIR = path.resolve(backendDir, 'uploads/x-core');
+const TEMP_DIR = path.resolve(backendDir, 'uploads/temp');
 
 const RESET_STATEMENTS = [
     'DELETE FROM xcore_analysis_case_item_renders',
@@ -56,6 +57,21 @@ export async function resetDatabaseAndArtifacts() {
                 }
             }
             console.log(`[Reset] Cleaned up ${deletedFolders} study folder(s) in uploads/x-core.`);
+        }
+
+        // Clean up uploads/temp directory
+        if (fs.existsSync(TEMP_DIR)) {
+            const tempFiles = fs.readdirSync(TEMP_DIR);
+            let deletedTemp = 0;
+            for (const file of tempFiles) {
+                if (file !== '.gitkeep' && file !== '.DS_Store') {
+                    try {
+                        fs.unlinkSync(path.join(TEMP_DIR, file));
+                        deletedTemp++;
+                    } catch (_) {}
+                }
+            }
+            console.log(`[Reset] Cleaned up ${deletedTemp} staging file(s) in uploads/temp.`);
         }
         console.log('[Reset] Reset completed successfully.');
     } catch (err) {
