@@ -62,11 +62,13 @@ def bootstrap_median_difference_ci(x, y, n_resamples=10000, seed=20261013):
 def load_all_runs_data():
     master_csv = RAW_DIR / "master_runs.csv"
     if master_csv.exists():
-        df = pd.read_csv(master_csv)
-        # Filter for completed runs
-        df = df[df["status"].isin(["success", "k6_failed"])].copy()
-        if not df.empty:
-            return df
+        try:
+            df = pd.read_csv(master_csv)
+            df = df[df["status"].isin(["success", "k6_failed"])].copy()
+            if not df.empty:
+                return df
+        except Exception as e:
+            print(f"[Analyze] Note: master_runs.csv has multiple schemas ({e}), scanning metadata.json across run folders...")
 
     # Fallback to scanning metadata.json in raw folders
     rows = []
