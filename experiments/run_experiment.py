@@ -21,6 +21,11 @@ import threading
 import time
 from pathlib import Path
 
+# Unset macOS Malloc logging variables to prevent diagnostic spam from subprocesses
+for key in list(os.environ.keys()):
+    if "malloc" in key.lower():
+        os.environ.pop(key, None)
+
 import psutil
 import requests
 
@@ -62,7 +67,7 @@ def get_harness_provenance():
 
 def get_swap_used_mb():
     try:
-        out = subprocess.check_output(["sysctl", "vm.swapusage"], text=True)
+        out = subprocess.check_output(["sysctl", "vm.swapusage"], text=True, stderr=subprocess.DEVNULL)
         m = re.search(r"used\s*=\s*([\d.]+)M", out)
         return float(m.group(1)) if m else None
     except Exception as e:
@@ -72,7 +77,7 @@ def get_swap_used_mb():
 
 def get_available_memory_mb():
     try:
-        out = subprocess.check_output(["vm_stat"], text=True)
+        out = subprocess.check_output(["vm_stat"], text=True, stderr=subprocess.DEVNULL)
         free = int(re.search(r"Pages free:\s+(\d+)", out).group(1))
         inactive = int(re.search(r"Pages inactive:\s+(\d+)", out).group(1))
         spec = int(re.search(r"Pages speculative:\s+(\d+)", out).group(1))
@@ -85,7 +90,7 @@ def get_available_memory_mb():
 
 def is_ac_power_connected():
     try:
-        out = subprocess.check_output(["pmset", "-g", "batt"], text=True)
+        out = subprocess.check_output(["pmset", "-g", "batt"], text=True, stderr=subprocess.DEVNULL)
         return "AC Power" in out
     except Exception as e:
         print(f"[Gate] Error reading battery status: {e}")
@@ -99,7 +104,7 @@ def get_disk_free_gb(path=REPO_ROOT):
 
 def get_thermal_state():
     try:
-        out = subprocess.check_output(["pmset", "-g", "therm"], text=True).strip()
+        out = subprocess.check_output(["pmset", "-g", "therm"], text=True, stderr=subprocess.DEVNULL).strip()
         return out.replace("\n", "; ")
     except Exception:
         return "unknown"
@@ -410,9 +415,15 @@ class MetricsSampler(threading.Thread):
 
                 node_cpu, node_rss = get_proc_stats(node_ps)
                 uvicorn_cpu, uvicorn_rss = get_proc_stats(uvicorn_ps)
-                celery_cpu, celery_rss = get_proc_stats(celery_ps)
-                swap_mb = get_swap_used_mb() or 0.0
-                avail_mb = get_available_memory_mb() or 0.0
+                try:
+                    swap_mb = psutil.swap_memory().used / (1024 * 1024)
+                except Exception:
+                    swap_mb = get_swap_used_mb() or 0.0
+
+                try:
+                    avail_mb = psutil.virtual_memory().available / (1024 * 1024)
+                except Exception:
+                    avail_mb = get_available_memory_mb() or 0.0
 
                 row = [
                     now_iso,
@@ -738,11 +749,31 @@ def build_full_factorial_schedule(config):
     return cells
 
 
+def is_cell_completed(cell, raw_results_dir):
+    """
+    Checks if a factorial cell (arch, n, vu, rep) has already completed
+    by inspecting experiments/results/raw for a matching directory with a valid metadata.json.
+    """
+    pattern = f"*_{cell['arch']}_N{cell['n']}_VU{cell['vu']}_rep{cell['rep']}"
+    for run_dir in raw_results_dir.glob(pattern):
+        meta_file = run_dir / "metadata.json"
+        if meta_file.exists():
+            try:
+                with open(meta_file, "r") as f:
+                    meta = json.load(f)
+                if meta.get("status") in ["success", "k6_failed", "gate_failed"]:
+                    return True, run_dir.name, meta.get("status")
+            except Exception:
+                continue
+    return False, None, None
+
+
 def main():
     parser = argparse.ArgumentParser(description="CDSS X-Core A/B/C Experiment Harness")
     parser.add_argument("--pilot", action="store_true", help="Execute Full Pilot protocol (Task 4)")
     parser.add_argument("--pilot-phase2", action="store_true", help="Execute Pilot Phase 2 only (reproducibility check: reps 2 & 3)")
     parser.add_argument("--full", action="store_true", help="Execute Full 180-run factorial experiment (Task 5)")
+    parser.add_argument("--resume", action="store_true", help="Resume full factorial experiment skipping already executed runs")
     parser.add_argument("--single", action="store_true", help="Execute single run for verification")
     parser.add_argument("--arch", choices=["sync", "background", "celery"], default="background")
     parser.add_argument("--n", type=int, choices=[25, 100, 200], default=25)
@@ -814,9 +845,19 @@ def main():
 
     if args.full:
         schedule = build_full_factorial_schedule(config)
-        print(f"\n[Full Factorial] Total planned runs: {len(schedule)} (Seed: {config['randomization_seed']})")
+        total_runs = len(schedule)
+        print(f"\n[Full Factorial] Total planned runs: {total_runs} (Seed: {config['randomization_seed']})")
+        if args.resume:
+            print("[Full Factorial] Resume mode ENABLED. Scanning existing completed runs...")
+
         for idx, cell in enumerate(schedule, 1):
-            print(f"\nProgress: Run {idx} / {len(schedule)}")
+            if args.resume:
+                completed, existing_dir, prev_status = is_cell_completed(cell, raw_results_dir)
+                if completed:
+                    print(f"\nProgress: Run {idx} / {total_runs} - SKIPPING (already completed as {existing_dir} with status: {prev_status})")
+                    continue
+
+            print(f"\nProgress: Run {idx} / {total_runs}")
             success, _ = execute_single_run(cell, config, master_csv, skip_gate=args.skip_gate)
             if not success:
                 print(f"[Full Factorial] Run {idx} encountered an infrastructure/gate failure. Retrying once after cooldown...")

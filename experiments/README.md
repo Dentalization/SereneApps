@@ -111,6 +111,10 @@ Phase 2 runs 2 repetitions for each architecture at $N=25, VU=10$ to assess repe
 ```bash
 python experiments/run_experiment.py --full
 ```
+To resume an interrupted full factorial run without repeating already completed cells:
+```bash
+python experiments/run_experiment.py --full --resume
+```
 
 ### Generating Statistical Summaries & Figures
 ```bash

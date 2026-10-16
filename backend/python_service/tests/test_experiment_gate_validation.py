@@ -13,6 +13,7 @@ from run_experiment import (
     check_preflight_gate,
     determine_validation_status,
     get_harness_provenance,
+    is_cell_completed,
 )
 
 
@@ -104,6 +105,31 @@ class ExperimentGateValidationTests(unittest.TestCase):
         self.assertIn("script_sha256", provenance)
         self.assertNotIn("harness_git_commit", provenance)
         self.assertNotIn("harness_script_sha256", provenance)
+
+    def test_is_cell_completed(self):
+        import tempfile
+        import json
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            cell = {"arch": "sync", "n": 25, "vu": 10, "rep": 1}
+
+            # 1. No directory -> False
+            completed, name, status = is_cell_completed(cell, tmp_path)
+            self.assertFalse(completed)
+
+            # 2. Directory without metadata.json -> False
+            run_dir = tmp_path / "run_20261017_000000_sync_N25_VU10_rep1"
+            run_dir.mkdir()
+            completed, name, status = is_cell_completed(cell, tmp_path)
+            self.assertFalse(completed)
+
+            # 3. Directory with valid metadata.json -> True
+            with open(run_dir / "metadata.json", "w") as f:
+                json.dump({"status": "success"}, f)
+            completed, name, status = is_cell_completed(cell, tmp_path)
+            self.assertTrue(completed)
+            self.assertEqual(name, run_dir.name)
+            self.assertEqual(status, "success")
 
 
 if __name__ == "__main__":
