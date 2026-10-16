@@ -415,6 +415,7 @@ class MetricsSampler(threading.Thread):
 
                 node_cpu, node_rss = get_proc_stats(node_ps)
                 uvicorn_cpu, uvicorn_rss = get_proc_stats(uvicorn_ps)
+                celery_cpu, celery_rss = get_proc_stats(celery_ps)
                 try:
                     swap_mb = psutil.swap_memory().used / (1024 * 1024)
                 except Exception:
