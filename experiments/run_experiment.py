@@ -757,16 +757,23 @@ def is_cell_completed(cell, raw_results_dir):
     """
     Checks if a factorial cell (arch, n, vu, rep) has already completed
     by inspecting experiments/results/raw for a matching directory with a valid metadata.json.
+    A cell counts as completed only if metadata.json has status == "success" AND validation_only is False.
+    gate_failed and k6_failed must NOT count as completed, so --resume reruns them.
     """
     pattern = f"*_{cell['arch']}_N{cell['n']}_VU{cell['vu']}_rep{cell['rep']}"
-    for run_dir in raw_results_dir.glob(pattern):
+    for run_dir in sorted(raw_results_dir.glob(pattern)):
+        if not run_dir.is_dir():
+            continue
         meta_file = run_dir / "metadata.json"
         if meta_file.exists():
             try:
                 with open(meta_file, "r") as f:
                     meta = json.load(f)
-                if meta.get("status") in ["success", "k6_failed", "gate_failed"]:
-                    return True, run_dir.name, meta.get("status")
+                status = meta.get("status")
+                val_only = meta.get("validation_only")
+                is_val_false = (val_only is False) or (isinstance(val_only, str) and val_only.lower() == "false")
+                if status == "success" and is_val_false:
+                    return True, run_dir.name, status
             except Exception:
                 continue
     return False, None, None
@@ -862,11 +869,39 @@ def main():
                     continue
 
             print(f"\nProgress: Run {idx} / {total_runs}")
-            success, _ = execute_single_run(cell, config, master_csv, skip_gate=args.skip_gate)
+            success, run_meta = execute_single_run(cell, config, master_csv, skip_gate=args.skip_gate)
             if not success:
-                print(f"[Full Factorial] Run {idx} encountered an infrastructure/gate failure. Retrying once after cooldown...")
-                time.sleep(config.get("cooldown_seconds", 10))
-                execute_single_run(cell, config, master_csv, skip_gate=args.skip_gate)
+                run_status = run_meta.get("status") if isinstance(run_meta, dict) else "gate_failed"
+                print(f"\n[Full Factorial] Run {idx} failed preflight gate (status: {run_status}).")
+                print(f"[Full Factorial] Halting cell progression. Waiting and retrying preflight gate with bounded timeout...")
+
+                recovery_timeout = config.get("gate", {}).get("recovery_timeout_seconds", 120)
+                retry_delay = config.get("gate", {}).get("retry_delay_seconds", 15)
+                start_wait = time.time()
+                gate_recovered = False
+
+                while time.time() - start_wait < recovery_timeout:
+                    print(f"[Full Factorial] Waiting {retry_delay}s for gate recovery "
+                          f"({int(time.time() - start_wait)}s / {recovery_timeout}s elapsed)...")
+                    time.sleep(retry_delay)
+                    gate_ok, readings, reasons = check_preflight_gate(config)
+                    if gate_ok:
+                        print(f"[Full Factorial] Preflight gate recovered successfully!")
+                        gate_recovered = True
+                        break
+                    print(f"[Full Factorial] Preflight gate still failing: {'; '.join(reasons)}")
+
+                if gate_recovered:
+                    print(f"[Full Factorial] Retrying Run {idx} now that preflight gate has recovered...")
+                    success, run_meta = execute_single_run(cell, config, master_csv, skip_gate=args.skip_gate)
+                    if not success:
+                        print(f"\n[Full Factorial] ERROR: Preflight gate failed again on retry for Run {idx}.")
+                        print(f"[Full Factorial] Halting full factorial execution. Fix host conditions before resuming.")
+                        sys.exit(1)
+                else:
+                    print(f"\n[Full Factorial] ERROR: Preflight gate failed and did not recover within {recovery_timeout}s bounded timeout.")
+                    print(f"[Full Factorial] Halting full factorial execution to preserve host state. Fix host conditions before resuming.")
+                    sys.exit(1)
         return
 
     parser.print_help()
