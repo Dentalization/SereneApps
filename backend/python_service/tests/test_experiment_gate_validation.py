@@ -237,6 +237,21 @@ class ExperimentGateValidationTests(unittest.TestCase):
             self.assertEqual(name, dir3.name)
             self.assertEqual(status, "success")
 
+    def test_resume_checkpoint_saves_and_loads(self):
+        """Verify checkpoint file reading and structure"""
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cp_file = Path(tmpdir) / ".resume_checkpoint.json"
+            cell = {"arch": "celery", "n": 100, "vu": 50, "rep": 3}
+            with open(cp_file, "w") as f:
+                json.dump({"current_run_index": 107, "cell": cell}, f)
+
+            with open(cp_file, "r") as f:
+                loaded = json.load(f)
+            self.assertEqual(loaded["current_run_index"], 107)
+            self.assertEqual(loaded["cell"]["arch"], "celery")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -785,6 +785,7 @@ def main():
     parser.add_argument("--pilot-phase2", action="store_true", help="Execute Pilot Phase 2 only (reproducibility check: reps 2 & 3)")
     parser.add_argument("--full", action="store_true", help="Execute Full 180-run factorial experiment (Task 5)")
     parser.add_argument("--resume", action="store_true", help="Resume full factorial experiment skipping already executed runs")
+    parser.add_argument("--start-run", "--from-run", type=int, default=None, dest="start_run", help="1-indexed schedule run number to start from (e.g. --start-run 107)")
     parser.add_argument("--single", action="store_true", help="Execute single run for verification")
     parser.add_argument("--arch", choices=["sync", "background", "celery"], default="background")
     parser.add_argument("--n", type=int, choices=[25, 100, 200], default=25)
@@ -858,10 +859,42 @@ def main():
         schedule = build_full_factorial_schedule(config)
         total_runs = len(schedule)
         print(f"\n[Full Factorial] Total planned runs: {total_runs} (Seed: {config['randomization_seed']})")
-        if args.resume:
+
+        checkpoint_file = REPO_ROOT / "experiments" / "results" / ".resume_checkpoint.json"
+        start_run_idx = 1
+
+        if args.start_run is not None:
+            start_run_idx = max(1, min(args.start_run, total_runs))
+            print(f"[Full Factorial] Starting execution from specified run: {start_run_idx} / {total_runs}")
+        elif args.resume and checkpoint_file.exists():
+            try:
+                with open(checkpoint_file, "r") as f:
+                    cp_data = json.load(f)
+                saved_idx = cp_data.get("current_run_index", 1)
+                if 1 <= saved_idx <= total_runs:
+                    start_run_idx = saved_idx
+                    print(f"[Full Factorial] Resume checkpoint detected: Resuming directly from Run {start_run_idx} / {total_runs} (skipping earlier runs)...")
+            except Exception as e:
+                print(f"[Full Factorial] Warning: Could not read checkpoint file: {e}")
+
+        if args.resume and start_run_idx == 1:
             print("[Full Factorial] Resume mode ENABLED. Scanning existing completed runs...")
 
         for idx, cell in enumerate(schedule, 1):
+            if idx < start_run_idx:
+                continue
+
+            # Update checkpoint to current run index
+            try:
+                with open(checkpoint_file, "w") as f:
+                    json.dump({
+                        "current_run_index": idx,
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "cell": cell,
+                    }, f, indent=2)
+            except Exception:
+                pass
+
             if args.resume:
                 completed, existing_dir, prev_status = is_cell_completed(cell, raw_results_dir)
                 if completed:
@@ -902,6 +935,14 @@ def main():
                     print(f"\n[Full Factorial] ERROR: Preflight gate failed and did not recover within {recovery_timeout}s bounded timeout.")
                     print(f"[Full Factorial] Halting full factorial execution to preserve host state. Fix host conditions before resuming.")
                     sys.exit(1)
+
+        # Clean up checkpoint on complete factorial run
+        if checkpoint_file.exists():
+            try:
+                checkpoint_file.unlink()
+            except Exception:
+                pass
+        print(f"\n[Full Factorial] All {total_runs} planned runs completed!")
         return
 
     parser.print_help()
