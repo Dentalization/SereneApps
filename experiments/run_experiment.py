@@ -596,6 +596,7 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
             "worker_concurrency": config.get("worker_concurrency", 4),
             "worker_pool": config.get("worker_pool", "threads"),
             "git_commit": provenance["git_commit"],
+            "git_dirty": provenance["git_dirty"],
             "script_sha256": provenance["script_sha256"],
             "harness_provenance": provenance,
         }
@@ -692,6 +693,7 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
             "throughput_req_per_s": round(throughput, 2),
         },
         "git_commit": provenance["git_commit"],
+        "git_dirty": provenance["git_dirty"],
         "script_sha256": provenance["script_sha256"],
         "harness_provenance": provenance,
     }
@@ -708,16 +710,17 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
                 "run_id", "timestamp", "arch", "n_slices", "vus", "repetition",
                 "status", "validation_only", "e2e_p50_ms", "e2e_p95_ms", "e2e_p99_ms", "e2e_mean_ms",
                 "upload_p95_ms", "poll_p95_ms", "throughput_req_s", "failure_rate",
-                "peak_uvicorn_rss_mb", "peak_celery_rss_mb", "peak_node_rss_mb", "peak_total_stack_rss_mb",
-                "avg_cpu_pct", "peak_cpu_pct", "swap_growth_mb", "git_commit", "script_sha256"
+                "peak_rss_mb", "peak_uvicorn_rss_mb", "peak_celery_rss_mb", "peak_node_rss_mb", "peak_total_stack_rss_mb",
+                "avg_cpu_pct", "peak_cpu_pct", "swap_growth_mb", "git_commit", "script_sha256", "git_dirty"
             ])
         writer.writerow([
             run_id, timestamp, arch, n_slices, vus, rep, run_status, validation_only,
             stats["e2e_p50"], stats["e2e_p95"], stats["e2e_p99"], stats["e2e_mean"],
             stats["upload_p95"], stats["poll_p95"], round(throughput, 2), stats["failure_rate"],
+            "unknown",
             round(peak_uvicorn_rss_mb, 2), round(peak_celery_rss_mb, 2), round(peak_node_rss_mb, 2), round(peak_total_stack_rss_mb, 2),
             round(avg_cpu_pct, 2), round(peak_cpu_pct, 2), round(swap_growth_mb, 2),
-            provenance["git_commit"], provenance["script_sha256"]
+            provenance["git_commit"], provenance["script_sha256"], provenance["git_dirty"]
         ])
 
     print(f"[Run] COMPLETE: e2e_p95={stats['e2e_p95']}ms, Throughput={throughput:.2f}req/s, "

@@ -108,6 +108,7 @@ def load_all_runs_data():
                     "peak_cpu_pct": tele.get("peak_cpu_pct"),
                     "swap_growth_mb": tele.get("swap_growth_mb"),
                     "git_commit": provenance.get("git_commit", "unknown"),
+                    "git_dirty": provenance.get("git_dirty", "unknown"),
                     "script_sha256": provenance.get("script_sha256", "unknown"),
                 })
         except Exception:
@@ -128,6 +129,13 @@ def generate_cell_summary(df):
         cpu_peaks = group["peak_cpu_pct"].dropna().tolist()
         swaps = group["swap_growth_mb"].dropna().tolist()
         failures = group["failure_rate"].dropna().tolist()
+
+        commits = group["git_commit"].dropna().unique().tolist() if "git_commit" in group else []
+        scripts = group["script_sha256"].dropna().unique().tolist() if "script_sha256" in group else []
+        dirties = group["git_dirty"].dropna().unique().tolist() if "git_dirty" in group else []
+        c_val = str(commits[0]) if len(commits) == 1 and str(commits[0]) != "unknown" else "unknown"
+        s_val = str(scripts[0]) if len(scripts) == 1 and str(scripts[0]) != "unknown" else "unknown"
+        d_val = str(dirties[0]) if len(dirties) == 1 and str(dirties[0]) != "unknown" else "unknown"
 
         def stats(arr):
             if not arr: return [None]*6
@@ -163,6 +171,9 @@ def generate_cell_summary(df):
             "cpu_util_mean_pct": round(sum(cpu_avgs) / len(cpu_avgs), 2) if cpu_avgs else None,
             "cpu_util_peak_pct": round(max(cpu_peaks), 2) if cpu_peaks else None,
             "swap_growth_mean_mb": round(sum(swaps) / len(swaps), 2) if swaps else None,
+            "git_commit": c_val,
+            "script_sha256": s_val,
+            "git_dirty": d_val,
         })
 
     summary_df = pd.DataFrame(summary_rows)

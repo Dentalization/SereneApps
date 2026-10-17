@@ -105,6 +105,9 @@ class ExperimentGateValidationTests(unittest.TestCase):
         self.assertIn("script_sha256", provenance)
         self.assertNotIn("harness_git_commit", provenance)
         self.assertNotIn("harness_script_sha256", provenance)
+        self.assertIsInstance(provenance["git_dirty"], bool)
+        self.assertIsInstance(provenance["git_commit"], str)
+        self.assertIsInstance(provenance["script_sha256"], str)
 
     def test_is_cell_completed(self):
         import tempfile
