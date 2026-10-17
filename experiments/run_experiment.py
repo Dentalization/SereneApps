@@ -21,6 +21,11 @@ import threading
 import time
 from pathlib import Path
 
+# Unset macOS Malloc logging variables to prevent diagnostic spam from subprocesses
+for key in list(os.environ.keys()):
+    if "malloc" in key.lower():
+        os.environ.pop(key, None)
+
 import psutil
 import requests
 
@@ -62,7 +67,7 @@ def get_harness_provenance():
 
 def get_swap_used_mb():
     try:
-        out = subprocess.check_output(["sysctl", "vm.swapusage"], text=True)
+        out = subprocess.check_output(["sysctl", "vm.swapusage"], text=True, stderr=subprocess.DEVNULL)
         m = re.search(r"used\s*=\s*([\d.]+)M", out)
         return float(m.group(1)) if m else None
     except Exception as e:
@@ -72,7 +77,7 @@ def get_swap_used_mb():
 
 def get_available_memory_mb():
     try:
-        out = subprocess.check_output(["vm_stat"], text=True)
+        out = subprocess.check_output(["vm_stat"], text=True, stderr=subprocess.DEVNULL)
         free = int(re.search(r"Pages free:\s+(\d+)", out).group(1))
         inactive = int(re.search(r"Pages inactive:\s+(\d+)", out).group(1))
         spec = int(re.search(r"Pages speculative:\s+(\d+)", out).group(1))
@@ -85,7 +90,7 @@ def get_available_memory_mb():
 
 def is_ac_power_connected():
     try:
-        out = subprocess.check_output(["pmset", "-g", "batt"], text=True)
+        out = subprocess.check_output(["pmset", "-g", "batt"], text=True, stderr=subprocess.DEVNULL)
         return "AC Power" in out
     except Exception as e:
         print(f"[Gate] Error reading battery status: {e}")
@@ -99,26 +104,31 @@ def get_disk_free_gb(path=REPO_ROOT):
 
 def get_thermal_state():
     try:
-        out = subprocess.check_output(["pmset", "-g", "therm"], text=True).strip()
+        out = subprocess.check_output(["pmset", "-g", "therm"], text=True, stderr=subprocess.DEVNULL).strip()
         return out.replace("\n", "; ")
     except Exception:
         return "unknown"
 
 
-def check_preflight_gate(config):
+def check_preflight_gate(config, readings=None):
     gate_cfg = config["gate"]
-    swap_used = get_swap_used_mb()
-    avail_mem = get_available_memory_mb()
-    ac_power = is_ac_power_connected()
-    disk_free = get_disk_free_gb()
-
-    readings = {
-        "swap_used_mb": swap_used,
-        "available_memory_mb": avail_mem,
-        "ac_power_connected": ac_power,
-        "disk_free_gb": disk_free,
-        "thermal_state": get_thermal_state(),
-    }
+    if readings is None:
+        swap_used = get_swap_used_mb()
+        avail_mem = get_available_memory_mb()
+        ac_power = is_ac_power_connected()
+        disk_free = get_disk_free_gb()
+        readings = {
+            "swap_used_mb": swap_used,
+            "available_memory_mb": avail_mem,
+            "ac_power_connected": ac_power,
+            "disk_free_gb": disk_free,
+            "thermal_state": get_thermal_state(),
+        }
+    else:
+        swap_used = readings.get("swap_used_mb")
+        avail_mem = readings.get("available_memory_mb")
+        ac_power = readings.get("ac_power_connected")
+        disk_free = readings.get("disk_free_gb")
 
     passed = True
     reasons = []
@@ -135,42 +145,62 @@ def check_preflight_gate(config):
         passed = False
         reasons.append("AC wall power is disconnected")
 
-    if disk_free < gate_cfg["min_disk_free_gb"]:
+    if disk_free is None or disk_free < gate_cfg["min_disk_free_gb"]:
         passed = False
         reasons.append(f"Disk free {disk_free:.2f} GB < {gate_cfg['min_disk_free_gb']} GB")
 
     return passed, readings, reasons
 
 
-def run_preflight_gate_with_retries(config, skip_gate=False):
+def determine_validation_status(gate_passed, skip_gate, failure_reasons=None):
+    """
+    Determines validation_only status and triggers based on host gate state and skip_gate flag.
+    - gate passes and no skip -> validation_only = False
+    - gate fails (with or without skip) -> validation_only = True
+    - skip_gate is True -> validation_only = True
+    Returns (validation_only: bool, triggers: list[str]).
+    """
+    triggers = []
     if skip_gate:
-        print("[Gate] WARNING: Preflight gate explicitly skipped via flag.")
-        return True, {
-            "swap_used_mb": get_swap_used_mb(),
-            "available_memory_mb": get_available_memory_mb(),
-            "ac_power_connected": is_ac_power_connected(),
-            "disk_free_gb": get_disk_free_gb(),
-            "thermal_state": get_thermal_state(),
-            "gate_skipped": True,
-        }
+        triggers.append("skip_gate_flag_enabled")
+    if not gate_passed:
+        if failure_reasons:
+            triggers.extend(failure_reasons)
+        else:
+            triggers.append("gate_threshold_exceeded")
 
+    validation_only = (not gate_passed) or bool(skip_gate)
+    return validation_only, triggers
+
+
+def run_preflight_gate_with_retries(config, skip_gate=False):
     gate_cfg = config["gate"]
+    if skip_gate:
+        print("[Gate] WARNING: Preflight gate explicitly bypassed via --skip-gate flag.")
+        passed, readings, reasons = check_preflight_gate(config)
+        readings["gate_skipped"] = True
+        return True, readings, reasons, passed
+
     max_retries = gate_cfg.get("max_retries", 3)
     retry_delay = gate_cfg.get("retry_delay_seconds", 15)
 
+    last_readings = {}
+    last_reasons = []
     for attempt in range(1, max_retries + 1):
         passed, readings, reasons = check_preflight_gate(config)
+        last_readings = readings
+        last_reasons = reasons
         print(f"[Gate] Check attempt {attempt}/{max_retries}: "
               f"Swap={readings['swap_used_mb']:.1f}MB, AvailRAM={readings['available_memory_mb']:.1f}MB, "
               f"AC={readings['ac_power_connected']}, DiskFree={readings['disk_free_gb']:.1f}GB")
         if passed:
-            return True, readings
+            return True, readings, [], True
         print(f"[Gate] FAILED criteria: {'; '.join(reasons)}")
         if attempt < max_retries:
             print(f"[Gate] Waiting {retry_delay}s before retry...")
             time.sleep(retry_delay)
 
-    return False, readings
+    return False, last_readings, last_reasons, False
 
 
 def kill_process_on_port(port):
@@ -386,8 +416,15 @@ class MetricsSampler(threading.Thread):
                 node_cpu, node_rss = get_proc_stats(node_ps)
                 uvicorn_cpu, uvicorn_rss = get_proc_stats(uvicorn_ps)
                 celery_cpu, celery_rss = get_proc_stats(celery_ps)
-                swap_mb = get_swap_used_mb() or 0.0
-                avail_mb = get_available_memory_mb() or 0.0
+                try:
+                    swap_mb = psutil.swap_memory().used / (1024 * 1024)
+                except Exception:
+                    swap_mb = get_swap_used_mb() or 0.0
+
+                try:
+                    avail_mb = psutil.virtual_memory().available / (1024 * 1024)
+                except Exception:
+                    avail_mb = get_available_memory_mb() or 0.0
 
                 row = [
                     now_iso,
@@ -535,13 +572,21 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
     print("=" * 70)
 
     # 1. Preflight Gate
-    gate_passed, gate_readings = run_preflight_gate_with_retries(config, skip_gate=skip_gate)
-    if not gate_passed:
+    gate_proceed, gate_readings, gate_reasons, actual_gate_passed = run_preflight_gate_with_retries(config, skip_gate=skip_gate)
+    validation_only, validation_triggers = determine_validation_status(
+        gate_passed=actual_gate_passed,
+        skip_gate=skip_gate,
+        failure_reasons=gate_reasons
+    )
+    provenance = get_harness_provenance()
+
+    if not gate_proceed:
         print(f"[Run] RECORDING GATE FAILURE for {run_id}. Threshold not met.")
         metadata = {
             "run_id": run_id,
             "status": "gate_failed",
-            "validation_only": skip_gate,
+            "validation_only": validation_only,
+            "validation_triggers": validation_triggers,
             "arch": arch,
             "n_slices": n_slices,
             "vus": vus,
@@ -550,7 +595,10 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
             "gate_readings": gate_readings,
             "worker_concurrency": config.get("worker_concurrency", 4),
             "worker_pool": config.get("worker_pool", "threads"),
-            "harness_provenance": get_harness_provenance(),
+            "git_commit": provenance["git_commit"],
+            "git_dirty": provenance["git_dirty"],
+            "script_sha256": provenance["script_sha256"],
+            "harness_provenance": provenance,
         }
         with open(raw_dir / "metadata.json", "w") as f:
             json.dump(metadata, f, indent=2)
@@ -622,7 +670,8 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
     metadata = {
         "run_id": run_id,
         "status": run_status,
-        "validation_only": skip_gate,
+        "validation_only": validation_only,
+        "validation_triggers": validation_triggers,
         "arch": arch,
         "n_slices": n_slices,
         "vus": vus,
@@ -643,6 +692,9 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
             "swap_growth_mb": round(swap_growth_mb, 2),
             "throughput_req_per_s": round(throughput, 2),
         },
+        "git_commit": provenance["git_commit"],
+        "git_dirty": provenance["git_dirty"],
+        "script_sha256": provenance["script_sha256"],
         "harness_provenance": provenance,
     }
 
@@ -658,16 +710,17 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
                 "run_id", "timestamp", "arch", "n_slices", "vus", "repetition",
                 "status", "validation_only", "e2e_p50_ms", "e2e_p95_ms", "e2e_p99_ms", "e2e_mean_ms",
                 "upload_p95_ms", "poll_p95_ms", "throughput_req_s", "failure_rate",
-                "peak_uvicorn_rss_mb", "peak_celery_rss_mb", "peak_node_rss_mb", "peak_total_stack_rss_mb",
-                "avg_cpu_pct", "peak_cpu_pct", "swap_growth_mb", "git_commit", "script_sha256"
+                "peak_rss_mb", "peak_uvicorn_rss_mb", "peak_celery_rss_mb", "peak_node_rss_mb", "peak_total_stack_rss_mb",
+                "avg_cpu_pct", "peak_cpu_pct", "swap_growth_mb", "git_commit", "script_sha256", "git_dirty"
             ])
         writer.writerow([
-            run_id, timestamp, arch, n_slices, vus, rep, run_status, skip_gate,
+            run_id, timestamp, arch, n_slices, vus, rep, run_status, validation_only,
             stats["e2e_p50"], stats["e2e_p95"], stats["e2e_p99"], stats["e2e_mean"],
             stats["upload_p95"], stats["poll_p95"], round(throughput, 2), stats["failure_rate"],
+            "unknown",
             round(peak_uvicorn_rss_mb, 2), round(peak_celery_rss_mb, 2), round(peak_node_rss_mb, 2), round(peak_total_stack_rss_mb, 2),
             round(avg_cpu_pct, 2), round(peak_cpu_pct, 2), round(swap_growth_mb, 2),
-            provenance["git_commit"], provenance["script_sha256"]
+            provenance["git_commit"], provenance["script_sha256"], provenance["git_dirty"]
         ])
 
     print(f"[Run] COMPLETE: e2e_p95={stats['e2e_p95']}ms, Throughput={throughput:.2f}req/s, "
@@ -700,11 +753,39 @@ def build_full_factorial_schedule(config):
     return cells
 
 
+def is_cell_completed(cell, raw_results_dir):
+    """
+    Checks if a factorial cell (arch, n, vu, rep) has already completed
+    by inspecting experiments/results/raw for a matching directory with a valid metadata.json.
+    A cell counts as completed only if metadata.json has status == "success" AND validation_only is False.
+    gate_failed and k6_failed must NOT count as completed, so --resume reruns them.
+    """
+    pattern = f"*_{cell['arch']}_N{cell['n']}_VU{cell['vu']}_rep{cell['rep']}"
+    for run_dir in sorted(raw_results_dir.glob(pattern)):
+        if not run_dir.is_dir():
+            continue
+        meta_file = run_dir / "metadata.json"
+        if meta_file.exists():
+            try:
+                with open(meta_file, "r") as f:
+                    meta = json.load(f)
+                status = meta.get("status")
+                val_only = meta.get("validation_only")
+                is_val_false = (val_only is False) or (isinstance(val_only, str) and val_only.lower() == "false")
+                if status == "success" and is_val_false:
+                    return True, run_dir.name, status
+            except Exception:
+                continue
+    return False, None, None
+
+
 def main():
     parser = argparse.ArgumentParser(description="CDSS X-Core A/B/C Experiment Harness")
     parser.add_argument("--pilot", action="store_true", help="Execute Full Pilot protocol (Task 4)")
     parser.add_argument("--pilot-phase2", action="store_true", help="Execute Pilot Phase 2 only (reproducibility check: reps 2 & 3)")
     parser.add_argument("--full", action="store_true", help="Execute Full 180-run factorial experiment (Task 5)")
+    parser.add_argument("--resume", action="store_true", help="Resume full factorial experiment skipping already executed runs")
+    parser.add_argument("--start-run", "--from-run", type=int, default=None, dest="start_run", help="1-indexed schedule run number to start from (e.g. --start-run 107)")
     parser.add_argument("--single", action="store_true", help="Execute single run for verification")
     parser.add_argument("--arch", choices=["sync", "background", "celery"], default="background")
     parser.add_argument("--n", type=int, choices=[25, 100, 200], default=25)
@@ -776,14 +857,92 @@ def main():
 
     if args.full:
         schedule = build_full_factorial_schedule(config)
-        print(f"\n[Full Factorial] Total planned runs: {len(schedule)} (Seed: {config['randomization_seed']})")
+        total_runs = len(schedule)
+        print(f"\n[Full Factorial] Total planned runs: {total_runs} (Seed: {config['randomization_seed']})")
+
+        checkpoint_file = REPO_ROOT / "experiments" / "results" / ".resume_checkpoint.json"
+        start_run_idx = 1
+
+        if args.start_run is not None:
+            start_run_idx = max(1, min(args.start_run, total_runs))
+            print(f"[Full Factorial] Starting execution from specified run: {start_run_idx} / {total_runs}")
+        elif args.resume and checkpoint_file.exists():
+            try:
+                with open(checkpoint_file, "r") as f:
+                    cp_data = json.load(f)
+                saved_idx = cp_data.get("current_run_index", 1)
+                if 1 <= saved_idx <= total_runs:
+                    start_run_idx = saved_idx
+                    print(f"[Full Factorial] Resume checkpoint detected: Resuming directly from Run {start_run_idx} / {total_runs} (skipping earlier runs)...")
+            except Exception as e:
+                print(f"[Full Factorial] Warning: Could not read checkpoint file: {e}")
+
+        if args.resume and start_run_idx == 1:
+            print("[Full Factorial] Resume mode ENABLED. Scanning existing completed runs...")
+
         for idx, cell in enumerate(schedule, 1):
-            print(f"\nProgress: Run {idx} / {len(schedule)}")
-            success, _ = execute_single_run(cell, config, master_csv, skip_gate=args.skip_gate)
+            if idx < start_run_idx:
+                continue
+
+            # Update checkpoint to current run index
+            try:
+                with open(checkpoint_file, "w") as f:
+                    json.dump({
+                        "current_run_index": idx,
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "cell": cell,
+                    }, f, indent=2)
+            except Exception:
+                pass
+
+            if args.resume:
+                completed, existing_dir, prev_status = is_cell_completed(cell, raw_results_dir)
+                if completed:
+                    print(f"\nProgress: Run {idx} / {total_runs} - SKIPPING (already completed as {existing_dir} with status: {prev_status})")
+                    continue
+
+            print(f"\nProgress: Run {idx} / {total_runs}")
+            success, run_meta = execute_single_run(cell, config, master_csv, skip_gate=args.skip_gate)
             if not success:
-                print(f"[Full Factorial] Run {idx} encountered an infrastructure/gate failure. Retrying once after cooldown...")
-                time.sleep(config.get("cooldown_seconds", 10))
-                execute_single_run(cell, config, master_csv, skip_gate=args.skip_gate)
+                run_status = run_meta.get("status") if isinstance(run_meta, dict) else "gate_failed"
+                print(f"\n[Full Factorial] Run {idx} failed preflight gate (status: {run_status}).")
+                print(f"[Full Factorial] Halting cell progression. Waiting and retrying preflight gate with bounded timeout...")
+
+                recovery_timeout = config.get("gate", {}).get("recovery_timeout_seconds", 120)
+                retry_delay = config.get("gate", {}).get("retry_delay_seconds", 15)
+                start_wait = time.time()
+                gate_recovered = False
+
+                while time.time() - start_wait < recovery_timeout:
+                    print(f"[Full Factorial] Waiting {retry_delay}s for gate recovery "
+                          f"({int(time.time() - start_wait)}s / {recovery_timeout}s elapsed)...")
+                    time.sleep(retry_delay)
+                    gate_ok, readings, reasons = check_preflight_gate(config)
+                    if gate_ok:
+                        print(f"[Full Factorial] Preflight gate recovered successfully!")
+                        gate_recovered = True
+                        break
+                    print(f"[Full Factorial] Preflight gate still failing: {'; '.join(reasons)}")
+
+                if gate_recovered:
+                    print(f"[Full Factorial] Retrying Run {idx} now that preflight gate has recovered...")
+                    success, run_meta = execute_single_run(cell, config, master_csv, skip_gate=args.skip_gate)
+                    if not success:
+                        print(f"\n[Full Factorial] ERROR: Preflight gate failed again on retry for Run {idx}.")
+                        print(f"[Full Factorial] Halting full factorial execution. Fix host conditions before resuming.")
+                        sys.exit(1)
+                else:
+                    print(f"\n[Full Factorial] ERROR: Preflight gate failed and did not recover within {recovery_timeout}s bounded timeout.")
+                    print(f"[Full Factorial] Halting full factorial execution to preserve host state. Fix host conditions before resuming.")
+                    sys.exit(1)
+
+        # Clean up checkpoint on complete factorial run
+        if checkpoint_file.exists():
+            try:
+                checkpoint_file.unlink()
+            except Exception:
+                pass
+        print(f"\n[Full Factorial] All {total_runs} planned runs completed!")
         return
 
     parser.print_help()

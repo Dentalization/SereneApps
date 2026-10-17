@@ -1,0 +1,5 @@
+{"runId":"run_20261017_012037_background_N100_VU50_rep1","eventType":"upload_request_received","timestamp":"2026-10-16T18:20:58.346Z","details":{"caseId":"N100_VU50","iteration":"0","fileSize":"63056242","fileCount":100}}
+{"runId":"run_20261017_012037_background_N100_VU50_rep1","eventType":"upload_request_received","timestamp":"2026-10-16T18:21:00.519Z","details":{"caseId":"N100_VU50","iteration":"0","fileSize":"63056242","fileCount":100}}
+{"runId":"run_20261017_012037_background_N100_VU50_rep1","eventType":"upload_saved","timestamp":"2026-10-16T18:21:01.418Z","details":{"folderName":"1792174861405"}}
+{"runId":"run_20261017_012037_background_N100_VU50_rep1","eventType":"metadata_parse_requested","timestamp":"2026-10-16T18:21:01.418Z","details":{"folderName":"1792174861405"}}
+{"runId":"run_20261017_012037_background_N100_VU50_rep1","eventType":"metadata_parse_completed","timestamp":"2026-10-16T18:21:01.624Z","details":{"folderName":"1792174861405","modality":"2D"}}

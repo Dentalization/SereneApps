@@ -21,7 +21,8 @@
     "require_ac_power": true,
     "min_disk_free_gb": 5.0,
     "max_retries": 3,
-    "retry_delay_seconds": 15
+    "retry_delay_seconds": 15,
+    "recovery_timeout_seconds": 120
   },
   "k6": {
     "poll_interval_ms": 500,

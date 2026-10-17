@@ -58,7 +58,7 @@ Before every run, `experiments/scripts/reset_env.js` executes the following sequ
 ## 4. Known Architectural Limitations & Failure Semantics
 
 1. **Architecture C Progress Visibility**: Progress callbacks run inside the isolated Celery worker process and are not shared via IPC with the FastAPI process. The `/status/{folderName}` endpoint infers readiness from the existence of `volume.vti`. Consequently, an in-progress Celery job reads as `pending` rather than `converting`. Failure detection for Architecture C is audited through Celery worker logs and internal event streams rather than `/status`.
-2. **Architecture A Failure Semantics**: In Architecture A, an internal conversion failure does not cause the HTTP upload request to fail with a 500 status code. This preserves parity with the non-blocking upload semantics of Architecture B.
+2. **Architecture A Execution & Latency Properties**: In Architecture A, volume conversion executes inline within the upload request thread; the upload response returns only after reconstruction completes. This upload latency is an inherent property of the architecture by design, not a measured system failure or Service Level Objective (SLO) degradation. Additionally, internal conversion errors do not return HTTP 500, preserving parity with Architecture B's non-blocking upload semantics.
 3. **Closed-Loop Load Testing**: Load is generated using k6 with closed-loop Virtual Users (`per-vu-iterations`). While arrival rate is load-dependent, closed-loop testing guarantees controlled concurrency levels ($VU \in \{10, 50, 100, 200\}$) without risk of memory thrashing or disk overflow on the 8 GB host.
 4. **Exclusion of N = 401**: The $N = 401$ slice tier requires $> 5.8$ GB RAM per conversion, exceeding available headroom when concurrent processes are active on an 8 GB unified memory system. It is excluded from the primary 3-way factorial design to prevent memory exhaustion.
 
@@ -111,6 +111,10 @@ Phase 2 runs 2 repetitions for each architecture at $N=25, VU=10$ to assess repe
 ```bash
 python experiments/run_experiment.py --full
 ```
+To resume an interrupted full factorial run without repeating already completed cells:
+```bash
+python experiments/run_experiment.py --full --resume
+```
 
 ### Generating Statistical Summaries & Figures
 ```bash
@@ -124,7 +128,7 @@ Outputs `experiments/results/summary.csv`, `experiments/results/stats.csv`, and 
 
 ### 7.1 Memory / RSS Metric Definitions
 To prevent ambiguity between isolated service footprint and whole-stack footprint, the telemetry records both individual and combined resident set sizes:
-- **`peak_uvicorn_rss_mb`**: Peak RSS of the FastAPI/Uvicorn Python service. This isolates the Python CBCT volumetric reconstruction pipeline and is directly comparable with the single-job volume preparation characterization (e.g. 639.1 MB in manuscript Table 4).
+- **`peak_uvicorn_rss_mb`**: Peak RSS of the FastAPI/Uvicorn Python service, isolating the Python CBCT volumetric reconstruction pipeline. Comparison with the single-job volume preparation characterization (639.1 MB in manuscript Table 4) is pending the re-pilot under an enforced host gate; the earlier pilot ran prior to per-process RSS telemetry separation (yielding unpopulated `peak_uvicorn_rss_mean_mb` for the background row in initial summary data) and cannot support the comparison as an empirical finding.
 - **`peak_celery_rss_mb`**: Peak RSS of the Celery worker process (Architecture C only; 0.0 MB for Architectures A and B).
 - **`peak_node_rss_mb`**: Peak RSS of the Node.js API gateway process.
 - **`peak_total_stack_rss_mb`**: Peak combined RSS across all active architecture processes ($\text{Node} + \text{Uvicorn} + \text{Celery}$).
@@ -135,7 +139,19 @@ Reviewer Dr. Abdul Karim mandates a fixed worker concurrency across architecture
 - **Architecture B**: FastAPI `BackgroundTasks` is bounded during benchmarks via `XCORE_BACKGROUND_CONCURRENCY=4`, which acquires an internal semaphore (`threading.Semaphore(4)`) around volume conversions. Unset or 0 in production defaults to unbounded execution.
 - **Architecture A**: Synchronous execution runs inline within the upload request thread.
 
-### 7.3 Pilot Data Status & Provenance
-- Initial pilot runs conducted under uncalibrated host conditions (battery power, swap > 500 MB) are strictly classified as **Harness Validation Only (Non-Evidentiary)** and marked `validation_only: true`.
-- Every run records `harness_git_commit` (`git rev-parse HEAD`), dirty flag, and `harness_script_sha256` of `experiments/run_experiment.py` in `metadata.json` and `master_runs.csv` to ensure complete traceability.
+### 7.3 Pilot Data Status, Host State, & Provenance
+- **Validation-Only Logic & Host Gate Semantics**: `validation_only` is evaluated dynamically from the actual host state at run start. A run is flagged `validation_only = True` if any preflight gate criterion fails (swap > 500 MB, available RAM < 3,000 MB, AC power disconnected, or free disk < 5 GB) or if `--skip-gate` was explicitly supplied. In addition to the boolean flag, the specific triggering criteria and readings are recorded in `metadata.json` under `validation_triggers`. A run only receives `validation_only = False` when all host gate criteria pass on AC wall power without `--skip-gate`.
+- **Validation Fields Consistency**:
+  - `validation_only`: The per-run boolean metric stored in `metadata.json`, `master_runs.csv`, and aggregated into `summary.csv` (reporting if any run in the condition cell failed gate thresholds).
+  - `is_pilot_validation`: Reported in `summary.csv` to indicate whether a condition cell constitutes provisional validation data. It is `True` if `validation_only` is `True` for any run in the cell or if sample size $n < 5$ (pilot replication). In the final 180-run factorial under full repetition ($n=5$) with an enforced gate, both flags evaluate to `False`.
+- **Swap and Latency Context**: Swap at pilot time was 5.3 GB (specifically 5,341.75 MB recorded in `metadata.json` of the initial background run); the link between swap and latency is not yet tested. A reading of 7.4 GB (7,389.94 MB) was observed later during subsequent background host activity rather than at the initial pilot gate. Causal attribution of latency to swap pressure is explicitly withheld pending controlled re-pilot verification.
+- **Provenance Traceability**: Every run records `git_commit` (`git rev-parse HEAD`), dirty flag (`git_dirty`), and `script_sha256` of `experiments/run_experiment.py` across `metadata.json`, `master_runs.csv`, and telemetry datasets to guarantee complete provenance.
 - **Host OS Note**: `sw_vers` reports `macOS 26.6.2`, while `uname -r` reports `Darwin Kernel 25.6.0`. Both refer to the same Apple Silicon M3 Darwin environment.
+
+### 7.4 Unverified Hypotheses (Single-Host, 17 Oct 2026)
+- **High-Load Cell Attempt Count Correction (17 Oct 2026)**: A previous progress report stated that the high-load conditions ($N=200, VU \ge 50$) had 45 attempted runs (reflecting the 45 planned factorial repetitions across $3\text{ architectures} \times 3\text{ VU levels } [50, 100, 200] \times 5\text{ reps}$). The verified inventory in `experiments/results/inventory_run_status.csv` records exactly **70 actual run attempts** on disk: **49 `gate_failed`**, **21 `k6_failed`**, and **0 valid runs**. The claim of "0 of 45" is corrected to **0 valid runs across 70 attempts**.
+- **Relabeling of Unverified Hypotheses**:
+  1. **k6 Memory Footprint (2.5–3.5 GB)**: The estimate of k6 memory footprint reaching 2.5–3.5 GB RSS is a **hypothesis, not measured**. Metrics sampling in the harness monitored Node.js, Uvicorn, and Celery RSS (`peak_node_rss_mb`, `peak_uvicorn_rss_mb`, `peak_celery_rss_mb`), but did not instrument or record the k6 process RSS directly.
+  2. **Swap Escalation Trajectory (262 MB to 4.9 GB)**: Describing swap growth as an observed progression from "262 MB to 4.9 GB" is a **hypothesis, not measured**. While ~262 MB was recorded at run start for initial passing runs and ~4.9 GB was recorded at subsequent checks, continuous causal telemetry tracking swap growth between these two discrete points was not captured.
+  3. **Process Termination via SIGKILL**: The claim that k6 or services were killed via SIGKILL (`-9`) is a **hypothesis, not measured**. Committed service logs (`node.log`, `uvicorn.log`, `celery.log`) and `k6_output.log` contain no SIGKILL or signal -9 entries.
+  4. **Memory Pressure as Verified Cause**: The claim that memory pressure is the verified cause of all failures at $N=200, VU \ge 50$ is a **hypothesis, not measured**. While 49 attempts were stopped by host gate thresholds (swap > 500 MB or available memory < 3,000 MB) and 21 attempts exited with k6 errors, the causal mechanism (kernel memory thrashing vs. application socket/queue limits) remains an unverified hypothesis pending isolated instrumentation.
