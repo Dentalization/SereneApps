@@ -1,7 +1,7 @@
 n_slices,vus,comparison,n_a1,n_a2,kruskal_h,kruskal_p,dunn_holm_p,cliffs_delta,cliffs_delta_ci_95_lower,cliffs_delta_ci_95_upper,median_diff_ms,ci_95_lower_ms,ci_95_upper_ms,statistical_conclusion
-25,10,sync_vs_background,5,5,2.7699,0.250331,0.85956,-0.04,-0.76,1.0,1856.0,-1990.0,1973.0,Not significant (p >= 0.05)
-25,10,sync_vs_celery,5,5,2.7699,0.250331,0.384299,-0.4,-1.0,0.36,-84.0,-2674.0,169.0,Not significant (p >= 0.05)
-25,10,background_vs_celery,5,5,2.7699,0.250331,0.384299,-0.68,-1.0,-0.04,-1940.0,-4530.0,234.0,Not significant (p >= 0.05)
+25,10,sync_vs_background,6,5,2.3382,0.310653,0.781764,0.1333,-0.6,1.0,1868.5,-1988.0,2266.5,Not significant (p >= 0.05)
+25,10,sync_vs_celery,6,6,2.3382,0.310653,0.781764,-0.1944,-0.8333,0.5556,-31.5,-2319.0,366.5,Not significant (p >= 0.05)
+25,10,background_vs_celery,5,6,2.3382,0.310653,0.384294,-0.6667,-1.0,0.0667,-1900.0,-3235.0,276.0,Not significant (p >= 0.05)
 25,50,sync_vs_background,5,5,10.5,0.005248,0.288844,-0.6,-1.0,0.12,-1830.0,-3686.0,243.0,Not significant (p >= 0.05)
 25,50,sync_vs_celery,5,5,10.5,0.005248,0.004388,-1.0,-1.0,-1.0,-6337.0,-8720.0,-4797.0,Significant (p < 0.05) [complete separation]
 25,50,background_vs_celery,5,5,10.5,0.005248,0.06779,-1.0,-1.0,-1.0,-4507.0,-7095.0,-2723.0,Not significant (p >= 0.05) [complete separation]
