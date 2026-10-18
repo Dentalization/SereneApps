@@ -12366,9 +12366,9 @@
     "semantic_hash": ""
   },
   "experiments/results/analysis_partial_20261018.md": {
-    "mtime": 1792332189.9871678,
-    "seen": 1792332230.123085,
-    "ast_hash": "554b7121885f1decc4732b461b11f41f",
+    "mtime": 1792333064.5433626,
+    "seen": 1792333093.432194,
+    "ast_hash": "b199c71410d42e868b1a4268265ce7a8",
     "semantic_hash": ""
   },
   "experiments/results/figures/20261018/p95_latency_vs_vu.png": {
@@ -12387,6 +12387,30 @@
     "mtime": 1792331105.5583377,
     "seen": 1792332230.1250439,
     "ast_hash": "ab1c4931e352e6e2eac3d3f865a2f09c",
+    "semantic_hash": ""
+  },
+  "backend/python_service/tests/test_conversion_architecture.py": {
+    "mtime": 1792332255.0977972,
+    "seen": 1792333093.402854,
+    "ast_hash": "2d67139b2a387382d2a2823c45e72df4",
+    "semantic_hash": ""
+  },
+  "experiments/results/figures/p95_latency_vs_vu.png": {
+    "mtime": 1792332255.098982,
+    "seen": 1792333093.434338,
+    "ast_hash": "d8e6a63c9124c925c73e50c0f46bf164",
+    "semantic_hash": ""
+  },
+  "experiments/results/figures/peak_rss_vs_n.png": {
+    "mtime": 1792332255.1001759,
+    "seen": 1792333093.434339,
+    "ast_hash": "25193971fe14f698724cff025c3a2b4b",
+    "semantic_hash": ""
+  },
+  "experiments/results/figures/throughput_vs_vu.png": {
+    "mtime": 1792332255.101075,
+    "seen": 1792333093.4343412,
+    "ast_hash": "90ba0ed91d1f94532232c3e610d71a27",
     "semantic_hash": ""
   }
 }

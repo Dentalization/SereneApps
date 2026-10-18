@@ -54,8 +54,22 @@ Status eksekusi seluruh 36 sel disajikan pada tabel di bawah ini:
 - **Sel dengan $n \ge 5$**: 13 sel (36.1% dari total 36 sel).
 - **Sel dengan $n \in [2, 4]$**: 8 sel (22.2% dari total 36 sel). Data disajikan murni secara deskriptif/eksploratif.
 - **Sel dengan $n = 0$ (tanpa run valid)**: 15 sel (41.7% dari total 36 sel).
-- **Total Validated Runs**: 94 run directory valid (mencakup 92 kombinasi unik sel-replikasi, karena 2 kombinasi sel-replikasi dijalankan ulang secara valid).
-- **Tingkat Kelayakan Naskah**: **Belum layak untuk naskah lengkap**. Analisis inferensial dibatasi ketat hanya pada sel di mana ketiga arsitektur memiliki $n \ge 5$.
+- **Total Validated Runs**: 94 run directory valid (mencakup 92 kombinasi unik sel-replikasi).
+- **Tingkat Kelayakan Naskah**: **Belum layak untuk naskah lengkap**. Sesuai arahan Dr. Karim, penulisan naskah lengkap menunggu pengujian seluruh 36 sel lengkap $n \ge 5$.
+
+### Penanganan Replikasi Duplikat (Duplicate Valid Replications)
+Dari 94 direktori run valid, ditemukan 2 slot kombinasi `(arch, n_slices, vus, repetition)` yang masing-masing memiliki dua eksekusi valid pada disk:
+1. `('sync', 25, 10, rep 1)`:
+   - `run_20261016_235731`: swap preflight 436.9 MB, RAM 3242.2 MB, e2e p95 5,309 ms, throughput 1.41 req/s.
+   - `run_20261017_002526`: swap preflight 302.2 MB, RAM 3100.0 MB, e2e p95 4,622 ms, throughput 1.82 req/s.
+2. `('celery', 25, 10, rep 3)`:
+   - `run_20261017_000019`: swap preflight 254.8 MB, RAM 4072.2 MB, e2e p95 4,601 ms, throughput 1.89 req/s.
+   - `run_20261017_002547`: swap preflight 293.2 MB, RAM 3892.2 MB, e2e p95 4,428 ms, throughput 1.94 req/s.
+
+**Aturan Keputusan Seleksi (Selection Decision Rule)**:
+- Pada analisis faktorial 5-replikasi standar (misal `stats_dunn_holm_20261018.csv`), diberlakukan aturan **Latest Valid Run Precedence**: eksekusi valid terbaru yang diambil untuk mewakili slot replikasi tersebut, guna mencerminkan kondisi kode dan lingkungan paling mutakhir.
+- Pada rekapitulasi data mentah pooled (`summary_full_20261018.csv`), seluruh 6 run valid diikutsertakan secara transparan ($n=6$) tanpa menghapus run mana pun dari penyimpanan lokal.
+- Seluruh detail perbandingan audit duplikasi dicatat dalam [`experiments/results/duplicate_validated_reps_20261018.csv`](file:///Users/adrianhalim/SereneApps/experiments/results/duplicate_validated_reps_20261018.csv).
 
 ---
 
@@ -71,7 +85,7 @@ Tabel berikut mencantumkan metrik performansi dan sumber daya hanya untuk sel op
 | **sync** | 25 | 50 | 5 | 6,558.0 [5,489.0 – 7,328.0] | 5.44 [4.10 – 6.30] | 0.0000 [0.0000 – 0.0000] | 1,516.6 [1,368.4 – 1,572.5] | 0.0 [0.0 – 0.0] | 1,661.9 [1,563.6 – 1,709.3] | 38.8% [25.7% – 52.2%] | -8.0 [-40.0 – -8.0] |
 | **background** | 25 | 50 | 5 | 8,388.0 [6,544.0 – 9,883.0] | 4.42 [3.69 – 5.43] | 0.0000 [0.0000 – 0.0000] | 1,508.7 [1,497.5 – 1,563.7] | 0.0 [0.0 – 0.0] | 1,636.5 [1,603.4 – 1,675.3] | 51.0% [43.8% – 73.1%] | -8.0 [-24.0 – 0.0] |
 | **celery** | 25 | 50 | 5 | 12,895.0 [11,898.0 – 15,278.0] | 2.55 [2.43 – 3.48] | 0.0000 [0.0000 – 0.0000] | 151.5 [131.7 – 192.6] | 1,589.2 [1,300.8 – 1,612.2] | 1,763.4 [1,390.8 – 1,907.8] | 39.0% [28.0% – 70.7%] | -24.0 [-40.0 – 179.8] |
-| **sync** | 25 | 100 | 4 | 13,266.0 [12,445.0 – 14,917.0] | 6.10 [5.41 – 6.44] | 0.0000 [0.0000 – 0.0000] | 1,266.4 [1,241.6 – 1,314.7] | 0.0 [0.0 – 0.0] | 1,355.8 [1,337.3 – 1,449.1] | 44.5% [43.3% – 53.8%] | 1,680.2 [1,559.1 – 1,854.8] |
+| **sync** | 25 | 100 | 4 | 13,266.0 [12,445.0 – 14,917.0] | 6.10 [5.41 – 6.44] | 0.0000 [0.0000 – 0.0000] | 1266.4 [1,241.6 – 1,314.7] | 0.0 [0.0 – 0.0] | 1,355.8 [1,337.3 – 1,449.1] | 44.5% [43.3% – 53.8%] | 1,680.2 [1,559.1 – 1,854.8] |
 | **background** | 25 | 100 | 5 | 22,030.0 [14,251.0 – 31,981.0] | 4.02 [2.59 – 5.51] | 0.0000 [0.0000 – 0.0200] | 1,245.2 [1,112.8 – 1,371.1] | 0.0 [0.0 – 0.0] | 1,430.0 [1,230.5 – 1,447.5] | 61.0% [39.6% – 64.2%] | 1,595.0 [891.0 – 1,810.4] |
 | **celery** | 25 | 100 | 5 | 25,371.0 [20,326.0 – 27,006.0] | 3.42 [3.25 – 3.90] | 0.0000 [0.0000 – 0.0000] | 149.5 [138.6 – 166.2] | 1,477.3 [1,264.6 – 1,497.8] | 1,655.6 [1,426.4 – 1,711.5] | 46.5% [25.5% – 58.9%] | 1,833.6 [940.4 – 1,983.8] |
 | **sync** | 25 | 200 | 4 | 43,486.0 [32,288.0 – 66,798.0] | 3.18 [2.35 – 4.35] | 0.0125 [0.0000 – 0.0250] | 1,173.1 [1,039.2 – 1,229.1] | 0.0 [0.0 – 0.0] | 1,308.8 [1,168.1 – 1,344.8] | 45.4% [32.7% – 52.8%] | 6,019.0 [5,378.5 – 6,308.4] |
@@ -89,30 +103,30 @@ Tabel berikut mencantumkan metrik performansi dan sumber daya hanya untuk sel op
 
 ---
 
-## 3. Analisis Inferensial Terbatas (Hanya untuk Kondisi $n \ge 5$ pada Ketiga Arsitektur)
+## 3. Analisis Inferensial Terbatas (Dunn-Holm Protocol)
 
-Uji signifikansi non-parametrik (Kruskal-Wallis $H$, dilanjutkan post-hoc pairwise Mann-Whitney $U$ dengan koreksi Holm-Bonferroni dan Cliff's delta effect size) **hanya dijalankan pada kondisi di mana ketiga arsitektur memiliki $n \ge 5$**.
+Uji signifikansi non-parametrik (Kruskal-Wallis $H$, dilanjutkan post-hoc pairwise **Dunn dengan koreksi Holm-Bonferroni** via `scikit_posthocs.posthoc_dunn` dan Cliff's delta effect size) **hanya dijalankan pada kondisi di mana ketiga arsitektur memiliki $n \ge 5$**.
 
 Dari 12 kombinasi $(N, VU)$, hanya 3 kondisi yang memenuhi syarat:
-1. $N=25, VU=10$ (Sync $n=6$, Background $n=5$, Celery $n=6$)
+1. $N=25, VU=10$ (Sync $n=5$, Background $n=5$, Celery $n=5$ pada matriks deduplikasi)
 2. $N=25, VU=50$ (Sync $n=5$, Background $n=5$, Celery $n=5$)
 3. $N=100, VU=10$ (Sync $n=5$, Background $n=5$, Celery $n=5$)
 
 Semua sel lainnya diberi label: **"not computed: n < 5"**.
 
-### Rangkuman Uji Hipotesis Latensi e2e p95
+### Rangkuman Uji Hipotesis Latensi e2e p95 (Protokol Dunn-Holm)
 
-| Kondisi Factorial | Ukuran Sampel ($n$) | Kruskal-Wallis ($H, p$) | Hasil Uji / Post-Hoc Pairwise (Holm-adjusted $p$, Cliff's $\delta$) | Kesimpulan Latensi |
+| Kondisi Factorial | Ukuran Sampel ($n$) | Kruskal-Wallis ($H, p$) | Hasil Pairwise Dunn-Holm ($p_{\text{dunn}}$, Cliff's $\delta$, 95% CI) | Kesimpulan Latensi |
 |---|---|---|---|---|
-| **$N=25, VU=10$** | Sync $n=6$<br>Background $n=5$<br>Celery $n=6$ | $H = 2.3382$<br>$p = 0.3107$ | - Background vs Celery: $p_{\text{adj}} = 0.2468$, $\delta = -0.67$<br>- Sync vs Celery: $p_{\text{adj}} = 1.0000$, $\delta = -0.19$<br>- Sync vs Background: $p_{\text{adj}} = 0.7922$, $\delta = 0.13$ | **Tidak Signifikan ($p \ge 0.05$)**.<br>Tidak ada arsitektur yang dapat dinyatakan sebagai pemenang pada beban ringan ini. |
-| **$N=25, VU=50$** | Sync $n=5$<br>Background $n=5$<br>Celery $n=5$ | $H = 10.5000$<br>$p = 0.0052$ | - Sync vs Celery: $p_{\text{adj}} = 0.0238$, $\delta = -1.00$ (Signifikan)<br>- Background vs Celery: $p_{\text{adj}} = 0.0159$, $\delta = -1.00$ (Signifikan)<br>- Sync vs Background: $p_{\text{adj}} = 0.1508$, $\delta = -0.60$ (Tidak Signifikan) | **Signifikan ($p < 0.05$)**.<br>Sync dan Background memiliki latensi yang signifikan lebih rendah dibanding Celery. Sync dan Background setara secara statistik. |
-| **$N=100, VU=10$** | Sync $n=5$<br>Background $n=5$<br>Celery $n=5$ | $H = 0.6200$<br>$p = 0.7334$ | - Background vs Celery: $p_{\text{adj}} = 1.0000$, $\delta = -0.28$<br>- Sync vs Background: $p_{\text{adj}} = 1.0000$, $\delta = 0.20$<br>- Sync vs Celery: $p_{\text{adj}} = 0.6905$, $\delta = 0.20$ | **Tidak Signifikan ($p \ge 0.05$)**.<br>Tidak ada perbedaan performansi latensi yang signifikan secara statistik di antara ketiga arsitektur. |
-| **$N=25, VU=100$** | Sync $n=4$, BG $n=5$, Cel $n=5$ | *not computed: n < 5* | *not computed: n < 5* | Tidak diuji (Sync $n=4 < 5$) |
+| **$N=25, VU=10$** | Sync $n=5$<br>Background $n=5$<br>Celery $n=5$ | $H = 2.7699$<br>$p = 0.2503$ | - Sync vs Background: $p_{\text{dunn}} = 0.8596$, $\delta = -0.04$ [-0.76, 0.60]<br>- Sync vs Celery: $p_{\text{dunn}} = 0.3843$, $\delta = -0.40$ [-1.00, 0.40]<br>- Background vs Celery: $p_{\text{dunn}} = 0.3843$, $\delta = -0.68$ [-1.00, -0.04] | **Tidak Signifikan ($p \ge 0.05$)**.<br>Tidak ada arsitektur yang dapat dinyatakan sebagai pemenang pada beban ringan ini. |
+| **$N=25, VU=50$** | Sync $n=5$<br>Background $n=5$<br>Celery $n=5$ | $H = 10.5000$<br>$p = 0.0052$ | - Sync vs Celery: **$p_{\text{dunn}} = 0.0044$**, $\delta = -1.00$ [-1.00, -1.00] (**Signifikan**)<br>- Background vs Celery: $p_{\text{dunn}} = 0.0678$, $\delta = -1.00$ [-1.00, -1.00] (**Tidak Signifikan**)<br>- Sync vs Background: $p_{\text{dunn}} = 0.2888$, $\delta = -0.60$ [-1.00, 0.12] (**Tidak Signifikan**) | **Signifikan ($p < 0.05$) pada Sync vs Celery**.<br>Sync memiliki latensi p95 yang signifikan lebih rendah dibanding Celery. Background vs Celery secara unadjusted tampak berbeda, namun setelah koreksi Holm ($p=0.0678$) berada sedikit di atas ambang signifikansi $\alpha=0.05$. |
+| **$N=100, VU=10$** | Sync $n=5$<br>Background $n=5$<br>Celery $n=5$ | $H = 0.6200$<br>$p = 0.7334$ | - Sync vs Background: $p_{\text{dunn}} = 1.0000$, $\delta = 0.20$ [-0.52, 1.00]<br>- Sync vs Celery: $p_{\text{dunn}} = 1.0000$, $\delta = 0.20$ [-0.60, 1.00]<br>- Background vs Celery: $p_{\text{dunn}} = 1.0000$, $\delta = -0.28$ [-0.92, 0.60] | **Tidak Signifikan ($p \ge 0.05$)**.<br>Tidak ada perbedaan performansi latensi yang signifikan secara statistik di antara ketiga arsitektur. |
+| **$N=25, VU=100$** | Sync $n=4$, BG $n=5$, Cel $n=5$ | *not computed: n < 5* | *not computed: n < 5* | **Perubahan dari Laporan Terdahulu**: Versi terdahulu melaporkan perbandingan ini ($H=7.426, p=0.024$; Sync vs Celery $p=0.029$). Namun karena Sync hanya memiliki $n=4$ (1 run gagal k6 exit -9), sel ini belum memenuhi syarat $n \ge 5$ dari Dr. Karim dan **ditarik dari klaim temuan konfirmatori**. |
 | **$N=25, VU=200$** | Sync $n=4$, BG $n=2$, Cel $n=4$ | *not computed: n < 5* | *not computed: n < 5* | Tidak diuji ($n < 5$) |
 | **$N=100, VU=50$** | Sync $n=3$, BG $n=3$, Cel $n=3$ | *not computed: n < 5* | *not computed: n < 5* | Tidak diuji ($n < 5$) |
 | **$N=100, VU=100$** | Sync $n=0$, BG $n=0$, Cel $n=0$ | *not computed: n < 5* | *not computed: n < 5* | Tidak diuji ($n = 0$) |
 | **$N=100, VU=200$** | Sync $n=0$, BG $n=0$, Cel $n=0$ | *not computed: n < 5* | *not computed: n < 5* | Tidak diuji ($n = 0$) |
-| **$N=200, VU=10$** | Sync $n=4$, BG $n=5$, Cel $n=5$ | *not computed: n < 5* | *not computed: n < 5* | **Tidak diuji secara formal** ($n_{\text{sync}}=4 < 5$). Nilai uji eksploratif $p = 0.735$ tidak signifikan dan tidak dijadikan klaim temuan. |
+| **$N=200, VU=10$** | Sync $n=4$, BG $n=5$, Cel $n=5$ | *not computed: n < 5* | *not computed: n < 5* | **Tidak diuji secara formal** ($n_{\text{sync}}=4 < 5$). Nilai uji eksploratif $p = 0.744$ tidak signifikan dan dilarang dijadikan klaim temuan. |
 | **$N=200, VU=50$** | Sync $n=0$, BG $n=0$, Cel $n=0$ | *not computed: n < 5* | *not computed: n < 5* | Tidak diuji ($n = 0$) |
 | **$N=200, VU=100$** | Sync $n=0$, BG $n=0$, Cel $n=0$ | *not computed: n < 5* | *not computed: n < 5* | Tidak diuji ($n = 0$) |
 | **$N=200, VU=200$** | Sync $n=0$, BG $n=0$, Cel $n=0$ | *not computed: n < 5* | *not computed: n < 5* | Tidak diuji ($n = 0$) |
@@ -137,17 +151,21 @@ Klaim terkait konsumsi memori harus dipisahkan secara tegas antara **proses web 
 
 ---
 
-## 5. Evaluasi Klaim Latensi pada $N=200, VU=10$
+## 5. Audit dan Analisis Sensitivitas Swap Growth
 
-- Pada kondisi $N=200, VU=10$, data sampel yang valid adalah Sync $n=4$, Background $n=5$, Celery $n=5$.
-- Nilai median e2e p95 yang tercatat:
-  - BackgroundTasks: 23,127.0 ms
-  - Celery: 25,716.0 ms
-  - Sync: 28,990.0 ms
-- **Koreksi Ilmiah**:
-  1. Ukuran sampel Sync ($n=4$) belum memenuhi batas minimal $n \ge 5$ yang ditetapkan Dr. Karim.
-  2. Uji komparasi Kruskal-Wallis eksploratif menghasilkan $H = 0.615, p = 0.735$ ($p \gg 0.05$).
-  3. **Tidak ada dasar statistik** untuk mengklaim bahwa Celery atau BackgroundTasks lebih unggul secara signifikan dari Sync pada $N=200, VU=10$. Variasi antar-replikasi lebih dominan daripada perbedaan arsitektur pada titik uji ini.
+### Definisi dan Perhitungan Swap Growth
+Metrik `swap_growth_mb` dihitung pada telemetri `MetricsSampler` di [`experiments/run_experiment.py`](file:///Users/adrianhalim/SereneApps/experiments/run_experiment.py#L665):
+$$\text{swap\_growth\_mb} = \text{swap\_used\_mb}_{\text{final}} - \text{swap\_used\_mb}_{\text{initial}}$$
+- **Definisi**: Selisih bersih (net change) memori swap fisik yang terpakai pada sistem operasi (macOS) antara sampel telemetri periodik pertama (saat uji beban k6 dimulai) dan sampel terakhir (saat uji beban selesai).
+- **Satuan**: Megabytes (MB).
+- **Hasil Audit**: Dari 94 run valid, sebanyak **62 run (66.0%)** memiliki `swap_growth_mb > 500 MB`, sementara **32 run (34.0%)** memiliki `swap_growth_mb <= 500 MB`.
+
+### Analisis Sensitivitas (Eksklusi Run dengan Swap Growth > 500 MB)
+Ketika seluruh run yang mengalami lonjakan swap $> 500$ MB dieksklusi untuk mengevaluasi performansi murni dalam RAM fisik:
+1. **$N=25, VU=10$**: Seluruh 15 run memiliki swap growth $\le 0$ MB (tidak ada run yang dieksklusi). Kesimpulan **tetap sama**: Kruskal-Wallis $H=2.7699, p=0.2503$ (Tidak signifikan).
+2. **$N=25, VU=50$**: Seluruh 15 run memiliki swap growth $\le 0$ MB (tidak ada run yang dieksklusi). Kesimpulan **tetap sama**: Sync vs Celery signifikan lebih rendah latensinya ($p=0.0044$, Cliff's $\delta = -1.00$).
+3. **$N=100, VU=10$**: Seluruh 15 run (Sync, Background, Celery) mengalami kenaikan swap $\sim 1,200$ MB. Akibatnya, pada filter sensitivitas ini, sampel tersisa adalah $n=0$ untuk ketiga arsitektur. **Uji inferensial tidak dapat dihitung** (*not computed: n < 5*).
+- **Implikasi**: Hal ini membuktikan secara empiris bahwa komparasi arsitektur pada payload $N \ge 100$ di perangkat Mac 8 GB selalu terjadi di bawah tekanan paging swap kernel macOS, dan tidak dapat beroperasi dalam RAM fisik murni.
 
 ---
 
@@ -169,7 +187,7 @@ Bagian ini memuat dugaan teknis atas fenomena kegagalan k6 pada beban tinggi ($N
 Laporan parsial ini tunduk pada batasan eksperimental berikut:
 1. **Single Physical Host**: Seluruh komponen pengujian (Uvicorn, Redis, Celery Worker, PostgreSQL, dan load generator k6) dijalankan pada satu unit perangkat fisik lokal yang sama (Apple MacBook Pro M3, 8 GB Unified Memory).
 2. **Resource Contention Antara SUT dan Load Generator**: Karena `k6` berjalan di mesin yang sama dengan System Under Test (SUT), lonjakan alokasi memori k6 dan Node.js/Python berkompetisi memperebutkan 8 GB RAM fisik yang sama.
-3. **Kegagalan Preflight Gate**: Banyaknya percobaan yang gagal pada preflight gate (tercatat swap > 500 MB atau memory < 3000 MB) menunjukkan keterbatasan pendinginan swap pada sistem operasi macOS setelah menangani beban volumetrik besar, yang memperpanjang siklus recovery.
+3. **Kegagalan Preflight Gate dan Swap Drainage**: Banyaknya percobaan yang gagal pada preflight gate (tercatat swap > 500 MB atau memory < 3000 MB) menunjukkan keterbatasan pendinginan swap pada sistem operasi macOS setelah menangani beban volumetrik besar, yang memperpanjang siklus recovery.
 4. **Ketidaklengkapan Sel Factorial ($n < 5$)**: 15 sel memiliki $n=0$ dan 8 sel memiliki $n \in [2, 4]$. Hasil pengujian saat ini tidak dapat digeneralisasi untuk keseluruhan domain operasional CDSS tanpa penambahan data valid.
 
 ---
