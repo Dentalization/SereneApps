@@ -49,7 +49,7 @@ def get_harness_provenance():
             ["git", "rev-parse", "HEAD"], cwd=str(REPO_ROOT), text=True
         ).strip()
         git_status_out = subprocess.check_output(
-            ["git", "status", "--porcelain"], cwd=str(REPO_ROOT), text=True
+            ["git", "status", "--porcelain", "-uno"], cwd=str(REPO_ROOT), text=True
         ).strip()
         git_dirty = bool(git_status_out)
     except Exception:
@@ -722,12 +722,12 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False, raw_base_
     provenance = get_harness_provenance()
 
     if not gate_proceed:
-        print(f"[Run] RECORDING GATE FAILURE for {run_id}. Threshold not met.")
+        print(f"[Run] RECORDING HOST ENVIRONMENT INVALID for {run_id}. Host thresholds not met: {'; '.join(gate_reasons)}")
         metadata = {
             "run_id": run_id,
-            "status": "gate_failed",
-            "validation_only": validation_only,
-            "validation_triggers": validation_triggers,
+            "status": "environment_invalid",
+            "validation_only": True,
+            "validation_triggers": gate_reasons,
             "arch": arch,
             "n_slices": n_slices,
             "vus": vus,
@@ -1019,6 +1019,26 @@ def run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_c
             )
             duration = round(time.time() - slot_start, 2)
 
+            if meta.get("status") == "environment_invalid":
+                triggers = meta.get("validation_triggers", [])
+                err_msg = f"environment_invalid: {'; '.join(triggers)}" if triggers else "environment_invalid"
+                print(f"\n{'!' * 70}")
+                print(f"[Phase 1] HOST ENVIRONMENT INVALID: Preflight gate failed for {arch} N{n_slices} VU{vus} rep{rep}.")
+                print(f"  Reasons: {err_msg}")
+                print("  Per 21 Oct 2026 Protocol Amendment:")
+                print(f"  - This attempt is NOT counted towards the 15-attempt budget (attempts remains {cell_state['attempts']}).")
+                print("  - Cell cannot be marked infeasible due to host environment issues.")
+                print("  - Halting execution to request operator intervention.")
+                print(f"{'!' * 70}\n")
+                print("[OPERATOR REQUIRED] Please ensure:")
+                print("  1. MagSafe / AC power adapter is securely connected.")
+                print("  2. Host is rebooted to clear kernel swap memory.")
+                print("  3. Verify 'sysctl vm.swapusage' shows swap < 500 MB.")
+                print("  4. Verify free RAM > 3,000 MB.")
+                print("Then rerun the experiment command.")
+                save_status_csv(status_csv_path, status_cells)
+                sys.exit(1)
+
             cell_state["attempts"] += 1
             cell_state["last_attempt_time"] = datetime.datetime.now().isoformat()
             cell_state["wall_clock_seconds"] = duration
@@ -1092,6 +1112,27 @@ def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_d
                 cell_def, config, master_csv_path, raw_base_dir=raw_base_dir, reset_actions=reset_actions
             )
             duration = round(time.time() - slot_start, 2)
+
+            if meta.get("status") == "environment_invalid":
+                triggers = meta.get("validation_triggers", [])
+                err_msg = f"environment_invalid: {'; '.join(triggers)}" if triggers else "environment_invalid"
+                print(f"\n{'!' * 70}")
+                print(f"[Phase 2 Probe] HOST ENVIRONMENT INVALID: Preflight gate failed for {arch} N{n_slices} VU{vus}.")
+                print(f"  Reasons: {err_msg}")
+                print("  Per 21 Oct 2026 Protocol Amendment:")
+                print(f"  - This attempt is NOT counted towards the 15-attempt budget (attempts remains {cell_state['attempts']}).")
+                print("  - Cell cannot be marked probe_failed or infeasible due to host environment issues.")
+                print("  - Halting execution to request operator intervention.")
+                print(f"{'!' * 70}\n")
+                print("[OPERATOR REQUIRED] Please ensure:")
+                print("  1. MagSafe / AC power adapter is securely connected.")
+                print("  2. Host is rebooted to clear kernel swap memory.")
+                print("  3. Verify 'sysctl vm.swapusage' shows swap < 500 MB.")
+                print("  4. Verify free RAM > 3,000 MB.")
+                print("Then rerun the experiment command.")
+                save_status_csv(status_csv_path, status_cells)
+                sys.exit(1)
+
             cell_state["attempts"] += 1
             cell_state["last_attempt_time"] = datetime.datetime.now().isoformat()
             cell_state["wall_clock_seconds"] = duration
@@ -1179,6 +1220,27 @@ def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_d
                 cell_def, config, master_csv_path, raw_base_dir=raw_base_dir, reset_actions=reset_actions
             )
             duration = round(time.time() - slot_start, 2)
+
+            if meta.get("status") == "environment_invalid":
+                triggers = meta.get("validation_triggers", [])
+                err_msg = f"environment_invalid: {'; '.join(triggers)}" if triggers else "environment_invalid"
+                print(f"\n{'!' * 70}")
+                print(f"[Phase 2 Extension] HOST ENVIRONMENT INVALID: Preflight gate failed for {arch} N{n_slices} VU{vus} rep{rep}.")
+                print(f"  Reasons: {err_msg}")
+                print("  Per 21 Oct 2026 Protocol Amendment:")
+                print(f"  - This attempt is NOT counted towards the 15-attempt budget (attempts remains {cell_state['attempts']}).")
+                print("  - Cell cannot be marked infeasible due to host environment issues.")
+                print("  - Halting execution to request operator intervention.")
+                print(f"{'!' * 70}\n")
+                print("[OPERATOR REQUIRED] Please ensure:")
+                print("  1. MagSafe / AC power adapter is securely connected.")
+                print("  2. Host is rebooted to clear kernel swap memory.")
+                print("  3. Verify 'sysctl vm.swapusage' shows swap < 500 MB.")
+                print("  4. Verify free RAM > 3,000 MB.")
+                print("Then rerun the experiment command.")
+                save_status_csv(status_csv_path, status_cells)
+                sys.exit(1)
+
             cell_state["attempts"] += 1
             cell_state["last_attempt_time"] = datetime.datetime.now().isoformat()
             cell_state["wall_clock_seconds"] = duration
@@ -1688,7 +1750,7 @@ def main():
             print(f"\nProgress: Run {idx} / {total_runs}")
             success, run_meta = execute_single_run(cell, config, master_csv, skip_gate=args.skip_gate)
             if not success:
-                run_status = run_meta.get("status") if isinstance(run_meta, dict) else "gate_failed"
+                run_status = run_meta.get("status") if isinstance(run_meta, dict) else "environment_invalid"
                 print(f"\n[Full Factorial] Run {idx} failed preflight gate (status: {run_status}).")
                 print(f"[Full Factorial] Halting cell progression. Waiting and retrying preflight gate with bounded timeout...")
 
