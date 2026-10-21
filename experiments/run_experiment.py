@@ -982,11 +982,83 @@ def save_status_csv(status_csv_path, cells_dict):
             writer.writerow(cell)
 
 
+def is_confirmatory_slot_completed(arch, n_slices, vus, rep, master_csv_path, raw_base_dir=None):
+    """
+    Checks if a specific confirmatory slot (arch, n_slices, vus, rep)
+    has already successfully completed with validation_only=False.
+    """
+    if master_csv_path.exists() and master_csv_path.stat().st_size > 0:
+        try:
+            with open(master_csv_path, "r", newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if (
+                        row.get("arch") == arch
+                        and int(row.get("n_slices", -1)) == n_slices
+                        and int(row.get("vus", -1)) == vus
+                        and int(row.get("repetition", -1)) == rep
+                    ):
+                        val_only = str(row.get("validation_only", "")).lower()
+                        if row.get("status") == "success" and val_only in ["false", "0"]:
+                            return True, row.get("run_id")
+        except Exception:
+            pass
+
+    if raw_base_dir is not None and Path(raw_base_dir).exists():
+        pattern = f"*_{arch}_N{n_slices}_VU{vus}_rep{rep}"
+        for run_dir in sorted(Path(raw_base_dir).glob(pattern)):
+            if not run_dir.is_dir():
+                continue
+            meta_file = run_dir / "metadata.json"
+            if meta_file.exists():
+                try:
+                    with open(meta_file, "r") as f:
+                        meta = json.load(f)
+                    val_only = meta.get("validation_only")
+                    is_val_false = (val_only is False) or (isinstance(val_only, str) and val_only.lower() == "false")
+                    if meta.get("status") == "success" and is_val_false:
+                        return True, run_dir.name
+                except Exception:
+                    continue
+
+    return False, None
+
+
+def sync_status_from_master(status_cells, master_csv_path):
+    """
+    Synchronizes status_cells valid_count with true valid runs in master.csv
+    upon startup/resume.
+    """
+    if not master_csv_path.exists() or master_csv_path.stat().st_size == 0:
+        return status_cells
+    try:
+        with open(master_csv_path, "r", newline="") as f:
+            reader = csv.DictReader(f)
+            counts = {}
+            for row in reader:
+                arch = row.get("arch")
+                n = int(row.get("n_slices", -1))
+                vu = int(row.get("vus", -1))
+                val_only = str(row.get("validation_only", "")).lower()
+                if row.get("status") == "success" and val_only in ["false", "0"]:
+                    counts[(arch, n, vu)] = counts.get((arch, n, vu), 0) + 1
+            for key, count in counts.items():
+                if key in status_cells:
+                    status_cells[key]["valid_count"] = max(status_cells[key]["valid_count"], count)
+                    if status_cells[key]["valid_count"] >= 5:
+                        status_cells[key]["cell_status"] = "completed"
+    except Exception:
+        pass
+    return status_cells
+
+
 def run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_csv_path, raw_base_dir):
     print("\n" + "=" * 70)
     print("PHASE 1: CONFIRMATORY EXECUTION (SCHEDULE v1)")
     print("=" * 70)
     status_cells = load_status_csv(status_csv_path)
+    status_cells = sync_status_from_master(status_cells, master_csv_path)
+    save_status_csv(status_csv_path, status_cells)
 
     with open(schedule_csv_path, "r", newline="") as f:
         schedule = list(csv.DictReader(f))
@@ -1007,6 +1079,11 @@ def run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_c
             print(f"[Phase 1] Slot {slot_idx}/{total_slots} ({arch} N{n_slices} VU{vus} rep{rep}) SKIPPED: 15-attempt budget reached. Status: {cell_state['cell_status']}.")
             cell_state["cell_status"] = "infeasible_phase1"
             save_status_csv(status_csv_path, status_cells)
+            continue
+
+        slot_done, done_run_id = is_confirmatory_slot_completed(arch, n_slices, vus, rep, master_csv_path, raw_base_dir)
+        if slot_done:
+            print(f"[Phase 1] Slot {slot_idx}/{total_slots} ({arch} N{n_slices} VU{vus} rep{rep}) SKIPPED: already completed ({done_run_id}).")
             continue
 
         while cell_state["valid_count"] < 5 and cell_state["attempts"] < 15:
@@ -1087,6 +1164,8 @@ def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_d
         (200, 200)
     ]
     status_cells = load_status_csv(status_csv_path)
+    status_cells = sync_status_from_master(status_cells, master_csv_path)
+    save_status_csv(status_csv_path, status_cells)
     feasibility_records = []
 
     # Probing loop
@@ -1102,6 +1181,17 @@ def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_d
         for arch in archs:
             key = (arch, n_slices, vus)
             cell_state = status_cells[key]
+
+            # Check if probe is already completed
+            probe_done, done_run_id = is_confirmatory_slot_completed(arch, n_slices, vus, 1, master_csv_path, raw_base_dir)
+            if probe_done:
+                print(f"[Phase 2 Probe] {arch} at N={n_slices}, VU={vus} already completed ({done_run_id}). Resuming...")
+                cell_state["valid_count"] = max(cell_state["valid_count"], 1)
+                cell_state["cell_status"] = "completed" if cell_state["valid_count"] >= 5 else "probe_succeeded"
+                probe_details[arch] = {"passed": True, "status": "success", "triggers": [], "peak_swap": 0.0, "min_ram": 0.0}
+                save_status_csv(status_csv_path, status_cells)
+                continue
+
             print(f"[Phase 2 Probe] Probing {arch} at N={n_slices}, VU={vus}...")
 
             slot_start = time.time()
@@ -1210,6 +1300,11 @@ def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_d
                 print(f"[Phase 2 Extension] {arch} N{n_slices} VU{vus} reached 15 attempts. Marked infeasible_phase2.")
                 cell_state["cell_status"] = "infeasible_phase2"
                 save_status_csv(status_csv_path, status_cells)
+                continue
+
+            ext_done, done_run_id = is_confirmatory_slot_completed(arch, n_slices, vus, rep, master_csv_path, raw_base_dir)
+            if ext_done:
+                print(f"[Phase 2 Extension] {arch} N{n_slices} VU{vus} rep{rep} already completed ({done_run_id}). SKIPPING...")
                 continue
 
             print(f"[Phase 2 Extension] Running {arch} N={n_slices}, VU={vus}, Rep={rep} (Attempt {cell_state['attempts'] + 1}/15)...")
