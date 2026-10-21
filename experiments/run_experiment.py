@@ -1009,37 +1009,45 @@ def run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_c
             save_status_csv(status_csv_path, status_cells)
             continue
 
-        print(f"\n[Phase 1] Executing Slot {slot_idx}/{total_slots}: {arch} N={n_slices}, VU={vus}, Rep={rep} (Attempt {cell_state['attempts'] + 1}/15)...")
-        slot_start = time.time()
-        reset_actions = reset_for_attempt(config)
-        cell_def = {"arch": arch, "n": n_slices, "vu": vus, "rep": rep}
-        success, meta = execute_single_run(
-            cell_def, config, master_csv_path, raw_base_dir=raw_base_dir, reset_actions=reset_actions
-        )
-        duration = round(time.time() - slot_start, 2)
+        while cell_state["valid_count"] < 5 and cell_state["attempts"] < 15:
+            print(f"\n[Phase 1] Executing Slot {slot_idx}/{total_slots}: {arch} N={n_slices}, VU={vus}, Rep={rep} (Attempt {cell_state['attempts'] + 1}/15)...")
+            slot_start = time.time()
+            reset_actions = reset_for_attempt(config)
+            cell_def = {"arch": arch, "n": n_slices, "vu": vus, "rep": rep}
+            success, meta = execute_single_run(
+                cell_def, config, master_csv_path, raw_base_dir=raw_base_dir, reset_actions=reset_actions
+            )
+            duration = round(time.time() - slot_start, 2)
 
-        cell_state["attempts"] += 1
-        cell_state["last_attempt_time"] = datetime.datetime.now().isoformat()
-        cell_state["wall_clock_seconds"] = duration
+            cell_state["attempts"] += 1
+            cell_state["last_attempt_time"] = datetime.datetime.now().isoformat()
+            cell_state["wall_clock_seconds"] = duration
 
-        if success and not meta.get("validation_only", True):
-            cell_state["valid_count"] += 1
-            if cell_state["valid_count"] >= 5:
-                cell_state["cell_status"] = "completed"
-        else:
-            status_desc = meta.get("status", "failed")
-            triggers = meta.get("validation_triggers", [])
-            err_msg = f"{status_desc}: {'; '.join(triggers)}" if triggers else status_desc
-            existing = cell_state["failure_reasons"].split("; ") if cell_state["failure_reasons"] else []
-            if err_msg not in existing:
-                existing.append(err_msg)
-            cell_state["failure_reasons"] = "; ".join(existing)
+            if success and not meta.get("validation_only", True):
+                cell_state["valid_count"] += 1
+                if cell_state["valid_count"] >= 5:
+                    cell_state["cell_status"] = "completed"
+                save_status_csv(status_csv_path, status_cells)
+                print(f"[Phase 1] Slot {slot_idx} SUCCEEDED: {arch} N{n_slices} VU{vus} (Valid: {cell_state['valid_count']}, Attempts: {cell_state['attempts']})")
+                break
+            else:
+                status_desc = meta.get("status", "failed")
+                triggers = meta.get("validation_triggers", [])
+                err_msg = f"{status_desc}: {'; '.join(triggers)}" if triggers else status_desc
+                existing = cell_state["failure_reasons"].split("; ") if cell_state["failure_reasons"] else []
+                if err_msg not in existing:
+                    existing.append(err_msg)
+                cell_state["failure_reasons"] = "; ".join(existing)
 
-            if cell_state["attempts"] >= 15 and cell_state["valid_count"] < 5:
-                cell_state["cell_status"] = "infeasible_phase1"
+                if cell_state["attempts"] >= 15 and cell_state["valid_count"] < 5:
+                    cell_state["cell_status"] = "infeasible_phase1"
 
-        save_status_csv(status_csv_path, status_cells)
-        print(f"[Phase 1] Slot {slot_idx} completed: {arch} N{n_slices} VU{vus} -> Valid: {cell_state['valid_count']}, Attempts: {cell_state['attempts']}, Status: {cell_state['cell_status']}")
+                save_status_csv(status_csv_path, status_cells)
+                print(f"[Phase 1] Slot {slot_idx} Attempt FAILED: {arch} N{n_slices} VU{vus} -> Reason: {err_msg} (Attempts: {cell_state['attempts']}/15)")
+
+                if cell_state["attempts"] >= 15:
+                    print(f"[Phase 1] Budget exhausted for {arch} N{n_slices} VU{vus}. Marked infeasible_phase1.")
+                    break
 
     print("\n[Phase 1] Confirmatory Phase 1 Schedule completed.")
 
