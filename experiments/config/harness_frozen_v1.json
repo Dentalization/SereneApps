@@ -1,7 +1,7 @@
 {
   "harness_frozen_id": "harness-frozen-v1",
   "date": "2026-10-21",
-  "git_commit": "b73e03c3edf73321a552d76dcf7622c8918dcd55",
+  "git_commit": "c59dbaf625a4381e5f9aa30afb31f82f238ecd50",
   "file_sha256": {
     "experiments/run_experiment.py": "74ad793ddd457ad5d7cdb32743cc228dcf6af6f2079f0db1ed5157044b80119e",
     "experiments/load/formdata.js": "1669e3541c2d072512f420a3c2911a976a6e0cc64627c693448b3f0fcb1be9a7",
