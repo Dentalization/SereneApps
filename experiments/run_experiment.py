@@ -39,6 +39,10 @@ def load_config():
         return json.load(f)
 
 
+HARNESS_FROZEN_ID = "harness-frozen-v1"
+FROZEN_MANIFEST_PATH = REPO_ROOT / "experiments" / "config" / "harness_frozen_v1.json"
+
+
 def get_harness_provenance():
     try:
         git_sha = subprocess.check_output(
@@ -62,7 +66,140 @@ def get_harness_provenance():
         "git_commit": git_sha,
         "git_dirty": git_dirty,
         "script_sha256": script_sha256,
+        "harness_frozen_id": HARNESS_FROZEN_ID,
     }
+
+
+def generate_frozen_manifest():
+    files_to_hash = [
+        "experiments/run_experiment.py",
+        "experiments/load/formdata.js",
+        "experiments/load/generate_k6_workloads.py",
+        "experiments/load/k6_workload_N25.js",
+        "experiments/load/k6_workload_N100.js",
+        "experiments/load/k6_workload_N200.js",
+        "experiments/config/experiment.json",
+    ]
+    file_hashes = {}
+    for rel_path in files_to_hash:
+        fp = REPO_ROOT / rel_path
+        if not fp.exists():
+            raise FileNotFoundError(f"Missing file for frozen manifest: {rel_path}")
+        file_hashes[rel_path] = hashlib.sha256(fp.read_bytes()).hexdigest()
+
+    try:
+        git_sha = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=str(REPO_ROOT), text=True
+        ).strip()
+    except Exception:
+        git_sha = "unknown"
+
+    try:
+        py_ver = sys.version.split()[0]
+    except Exception:
+        py_ver = "unknown"
+
+    try:
+        node_ver = subprocess.check_output(["node", "--version"], text=True).strip()
+    except Exception:
+        node_ver = "unknown"
+
+    try:
+        k6_ver = subprocess.check_output(["k6", "version"], text=True).strip()
+    except Exception:
+        k6_ver = "unknown"
+
+    manifest = {
+        "harness_frozen_id": HARNESS_FROZEN_ID,
+        "date": datetime.date.today().isoformat(),
+        "git_commit": git_sha,
+        "file_sha256": file_hashes,
+        "environment": {
+            "python_version": py_ver,
+            "node_version": node_ver,
+            "k6_version": k6_ver,
+        }
+    }
+    FROZEN_MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(FROZEN_MANIFEST_PATH, "w") as f:
+        json.dump(manifest, f, indent=2)
+    print(f"[Manifest] Generated frozen manifest: {FROZEN_MANIFEST_PATH}")
+    return manifest
+
+
+def verify_frozen_harness():
+    if not FROZEN_MANIFEST_PATH.exists():
+        print(f"[Harness] Notice: Frozen manifest not yet created at {FROZEN_MANIFEST_PATH}.")
+        return
+    with open(FROZEN_MANIFEST_PATH, "r") as f:
+        manifest = json.load(f)
+
+    expected_hashes = manifest.get("file_sha256", {})
+    for rel_path, expected_sha in expected_hashes.items():
+        file_path = REPO_ROOT / rel_path
+        if not file_path.exists():
+            print(f"[FATAL] Frozen harness file missing: {rel_path}", file=sys.stderr)
+            sys.exit(1)
+        actual_sha = hashlib.sha256(file_path.read_bytes()).hexdigest()
+        if actual_sha != expected_sha:
+            print(f"[FATAL] Frozen harness hash mismatch for {rel_path}!", file=sys.stderr)
+            print(f"  Expected: {expected_sha}", file=sys.stderr)
+            print(f"  Actual:   {actual_sha}", file=sys.stderr)
+            sys.exit(1)
+
+    # Check git tag harness-frozen-v1 if present in git repo
+    try:
+        tag_commit = subprocess.check_output(
+            ["git", "rev-parse", "harness-frozen-v1^{commit}"],
+            cwd=str(REPO_ROOT),
+            text=True,
+            stderr=subprocess.DEVNULL
+        ).strip()
+        is_ancestor = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", tag_commit, "HEAD"],
+            cwd=str(REPO_ROOT),
+        ).returncode == 0
+        if not is_ancestor:
+            print(f"[FATAL] HEAD does not contain harness-frozen-v1 tag ({tag_commit})!", file=sys.stderr)
+            sys.exit(1)
+    except subprocess.CalledProcessError:
+        pass
+
+    print(f"[Harness] Frozen integrity verified against {manifest.get('harness_frozen_id', HARNESS_FROZEN_ID)}.")
+
+
+def reset_for_attempt(config):
+    reset_log = []
+    # 1. Terminate leftover uvicorn, celery workers, and k6 processes
+    kill_process_on_port(4000)
+    kill_process_on_port(8000)
+    kill_celery_workers()
+    for proc in psutil.process_iter(["pid", "name"]):
+        try:
+            if proc.info["name"] == "k6":
+                proc.kill()
+                reset_log.append(f"Killed k6 PID {proc.info['pid']}")
+        except Exception:
+            pass
+    reset_log.append("Terminated leftover services (Node :4000, Uvicorn :8000, Celery workers, k6)")
+
+    # 2. Restart Redis
+    try:
+        subprocess.run(["brew", "services", "restart", "redis"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        reset_log.append("Restarted Redis via brew services")
+    except Exception as e:
+        reset_log.append(f"Redis restart note: {e}")
+
+    # 3. sudo purge attempt
+    purge_res = subprocess.run(["sudo", "-n", "purge"], capture_output=True, text=True)
+    if purge_res.returncode == 0:
+        reset_log.append("Executed sudo purge")
+    else:
+        err_msg = purge_res.stderr.strip() or "password required"
+        reset_log.append(f"sudo purge skipped ({err_msg})")
+
+    return reset_log
+
 
 
 def get_swap_used_mb():
@@ -559,12 +696,16 @@ def parse_k6_metrics_and_write_requests_csv(k6_raw_jsonl, output_csv_path):
     }
 
 
-def execute_single_run(cell, config, master_csv_path, skip_gate=False):
+def execute_single_run(cell, config, master_csv_path, skip_gate=False, raw_base_dir=None, reset_actions=None):
     arch, n_slices, vus, rep = cell["arch"], cell["n"], cell["vu"], cell["rep"]
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     run_id = f"run_{timestamp}_{arch}_N{n_slices}_VU{vus}_rep{rep}"
-    raw_dir = REPO_ROOT / config["paths"]["results_raw_dir"] / run_id
+    if raw_base_dir is not None:
+        raw_dir = Path(raw_base_dir) / run_id
+    else:
+        raw_dir = REPO_ROOT / config["paths"]["results_raw_dir"] / run_id
     raw_dir.mkdir(parents=True, exist_ok=True)
+    start_time = time.time()
 
     print("\n" + "=" * 70)
     print(f"STARTING RUN: {run_id}")
@@ -592,12 +733,15 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
             "vus": vus,
             "repetition": rep,
             "timestamp": timestamp,
+            "duration_seconds": round(time.time() - start_time, 2),
             "gate_readings": gate_readings,
+            "reset_actions": reset_actions or [],
             "worker_concurrency": config.get("worker_concurrency", 4),
             "worker_pool": config.get("worker_pool", "threads"),
             "git_commit": provenance["git_commit"],
             "git_dirty": provenance["git_dirty"],
             "script_sha256": provenance["script_sha256"],
+            "harness_frozen_id": HARNESS_FROZEN_ID,
             "harness_provenance": provenance,
         }
         with open(raw_dir / "metadata.json", "w") as f:
@@ -622,10 +766,14 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
         k6_code, run_duration = execute_k6_run(n_slices, vus, arch, run_id, rep, raw_dir, config)
         if k6_code != 0:
             run_status = "k6_failed"
+            validation_only = True
+            validation_triggers.append(f"k6 non-zero exit code: {k6_code}")
     except Exception as e:
         print(f"[Run] Error during load execution: {e}")
         run_status = "error"
         run_duration = 0.0
+        validation_only = True
+        validation_triggers.append(str(e))
     finally:
         # 6. Stop Sampling and Services
         sampler.stop()
@@ -646,6 +794,8 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
     avg_cpu_pct = 0.0
     peak_cpu_pct = 0.0
     swap_growth_mb = 0.0
+    peak_swap_mb = 0.0
+    min_avail_ram_mb = 999999.0
 
     if samples:
         # Columns: [time, sys_cpu, node_cpu, node_rss, uvi_cpu, uvi_rss, cel_cpu, cel_rss, swap, avail]
@@ -664,6 +814,20 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
         peak_cpu_pct = max(sys_cpus)
         swap_growth_mb = samples[-1][8] - samples[0][8]
 
+        swaps = [s[8] for s in samples]
+        avails = [s[9] for s in samples]
+        peak_swap_mb = max(swaps) if swaps else 0.0
+        min_avail_ram_mb = min(avails) if avails else 0.0
+
+        if peak_swap_mb > 8192.0:
+            run_status = "host_swap_exceeded_8192mb"
+            validation_only = True
+            validation_triggers.append(f"Peak swap {peak_swap_mb:.1f} MB exceeded 8192 MB")
+        if min_avail_ram_mb < 500.0:
+            run_status = "host_ram_below_500mb"
+            validation_only = True
+            validation_triggers.append(f"Min available RAM {min_avail_ram_mb:.1f} MB fell below 500 MB")
+
     throughput = stats["total_requests"] / run_duration if run_duration > 0 else 0.0
     provenance = get_harness_provenance()
 
@@ -679,6 +843,7 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
         "timestamp": timestamp,
         "duration_seconds": round(run_duration, 2),
         "gate_readings": gate_readings,
+        "reset_actions": reset_actions or [],
         "worker_concurrency": config.get("worker_concurrency", 4),
         "worker_pool": config.get("worker_pool", "threads"),
         "k6_stats": stats,
@@ -691,47 +856,51 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False):
             "peak_cpu_pct": round(peak_cpu_pct, 2),
             "swap_growth_mb": round(swap_growth_mb, 2),
             "throughput_req_per_s": round(throughput, 2),
+            "peak_swap_mb": round(peak_swap_mb, 2),
+            "min_avail_ram_mb": round(min_avail_ram_mb, 2),
         },
         "git_commit": provenance["git_commit"],
         "git_dirty": provenance["git_dirty"],
         "script_sha256": provenance["script_sha256"],
+        "harness_frozen_id": HARNESS_FROZEN_ID,
         "harness_provenance": provenance,
     }
 
     with open(raw_dir / "metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
 
-    # Append to master_runs.csv
-    file_exists = master_csv_path.exists()
-    with open(master_csv_path, "a", newline="") as f:
-        writer = csv.writer(f)
-        if not file_exists:
+    # Append to master_runs.csv ONLY if valid run
+    if run_status == "success" and not validation_only:
+        file_exists = master_csv_path.exists()
+        with open(master_csv_path, "a", newline="") as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow([
+                    "run_id", "timestamp", "arch", "n_slices", "vus", "repetition",
+                    "status", "validation_only", "e2e_p50_ms", "e2e_p95_ms", "e2e_p99_ms", "e2e_mean_ms",
+                    "upload_p95_ms", "poll_p95_ms", "throughput_req_s", "failure_rate",
+                    "peak_rss_mb", "peak_uvicorn_rss_mb", "peak_celery_rss_mb", "peak_node_rss_mb", "peak_total_stack_rss_mb",
+                    "avg_cpu_pct", "peak_cpu_pct", "swap_growth_mb", "git_commit", "script_sha256", "git_dirty", "harness_frozen_id"
+                ])
             writer.writerow([
-                "run_id", "timestamp", "arch", "n_slices", "vus", "repetition",
-                "status", "validation_only", "e2e_p50_ms", "e2e_p95_ms", "e2e_p99_ms", "e2e_mean_ms",
-                "upload_p95_ms", "poll_p95_ms", "throughput_req_s", "failure_rate",
-                "peak_rss_mb", "peak_uvicorn_rss_mb", "peak_celery_rss_mb", "peak_node_rss_mb", "peak_total_stack_rss_mb",
-                "avg_cpu_pct", "peak_cpu_pct", "swap_growth_mb", "git_commit", "script_sha256", "git_dirty"
+                run_id, timestamp, arch, n_slices, vus, rep, run_status, validation_only,
+                stats["e2e_p50"], stats["e2e_p95"], stats["e2e_p99"], stats["e2e_mean"],
+                stats["upload_p95"], stats["poll_p95"], round(throughput, 2), stats["failure_rate"],
+                "unknown",
+                round(peak_uvicorn_rss_mb, 2), round(peak_celery_rss_mb, 2), round(peak_node_rss_mb, 2), round(peak_total_stack_rss_mb, 2),
+                round(avg_cpu_pct, 2), round(peak_cpu_pct, 2), round(swap_growth_mb, 2),
+                provenance["git_commit"], provenance["script_sha256"], provenance["git_dirty"], HARNESS_FROZEN_ID
             ])
-        writer.writerow([
-            run_id, timestamp, arch, n_slices, vus, rep, run_status, validation_only,
-            stats["e2e_p50"], stats["e2e_p95"], stats["e2e_p99"], stats["e2e_mean"],
-            stats["upload_p95"], stats["poll_p95"], round(throughput, 2), stats["failure_rate"],
-            "unknown",
-            round(peak_uvicorn_rss_mb, 2), round(peak_celery_rss_mb, 2), round(peak_node_rss_mb, 2), round(peak_total_stack_rss_mb, 2),
-            round(avg_cpu_pct, 2), round(peak_cpu_pct, 2), round(swap_growth_mb, 2),
-            provenance["git_commit"], provenance["script_sha256"], provenance["git_dirty"]
-        ])
 
-    print(f"[Run] COMPLETE: e2e_p95={stats['e2e_p95']}ms, Throughput={throughput:.2f}req/s, "
-          f"UvicornRSS={peak_uvicorn_rss_mb:.1f}MB, CeleryRSS={peak_celery_rss_mb:.1f}MB, "
-          f"TotalStackRSS={peak_total_stack_rss_mb:.1f}MB, FailureRate={stats['failure_rate'] * 100:.1f}%")
+    print(f"[Run] COMPLETE: status={run_status}, validation_only={validation_only}, e2e_p95={stats['e2e_p95']}ms, "
+          f"Throughput={throughput:.2f}req/s, PeakSwap={peak_swap_mb:.1f}MB, MinRAM={min_avail_ram_mb:.1f}MB")
 
     cooldown = config.get("cooldown_seconds", 10)
     print(f"[Run] Cooling down for {cooldown}s...")
     time.sleep(cooldown)
 
-    return True, metadata
+    is_valid = (run_status == "success" and not validation_only)
+    return is_valid, metadata
 
 
 def build_full_factorial_schedule(config):
@@ -779,8 +948,600 @@ def is_cell_completed(cell, raw_results_dir):
     return False, None, None
 
 
+def load_status_csv(status_csv_path):
+    cells = {}
+    with open(status_csv_path, "r", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            key = (row["arch"], int(row["n_slices"]), int(row["vus"]))
+            cells[key] = {
+                "arch": row["arch"],
+                "n_slices": int(row["n_slices"]),
+                "vus": int(row["vus"]),
+                "valid_count": int(row["valid_count"]),
+                "attempts": int(row["attempts"]),
+                "failure_reasons": row["failure_reasons"],
+                "last_attempt_time": row["last_attempt_time"],
+                "wall_clock_seconds": float(row["wall_clock_seconds"]) if row["wall_clock_seconds"] else 0.0,
+                "phase": row.get("phase", "phase1"),
+                "cell_status": row.get("cell_status", "pending"),
+            }
+    return cells
+
+
+def save_status_csv(status_csv_path, cells_dict):
+    fieldnames = [
+        "arch", "n_slices", "vus", "valid_count", "attempts",
+        "failure_reasons", "last_attempt_time", "wall_clock_seconds",
+        "phase", "cell_status"
+    ]
+    with open(status_csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for cell in cells_dict.values():
+            writer.writerow(cell)
+
+
+def run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_csv_path, raw_base_dir):
+    print("\n" + "=" * 70)
+    print("PHASE 1: CONFIRMATORY EXECUTION (SCHEDULE v1)")
+    print("=" * 70)
+    status_cells = load_status_csv(status_csv_path)
+
+    with open(schedule_csv_path, "r", newline="") as f:
+        schedule = list(csv.DictReader(f))
+
+    total_slots = len(schedule)
+    for slot_idx, slot in enumerate(schedule, 1):
+        arch = slot["arch"]
+        n_slices = int(slot["n_slices"])
+        vus = int(slot["vus"])
+        rep = int(slot["replication"])
+        key = (arch, n_slices, vus)
+
+        cell_state = status_cells[key]
+        if cell_state["valid_count"] >= 5:
+            print(f"[Phase 1] Slot {slot_idx}/{total_slots} ({arch} N{n_slices} VU{vus} rep{rep}) SKIPPED: already has {cell_state['valid_count']} valid runs.")
+            continue
+        if cell_state["attempts"] >= 15:
+            print(f"[Phase 1] Slot {slot_idx}/{total_slots} ({arch} N{n_slices} VU{vus} rep{rep}) SKIPPED: 15-attempt budget reached. Status: {cell_state['cell_status']}.")
+            cell_state["cell_status"] = "infeasible_phase1"
+            save_status_csv(status_csv_path, status_cells)
+            continue
+
+        print(f"\n[Phase 1] Executing Slot {slot_idx}/{total_slots}: {arch} N={n_slices}, VU={vus}, Rep={rep} (Attempt {cell_state['attempts'] + 1}/15)...")
+        slot_start = time.time()
+        reset_actions = reset_for_attempt(config)
+        cell_def = {"arch": arch, "n": n_slices, "vu": vus, "rep": rep}
+        success, meta = execute_single_run(
+            cell_def, config, master_csv_path, raw_base_dir=raw_base_dir, reset_actions=reset_actions
+        )
+        duration = round(time.time() - slot_start, 2)
+
+        cell_state["attempts"] += 1
+        cell_state["last_attempt_time"] = datetime.datetime.now().isoformat()
+        cell_state["wall_clock_seconds"] = duration
+
+        if success and not meta.get("validation_only", True):
+            cell_state["valid_count"] += 1
+            if cell_state["valid_count"] >= 5:
+                cell_state["cell_status"] = "completed"
+        else:
+            status_desc = meta.get("status", "failed")
+            triggers = meta.get("validation_triggers", [])
+            err_msg = f"{status_desc}: {'; '.join(triggers)}" if triggers else status_desc
+            existing = cell_state["failure_reasons"].split("; ") if cell_state["failure_reasons"] else []
+            if err_msg not in existing:
+                existing.append(err_msg)
+            cell_state["failure_reasons"] = "; ".join(existing)
+
+            if cell_state["attempts"] >= 15 and cell_state["valid_count"] < 5:
+                cell_state["cell_status"] = "infeasible_phase1"
+
+        save_status_csv(status_csv_path, status_cells)
+        print(f"[Phase 1] Slot {slot_idx} completed: {arch} N{n_slices} VU{vus} -> Valid: {cell_state['valid_count']}, Attempts: {cell_state['attempts']}, Status: {cell_state['cell_status']}")
+
+    print("\n[Phase 1] Confirmatory Phase 1 Schedule completed.")
+
+
+def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_dir):
+    print("\n" + "=" * 70)
+    print("PHASE 2: FEASIBILITY GATE (7 CONDITIONS × 3 ARCHITECTURES)")
+    print("=" * 70)
+
+    conditions = [
+        (100, 50),
+        (100, 100),
+        (100, 200),
+        (200, 10),
+        (200, 50),
+        (200, 100),
+        (200, 200)
+    ]
+    status_cells = load_status_csv(status_csv_path)
+    feasibility_records = []
+
+    # Probing loop
+    for n_slices, vus in conditions:
+        print(f"\n[Phase 2 Probe] Condition N={n_slices}, VUs={vus}...")
+        archs = ["sync", "background", "celery"]
+        rng = random.Random(20261020 + n_slices + vus)
+        rng.shuffle(archs)
+
+        condition_probes_passed = True
+        probe_details = {}
+
+        for arch in archs:
+            key = (arch, n_slices, vus)
+            cell_state = status_cells[key]
+            print(f"[Phase 2 Probe] Probing {arch} at N={n_slices}, VU={vus}...")
+
+            slot_start = time.time()
+            reset_actions = reset_for_attempt(config)
+            cell_def = {"arch": arch, "n": n_slices, "vu": vus, "rep": 1}
+
+            success, meta = execute_single_run(
+                cell_def, config, master_csv_path, raw_base_dir=raw_base_dir, reset_actions=reset_actions
+            )
+            duration = round(time.time() - slot_start, 2)
+            cell_state["attempts"] += 1
+            cell_state["last_attempt_time"] = datetime.datetime.now().isoformat()
+            cell_state["wall_clock_seconds"] = duration
+
+            status_desc = meta.get("status", "unknown")
+            metrics = meta.get("metrics", {})
+            peak_swap = metrics.get("peak_swap_mb", meta.get("gate_readings", {}).get("swap_used_mb", 0.0))
+            min_ram = metrics.get("min_avail_ram_mb", meta.get("gate_readings", {}).get("available_memory_mb", 0.0))
+            triggers = meta.get("validation_triggers", [])
+
+            if success and not meta.get("validation_only", True):
+                cell_state["valid_count"] = 1
+                cell_state["cell_status"] = "probe_succeeded"
+                probe_details[arch] = {"passed": True, "status": "success", "triggers": [], "peak_swap": peak_swap, "min_ram": min_ram}
+            else:
+                condition_probes_passed = False
+                cell_state["cell_status"] = "probe_failed"
+                err_msg = f"{status_desc}: {'; '.join(triggers)}" if triggers else status_desc
+                existing = cell_state["failure_reasons"].split("; ") if cell_state["failure_reasons"] else []
+                if err_msg not in existing:
+                    existing.append(err_msg)
+                cell_state["failure_reasons"] = "; ".join(existing)
+                probe_details[arch] = {
+                    "passed": False,
+                    "status": status_desc,
+                    "triggers": triggers,
+                    "peak_swap": peak_swap,
+                    "min_ram": min_ram
+                }
+
+            save_status_csv(status_csv_path, status_cells)
+
+        feasibility_records.append({
+            "n_slices": n_slices,
+            "vus": vus,
+            "probes_passed": condition_probes_passed,
+            "probe_details": probe_details
+        })
+
+        if not condition_probes_passed:
+            print(f"[Phase 2 Feasibility Boundary] Condition N={n_slices}, VU={vus} is INFEASIBLE (probe failed). Boundary established; not extending.")
+            for arch in ["sync", "background", "celery"]:
+                key = (arch, n_slices, vus)
+                if status_cells[key]["cell_status"] != "completed":
+                    if status_cells[key]["cell_status"] != "probe_failed":
+                        status_cells[key]["cell_status"] = "infeasible_probe"
+            save_status_csv(status_csv_path, status_cells)
+            continue
+
+        # If all 3 probes succeeded, extend condition to 5 valid runs!
+        print(f"[Phase 2 Extension] All 3 probes succeeded for N={n_slices}, VU={vus}. Extending to 5 valid runs...")
+        ext_rng = random.Random(20261021 + n_slices + vus)
+        ext_items = []
+        for rep in range(2, 6):
+            for arch in ["sync", "background", "celery"]:
+                ext_items.append({"arch": arch, "rep": rep})
+        ext_rng.shuffle(ext_items)
+
+        consecutive_failures = {a: 0 for a in ["sync", "background", "celery"]}
+
+        for ext_item in ext_items:
+            arch = ext_item["arch"]
+            rep = ext_item["rep"]
+            key = (arch, n_slices, vus)
+            cell_state = status_cells[key]
+
+            if cell_state["valid_count"] >= 5:
+                continue
+            if consecutive_failures[arch] >= 3:
+                print(f"[Phase 2 Extension] {arch} N{n_slices} VU{vus} reached 3 consecutive failures. Marked infeasible_phase2.")
+                cell_state["cell_status"] = "infeasible_phase2"
+                save_status_csv(status_csv_path, status_cells)
+                continue
+            if cell_state["attempts"] >= 15:
+                print(f"[Phase 2 Extension] {arch} N{n_slices} VU{vus} reached 15 attempts. Marked infeasible_phase2.")
+                cell_state["cell_status"] = "infeasible_phase2"
+                save_status_csv(status_csv_path, status_cells)
+                continue
+
+            print(f"[Phase 2 Extension] Running {arch} N={n_slices}, VU={vus}, Rep={rep} (Attempt {cell_state['attempts'] + 1}/15)...")
+            slot_start = time.time()
+            reset_actions = reset_for_attempt(config)
+            cell_def = {"arch": arch, "n": n_slices, "vu": vus, "rep": rep}
+            success, meta = execute_single_run(
+                cell_def, config, master_csv_path, raw_base_dir=raw_base_dir, reset_actions=reset_actions
+            )
+            duration = round(time.time() - slot_start, 2)
+            cell_state["attempts"] += 1
+            cell_state["last_attempt_time"] = datetime.datetime.now().isoformat()
+            cell_state["wall_clock_seconds"] = duration
+
+            if success and not meta.get("validation_only", True):
+                cell_state["valid_count"] += 1
+                consecutive_failures[arch] = 0
+                if cell_state["valid_count"] >= 5:
+                    cell_state["cell_status"] = "completed"
+            else:
+                consecutive_failures[arch] += 1
+                status_desc = meta.get("status", "failed")
+                triggers = meta.get("validation_triggers", [])
+                err_msg = f"{status_desc}: {'; '.join(triggers)}" if triggers else status_desc
+                existing = cell_state["failure_reasons"].split("; ") if cell_state["failure_reasons"] else []
+                if err_msg not in existing:
+                    existing.append(err_msg)
+                cell_state["failure_reasons"] = "; ".join(existing)
+
+                if consecutive_failures[arch] >= 3:
+                    cell_state["cell_status"] = "infeasible_phase2"
+                elif cell_state["attempts"] >= 15 and cell_state["valid_count"] < 5:
+                    cell_state["cell_status"] = "infeasible_phase2"
+
+            save_status_csv(status_csv_path, status_cells)
+
+    write_feasibility_md(status_cells, feasibility_records)
+
+
+def write_feasibility_md(status_cells, feasibility_records):
+    feasibility_path = REPO_ROOT / "experiments" / "results" / "confirmatory_frozen_v1" / "FEASIBILITY.md"
+    lines = [
+        "# Protocol Feasibility Boundary Report (Frozen Harness v1)",
+        "",
+        "**Protocol**: Option A, Feasibility-Gated Extension (Dr. Karim Protocol 19 Oct 2026)",
+        "**Dataset**: Confirmatory Frozen Dataset (`confirmatory_frozen_v1`)",
+        f"**Date**: {datetime.date.today().isoformat()}",
+        "",
+        "---",
+        "",
+        "## 1. Feasibility Boundary Summary",
+        "",
+        "Under the pre-registered protocol, Phase 2 evaluates 7 high-stress conditions (21 cells).",
+        "A condition is extended to 5 valid runs only if all 3 architectures pass the probe run.",
+        "If any probe fails, the condition is declared infeasible and execution stops at that boundary.",
+        "",
+        "| Condition | Probe Result | Sync Status | Background Status | Celery Status | Boundary Assessment |",
+        "| :--- | :---: | :---: | :---: | :---: | :--- |",
+    ]
+
+    for rec in feasibility_records:
+        n, vu = rec["n_slices"], rec["vus"]
+        passed = rec["probes_passed"]
+        details = rec["probe_details"]
+        sync_st = details.get("sync", {}).get("status", "pending")
+        bg_st = details.get("background", {}).get("status", "pending")
+        cel_st = details.get("celery", {}).get("status", "pending")
+        outcome = "Feasible (Extended)" if passed else "Infeasible Boundary (Halted)"
+        lines.append(f"| N={n} VU={vu} | {'PASSED' if passed else 'FAILED'} | {sync_st} | {bg_st} | {cel_st} | {outcome} |")
+
+    lines.extend([
+        "",
+        "---",
+        "",
+        "## 2. Cell-by-Cell Failure Diagnostics",
+        "",
+    ])
+
+    for rec in feasibility_records:
+        n, vu = rec["n_slices"], rec["vus"]
+        lines.append(f"### Condition N={n}, VU={vu}")
+        for arch, det in rec["probe_details"].items():
+            st = det.get("status", "unknown")
+            triggers = det.get("triggers", [])
+            trig_str = "; ".join(triggers) if triggers else "None"
+            peak_sw = det.get("peak_swap", 0.0)
+            min_ram = det.get("min_ram", 0.0)
+            lines.append(f"- **{arch}**: Status=`{st}`, Peak Swap={peak_sw:.1f} MB, Min RAM={min_ram:.1f} MB, Triggers=`{trig_str}`")
+        lines.append("")
+
+    with open(feasibility_path, "w") as f:
+        f.write("\n".join(lines))
+    print(f"[Feasibility] Written boundary report to {feasibility_path}")
+
+
+def calc_cliffs_delta_details(x, y):
+    n_x, n_y = len(x), len(y)
+    if n_x == 0 or n_y == 0:
+        return 0.0, "not computed: n<5"
+    greater = 0
+    lesser = 0
+    for i in x:
+        for j in y:
+            if i > j:
+                greater += 1
+            elif i < j:
+                lesser += 1
+    d = (greater - lesser) / (n_x * n_y)
+    note = "complete separation" if abs(d) == 1.0 else "partial overlap"
+    return d, note
+
+
+def calc_bootstrap_ci_diff(x, y, B=5000, seed=20261013):
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    diffs = []
+    n_x, n_y = len(x), len(y)
+    for _ in range(B):
+        sample_x = rng.choice(x, size=n_x, replace=True)
+        sample_y = rng.choice(y, size=n_y, replace=True)
+        diffs.append(float(np.median(sample_x) - np.median(sample_y)))
+    ci_lower = float(np.percentile(diffs, 2.5))
+    ci_upper = float(np.percentile(diffs, 97.5))
+    return ci_lower, ci_upper
+
+
+def write_results_draft_md(status_cells, desc_rows, stat_rows, script_shas, harness_ids, swap_note, output_path):
+    total_cells = len(status_cells)
+    cells_completed = sum(1 for c in status_cells.values() if c["cell_status"] == "completed")
+    cells_inf_p1 = sum(1 for c in status_cells.values() if c["cell_status"] == "infeasible_phase1")
+    cells_inf_p2 = sum(1 for c in status_cells.values() if c["cell_status"] in ("infeasible_phase2", "probe_failed", "infeasible_probe"))
+    total_attempts = sum(c["attempts"] for c in status_cells.values())
+    durations = [c["wall_clock_seconds"] for c in status_cells.values() if c["wall_clock_seconds"] > 0]
+    avg_wall_clock = round(sum(durations) / len(durations), 2) if durations else 0.0
+
+    lines = [
+        "# Confirmatory Benchmark Results Draft (Frozen Harness v1)",
+        "",
+        "**Protocol**: Option A, Frozen Harness (Dr. Karim Protocol 19 Oct 2026)",
+        f"**Date**: {datetime.date.today().isoformat()}",
+        f"**Harness Frozen ID**: {', '.join(harness_ids) if harness_ids else HARNESS_FROZEN_ID}",
+        f"**Script SHA256**: {', '.join(script_shas) if script_shas else 'None'}",
+        "",
+        "---",
+        "",
+        "## 1. Protocol Execution Summary",
+        "",
+        f"- **Total Architecture Cells**: {total_cells} (15 Phase 1 cells, 21 Phase 2 cells)",
+        f"- **Cells Completed (n >= 5)**: {cells_completed}",
+        f"- **Cells Infeasible in Phase 1**: {cells_inf_p1}",
+        f"- **Cells Infeasible in Phase 2**: {cells_inf_p2}",
+        f"- **Total Execution Attempts**: {total_attempts}",
+        f"- **Average Wall-Clock Duration per Attempt**: {avg_wall_clock} s",
+        "- **Host Reset Reboots**: 0",
+        "",
+        "---",
+        "",
+        "## 2. Descriptive Telemetry & Burst Request Behavior",
+        "",
+        "All measurements represent burst / concurrent-request behavior under k6 load generator bursts, not sustained scalability.",
+        "",
+        "| Architecture | N | VUs | Phase | Status | Valid n | Attempts | e2e p95 Median (ms) | Throughput Median (req/s) | Failure Rate Mean | Swap Growth Median (MB) |",
+        "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
+    ]
+
+    for r in desc_rows:
+        lines.append(
+            f"| {r['arch']} | {r['n_slices']} | {r['vus']} | {r['phase']} | {r['cell_status']} | "
+            f"{r['valid_n']} | {r['attempts']} | {r['e2e_p95_median_ms']} | {r['throughput_median_req_s']} | "
+            f"{r['failure_rate_mean']} | {r['swap_growth_median_mb']} |"
+        )
+
+    lines.extend([
+        "",
+        "---",
+        "",
+        "## 3. Inferential Hypothesis Testing (Kruskal-Wallis & Dunn-Holm)",
+        "",
+        "Tests conducted solely on confirmatory frozen dataset where all three architectures satisfied n >= 5.",
+        "",
+        "| Condition | KW H-stat | KW p-value | Dunn-Holm (Sync vs Celery) | Dunn-Holm (Sync vs BG) | Dunn-Holm (BG vs Celery) | Cliff's Delta (Sync vs Celery) | Bootstrap 95% CI (Sync vs Celery) |",
+        "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
+    ])
+
+    for s in stat_rows:
+        lines.append(
+            f"| N={s['n_slices']} VU={s['vus']} | {s['kw_h_stat']} | {s['kw_p_val']} | "
+            f"{s['dunn_holm_sync_vs_celery_p']} | {s['dunn_holm_sync_vs_bg_p']} | {s['dunn_holm_bg_vs_celery_p']} | "
+            f"{s['cliffs_delta_sync_vs_celery']} ({s['cliffs_delta_sync_vs_celery_note']}) | {s['bootstrap_ci95_sync_vs_celery']} |"
+        )
+
+    lines.extend([
+        "",
+        "---",
+        "",
+        "## 4. Sensitivity & Host Integrity Audit",
+        "",
+        f"- **Swap Sensitivity**: {swap_note}",
+        f"- **Harness Integrity**: Exactly one `harness_frozen_id` ({HARNESS_FROZEN_ID}) and matching `script_sha256` recorded across all confirmatory attempts.",
+        "",
+    ])
+
+    with open(output_path, "w") as f:
+        f.write("\n".join(lines))
+    print(f"[Results Draft] Written factual draft to {output_path}")
+
+
+def run_confirmatory_analysis():
+    import numpy as np
+    import pandas as pd
+    from scipy import stats
+    import scikit_posthocs as sp
+
+    confirmatory_dir = REPO_ROOT / "experiments" / "results" / "confirmatory_frozen_v1"
+    master_csv = confirmatory_dir / "master.csv"
+    stats_csv_path = confirmatory_dir / "stats_frozen_v1.csv"
+    desc_csv_path = confirmatory_dir / "descriptive_frozen_v1.csv"
+    results_draft_path = confirmatory_dir / "RESULTS_DRAFT.md"
+    status_csv_path = confirmatory_dir / "status.csv"
+
+    status_cells = load_status_csv(status_csv_path)
+
+    if master_csv.exists() and master_csv.stat().st_size > 0:
+        df = pd.read_csv(master_csv)
+    else:
+        df = pd.DataFrame()
+
+    script_shas = df["script_sha256"].unique().tolist() if not df.empty and "script_sha256" in df.columns else []
+    harness_ids = df["harness_frozen_id"].unique().tolist() if not df.empty and "harness_frozen_id" in df.columns else []
+
+    desc_rows = []
+    for key, cell_st in status_cells.items():
+        arch, n, vu = key
+        cell_df = df[(df["arch"] == arch) & (df["n_slices"] == n) & (df["vus"] == vu)] if not df.empty else pd.DataFrame()
+        valid_n = len(cell_df)
+
+        if valid_n > 0:
+            e2e_p95_med = round(float(cell_df["e2e_p95_ms"].median()), 2)
+            e2e_p95_iqr = round(float(cell_df["e2e_p95_ms"].quantile(0.75) - cell_df["e2e_p95_ms"].quantile(0.25)), 2)
+            tp_med = round(float(cell_df["throughput_req_s"].median()), 2)
+            fail_rate_avg = round(float(cell_df["failure_rate"].mean()), 4)
+            cpu_avg = round(float(cell_df["avg_cpu_pct"].mean()), 2)
+            cpu_peak = round(float(cell_df["peak_cpu_pct"].max()), 2)
+            peak_uvi = round(float(cell_df["peak_uvicorn_rss_mb"].max()), 2)
+            peak_cel = round(float(cell_df["peak_celery_rss_mb"].max()), 2)
+            peak_node = round(float(cell_df["peak_node_rss_mb"].max()), 2)
+            peak_stack = round(float(cell_df["peak_total_stack_rss_mb"].max()), 2)
+            swap_growth_med = round(float(cell_df["swap_growth_mb"].median()), 2)
+        else:
+            e2e_p95_med = "not computed: n<5"
+            e2e_p95_iqr = "not computed: n<5"
+            tp_med = "not computed: n<5"
+            fail_rate_avg = "not computed: n<5"
+            cpu_avg = "not computed: n<5"
+            cpu_peak = "not computed: n<5"
+            peak_uvi = "not computed: n<5"
+            peak_cel = "not computed: n<5"
+            peak_node = "not computed: n<5"
+            peak_stack = "not computed: n<5"
+            swap_growth_med = "not computed: n<5"
+
+        desc_rows.append({
+            "arch": arch,
+            "n_slices": n,
+            "vus": vu,
+            "phase": cell_st["phase"],
+            "cell_status": cell_st["cell_status"],
+            "valid_n": valid_n,
+            "attempts": cell_st["attempts"],
+            "e2e_p95_median_ms": e2e_p95_med,
+            "e2e_p95_iqr_ms": e2e_p95_iqr,
+            "throughput_median_req_s": tp_med,
+            "failure_rate_mean": fail_rate_avg,
+            "cpu_avg_pct": cpu_avg,
+            "cpu_peak_pct": cpu_peak,
+            "peak_uvicorn_rss_mb": peak_uvi,
+            "peak_celery_rss_mb": peak_cel,
+            "peak_node_rss_mb": peak_node,
+            "peak_total_stack_rss_mb": peak_stack,
+            "swap_growth_median_mb": swap_growth_med,
+        })
+
+    pd.DataFrame(desc_rows).to_csv(desc_csv_path, index=False)
+    print(f"[Analysis] Saved descriptive statistics to {desc_csv_path}")
+
+    stat_rows = []
+    all_conditions = sorted(list(set([(c["n_slices"], c["vus"]) for c in desc_rows])))
+    for n, vu in all_conditions:
+        sub_df = df[(df["n_slices"] == n) & (df["vus"] == vu)] if not df.empty else pd.DataFrame()
+        sync_vals = sub_df[sub_df["arch"] == "sync"]["e2e_p95_ms"].dropna().tolist() if not sub_df.empty else []
+        bg_vals = sub_df[sub_df["arch"] == "background"]["e2e_p95_ms"].dropna().tolist() if not sub_df.empty else []
+        cel_vals = sub_df[sub_df["arch"] == "celery"]["e2e_p95_ms"].dropna().tolist() if not sub_df.empty else []
+
+        all_ge_5 = (len(sync_vals) >= 5 and len(bg_vals) >= 5 and len(cel_vals) >= 5)
+
+        if all_ge_5:
+            h_stat, kw_p = stats.kruskal(sync_vals, bg_vals, cel_vals)
+            dunn_df = sp.posthoc_dunn(sub_df, val_col="e2e_p95_ms", group_col="arch", p_adjust="holm")
+            p_sync_cel = float(dunn_df.loc["sync", "celery"])
+            p_sync_bg = float(dunn_df.loc["sync", "background"])
+            p_bg_cel = float(dunn_df.loc["background", "celery"])
+
+            cd_sync_cel, note_sc = calc_cliffs_delta_details(sync_vals, cel_vals)
+            cd_sync_bg, note_sb = calc_cliffs_delta_details(sync_vals, bg_vals)
+            cd_bg_cel, note_bc = calc_cliffs_delta_details(bg_vals, cel_vals)
+
+            ci_sc_lo, ci_sc_hi = calc_bootstrap_ci_diff(sync_vals, cel_vals, B=5000, seed=20261013)
+            ci_sb_lo, ci_sb_hi = calc_bootstrap_ci_diff(sync_vals, bg_vals, B=5000, seed=20261013)
+            ci_bc_lo, ci_bc_hi = calc_bootstrap_ci_diff(bg_vals, cel_vals, B=5000, seed=20261013)
+
+            stat_rows.append({
+                "n_slices": n,
+                "vus": vu,
+                "kw_h_stat": round(h_stat, 4),
+                "kw_p_val": round(kw_p, 6),
+                "dunn_holm_sync_vs_celery_p": round(p_sync_cel, 6),
+                "dunn_holm_sync_vs_bg_p": round(p_sync_bg, 6),
+                "dunn_holm_bg_vs_celery_p": round(p_bg_cel, 6),
+                "cliffs_delta_sync_vs_celery": round(cd_sync_cel, 4),
+                "cliffs_delta_sync_vs_celery_note": note_sc,
+                "bootstrap_ci95_sync_vs_celery": f"[{ci_sc_lo:.2f}, {ci_sc_hi:.2f}]",
+                "cliffs_delta_sync_vs_bg": round(cd_sync_bg, 4),
+                "cliffs_delta_sync_vs_bg_note": note_sb,
+                "bootstrap_ci95_sync_vs_bg": f"[{ci_sb_lo:.2f}, {ci_sb_hi:.2f}]",
+                "cliffs_delta_bg_vs_celery": round(cd_bg_cel, 4),
+                "cliffs_delta_bg_vs_celery_note": note_bc,
+                "bootstrap_ci95_bg_vs_celery": f"[{ci_bc_lo:.2f}, {ci_bc_hi:.2f}]",
+            })
+        else:
+            stat_rows.append({
+                "n_slices": n,
+                "vus": vu,
+                "kw_h_stat": "not computed: n<5",
+                "kw_p_val": "not computed: n<5",
+                "dunn_holm_sync_vs_celery_p": "not computed: n<5",
+                "dunn_holm_sync_vs_bg_p": "not computed: n<5",
+                "dunn_holm_bg_vs_celery_p": "not computed: n<5",
+                "cliffs_delta_sync_vs_celery": "not computed: n<5",
+                "cliffs_delta_sync_vs_celery_note": "not computed: n<5",
+                "bootstrap_ci95_sync_vs_celery": "not computed: n<5",
+                "cliffs_delta_sync_vs_bg": "not computed: n<5",
+                "cliffs_delta_sync_vs_bg_note": "not computed: n<5",
+                "bootstrap_ci95_sync_vs_bg": "not computed: n<5",
+                "cliffs_delta_bg_vs_celery": "not computed: n<5",
+                "cliffs_delta_bg_vs_celery_note": "not computed: n<5",
+                "bootstrap_ci95_bg_vs_celery": "not computed: n<5",
+            })
+
+    pd.DataFrame(stat_rows).to_csv(stats_csv_path, index=False)
+    print(f"[Analysis] Saved inferential statistics to {stats_csv_path}")
+
+    swap_over_500 = df[df["swap_growth_mb"] > 500] if not df.empty and "swap_growth_mb" in df.columns else pd.DataFrame()
+    swap_sensitivity_note = f"Swap growth > 500 MB observed in {len(swap_over_500)} runs out of {len(df)} total confirmatory runs. Per protocol, zero runs were excluded from confirmatory analysis."
+
+    write_results_draft_md(status_cells, desc_rows, stat_rows, script_shas, harness_ids, swap_sensitivity_note, results_draft_path)
+
+
+def run_confirmatory_protocol(config, args):
+    confirmatory_dir = REPO_ROOT / "experiments" / "results" / "confirmatory_frozen_v1"
+    confirmatory_dir.mkdir(parents=True, exist_ok=True)
+    master_csv_path = confirmatory_dir / "master.csv"
+    status_csv_path = confirmatory_dir / "status.csv"
+    raw_base_dir = confirmatory_dir / "raw"
+    raw_base_dir.mkdir(parents=True, exist_ok=True)
+    schedule_csv_path = REPO_ROOT / "experiments" / "config" / "schedule_phase1_v1.csv"
+
+    # Step 1: Phase 1
+    run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_csv_path, raw_base_dir)
+
+    # Step 2: Phase 2
+    run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_dir)
+
+    # Step 3: Analysis
+    run_confirmatory_analysis()
+
+
 def main():
     parser = argparse.ArgumentParser(description="CDSS X-Core A/B/C Experiment Harness")
+    parser.add_argument("--freeze-manifest", action="store_true", help="Generate frozen harness manifest (experiments/config/harness_frozen_v1.json)")
+    parser.add_argument("--confirmatory", action="store_true", help="Execute Confirmatory Protocol (Option A, Phase 1 + Phase 2 + Analysis)")
+    parser.add_argument("--analyze-confirmatory", action="store_true", help="Run Confirmatory Analysis on confirmatory_frozen_v1/master.csv")
     parser.add_argument("--pilot", action="store_true", help="Execute Full Pilot protocol (Task 4)")
     parser.add_argument("--pilot-phase2", action="store_true", help="Execute Pilot Phase 2 only (reproducibility check: reps 2 & 3)")
     parser.add_argument("--full", action="store_true", help="Execute Full 180-run factorial experiment (Task 5)")
@@ -794,7 +1555,22 @@ def main():
     parser.add_argument("--skip-gate", action="store_true", help="Skip gate checks (debug only)")
     args = parser.parse_args()
 
+    if args.freeze_manifest:
+        generate_frozen_manifest()
+        return
+
+    verify_frozen_harness()
+
     config = load_config()
+
+    if args.confirmatory:
+        run_confirmatory_protocol(config, args)
+        return
+
+    if args.analyze_confirmatory:
+        run_confirmatory_analysis()
+        return
+
     raw_results_dir = REPO_ROOT / config["paths"]["results_raw_dir"]
     raw_results_dir.mkdir(parents=True, exist_ok=True)
     master_csv = raw_results_dir / "master_runs.csv"

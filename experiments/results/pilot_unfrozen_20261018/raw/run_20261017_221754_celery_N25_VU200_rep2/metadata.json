@@ -1,0 +1,52 @@
+{
+  "run_id": "run_20261017_221754_celery_N25_VU200_rep2",
+  "status": "success",
+  "validation_only": false,
+  "validation_triggers": [],
+  "arch": "celery",
+  "n_slices": 25,
+  "vus": 200,
+  "repetition": 2,
+  "timestamp": "20261017_221754",
+  "duration_seconds": 62.1,
+  "gate_readings": {
+    "swap_used_mb": 338.06,
+    "available_memory_mb": 4134.75,
+    "ac_power_connected": true,
+    "disk_free_gb": 10.060009002685547,
+    "thermal_state": "Note: No thermal warning level has been recorded; Note: No performance warning level has been recorded; Note: No CPU power status has been recorded"
+  },
+  "worker_concurrency": 4,
+  "worker_pool": "threads",
+  "k6_stats": {
+    "e2e_p50": 31937,
+    "e2e_p95": 41093,
+    "e2e_p99": 43440,
+    "e2e_mean": 30341.793969849245,
+    "upload_p50": 22566,
+    "upload_p95": 27173,
+    "poll_p50": 12175,
+    "poll_p95": 18893,
+    "total_requests": 200,
+    "successful_conversions": 199,
+    "failure_rate": 0.005
+  },
+  "telemetry": {
+    "peak_uvicorn_rss_mb": 131.72,
+    "peak_celery_rss_mb": 1235.27,
+    "peak_node_rss_mb": 393.3,
+    "peak_total_stack_rss_mb": 1385.06,
+    "avg_cpu_pct": 34.2,
+    "peak_cpu_pct": 98.1,
+    "swap_growth_mb": 6482.75,
+    "throughput_req_per_s": 3.22
+  },
+  "git_commit": "5523b18c4473f0d6173c587b3f1d7c8259f2a31c",
+  "git_dirty": true,
+  "script_sha256": "17cb7f6973b479508961e59a023626fad366aceb80267abb388e51c8667e2a34",
+  "harness_provenance": {
+    "git_commit": "5523b18c4473f0d6173c587b3f1d7c8259f2a31c",
+    "git_dirty": true,
+    "script_sha256": "17cb7f6973b479508961e59a023626fad366aceb80267abb388e51c8667e2a34"
+  }
+}

@@ -1,0 +1,1 @@
+run_id,timestamp,arch,n_slices,vus,repetition,status,validation_only,e2e_p50_ms,e2e_p95_ms,e2e_p99_ms,e2e_mean_ms,upload_p95_ms,poll_p95_ms,throughput_req_s,failure_rate,peak_rss_mb,peak_uvicorn_rss_mb,peak_celery_rss_mb,peak_node_rss_mb,peak_total_stack_rss_mb,avg_cpu_pct,peak_cpu_pct,swap_growth_mb,git_commit,script_sha256,git_dirty,harness_frozen_id
