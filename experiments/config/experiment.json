@@ -16,8 +16,8 @@
   "worker_pool": "threads",
   "cooldown_seconds": 10,
   "reboot_policy": {
-    "enabled": true,
-    "reboot_before_attempt": true,
+    "enabled": false,
+    "reboot_before_attempt": false,
     "max_reboots_per_attempt": 1,
     "launch_agent_label": "com.sereneapps.harness",
     "launch_agent_path": "~/Library/LaunchAgents/com.sereneapps.harness.plist",

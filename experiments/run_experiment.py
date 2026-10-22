@@ -1267,13 +1267,12 @@ def run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_c
                 triggers = meta.get("validation_triggers", [])
                 err_msg = f"environment_invalid: {'; '.join(triggers)}" if triggers else "environment_invalid"
 
-                if reboot_already_done:
+                if reboot_already_done or not reboot_enabled:
                     print(f"\n{'!' * 70}")
-                    print(f"[Phase 1] HOST ENVIRONMENT STILL INVALID AFTER REBOOT for {arch} N{n_slices} VU{vus} rep{rep}.")
+                    print(f"[Phase 1] HOST ENVIRONMENT INVALID for {arch} N{n_slices} VU{vus} rep{rep}.")
                     print(f"  Reasons: {err_msg}")
-                    print("  Per 22 Oct 2026 Protocol Amendment 02:")
-                    print("  - Preflight gate failed after 1 host reboot.")
-                    print("  - Halting execution with exit code 2 to prevent infinite reboot loop.")
+                    print("  Auto-reboot is disabled or already performed.")
+                    print("  Halting execution with exit code 2 to avoid unverified host conditions.")
                     print(f"{'!' * 70}\n")
                     print("[OPERATOR REQUIRED] Please ensure:")
                     print("  1. MagSafe / AC power adapter is securely connected.")
@@ -1411,13 +1410,12 @@ def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_d
                 triggers = meta.get("validation_triggers", [])
                 err_msg = f"environment_invalid: {'; '.join(triggers)}" if triggers else "environment_invalid"
 
-                if reboot_already_done:
+                if reboot_already_done or not reboot_enabled:
                     print(f"\n{'!' * 70}")
-                    print(f"[Phase 2 Probe] HOST ENVIRONMENT STILL INVALID AFTER REBOOT for {arch} N{n_slices} VU{vus}.")
+                    print(f"[Phase 2 Probe] HOST ENVIRONMENT INVALID for {arch} N{n_slices} VU{vus}.")
                     print(f"  Reasons: {err_msg}")
-                    print("  Per 22 Oct 2026 Protocol Amendment 02:")
-                    print("  - Preflight gate failed after 1 host reboot.")
-                    print("  - Halting execution with exit code 2 to prevent infinite reboot loop.")
+                    print("  Auto-reboot is disabled or already performed.")
+                    print("  Halting execution with exit code 2 to avoid unverified host conditions.")
                     print(f"{'!' * 70}\n")
                     print("[OPERATOR REQUIRED] Please ensure:")
                     print("  1. MagSafe / AC power adapter is securely connected.")
@@ -1557,13 +1555,12 @@ def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_d
                 triggers = meta.get("validation_triggers", [])
                 err_msg = f"environment_invalid: {'; '.join(triggers)}" if triggers else "environment_invalid"
 
-                if reboot_already_done:
+                if reboot_already_done or not reboot_enabled:
                     print(f"\n{'!' * 70}")
-                    print(f"[Phase 2 Extension] HOST ENVIRONMENT STILL INVALID AFTER REBOOT for {arch} N{n_slices} VU{vus} rep{rep}.")
+                    print(f"[Phase 2 Extension] HOST ENVIRONMENT INVALID for {arch} N{n_slices} VU{vus} rep{rep}.")
                     print(f"  Reasons: {err_msg}")
-                    print("  Per 22 Oct 2026 Protocol Amendment 02:")
-                    print("  - Preflight gate failed after 1 host reboot.")
-                    print("  - Halting execution with exit code 2 to prevent infinite reboot loop.")
+                    print("  Auto-reboot is disabled or already performed.")
+                    print("  Halting execution with exit code 2 to avoid unverified host conditions.")
                     print(f"{'!' * 70}\n")
                     print("[OPERATOR REQUIRED] Please ensure:")
                     print("  1. MagSafe / AC power adapter is securely connected.")
