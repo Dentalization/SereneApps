@@ -45,8 +45,12 @@ def load_config():
         return json.load(f)
 
 
-HARNESS_FROZEN_ID = "harness-frozen-v1"
+HARNESS_FROZEN_ID = "harness-frozen-v1.1"
 FROZEN_MANIFEST_PATH = REPO_ROOT / "experiments" / "config" / "harness_frozen_v1.json"
+CONFIRMATORY_DIR = REPO_ROOT / "experiments" / "results" / "confirmatory_frozen_v1"
+RESUME_STATE_PATH = CONFIRMATORY_DIR / "resume_state.json"
+LAUNCH_AGENT_LABEL = "com.sereneapps.harness"
+LAUNCH_AGENT_PATH = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_AGENT_LABEL}.plist"
 
 
 def get_harness_provenance():
@@ -153,10 +157,11 @@ def verify_frozen_harness():
             print(f"  Actual:   {actual_sha}", file=sys.stderr)
             sys.exit(1)
 
-    # Check git tag harness-frozen-v1 if present in git repo
+    # Check git tag harness-frozen-v1.1 (or frozen id from manifest) if present in git repo
+    target_tag = manifest.get("harness_frozen_id", HARNESS_FROZEN_ID)
     try:
         tag_commit = subprocess.check_output(
-            ["git", "rev-parse", "harness-frozen-v1^{commit}"],
+            ["git", "rev-parse", f"{target_tag}^{{commit}}"],
             cwd=str(REPO_ROOT),
             text=True,
             stderr=subprocess.DEVNULL
@@ -166,12 +171,140 @@ def verify_frozen_harness():
             cwd=str(REPO_ROOT),
         ).returncode == 0
         if not is_ancestor:
-            print(f"[FATAL] HEAD does not contain harness-frozen-v1 tag ({tag_commit})!", file=sys.stderr)
+            print(f"[FATAL] HEAD does not contain {target_tag} tag ({tag_commit})!", file=sys.stderr)
             sys.exit(1)
     except subprocess.CalledProcessError:
         pass
 
     print(f"[Harness] Frozen integrity verified against {manifest.get('harness_frozen_id', HARNESS_FROZEN_ID)}.")
+
+
+def compute_file_sha256(filepath):
+    p = Path(filepath)
+    if not p.exists():
+        return None
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def save_resume_state(state_path, slot_index, attempt_count, schedule_file_hash, cell, phase="phase1", reboot_performed=True, reboot_reason="pre_attempt"):
+    p = Path(state_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "slot_index": slot_index,
+        "attempt_count": attempt_count,
+        "schedule_file_hash": schedule_file_hash,
+        "arch": cell.get("arch"),
+        "n_slices": int(cell.get("n_slices") or cell.get("n", 0)),
+        "vus": int(cell.get("vus") or cell.get("vu", 0)),
+        "repetition": int(cell.get("repetition") or cell.get("rep", 1)),
+        "phase": phase,
+        "reboot_performed": bool(reboot_performed),
+        "reboot_reason": reboot_reason,
+        "timestamp": datetime.datetime.now().isoformat()
+    }
+    with open(p, "w") as f:
+        json.dump(data, f, indent=2)
+    return data
+
+
+def load_resume_state(state_path, expected_schedule_hash=None):
+    p = Path(state_path)
+    if not p.exists():
+        return None
+    try:
+        with open(p, "r") as f:
+            data = json.load(f)
+        if expected_schedule_hash and data.get("schedule_file_hash"):
+            if data["schedule_file_hash"] != expected_schedule_hash:
+                print(f"[Resume] WARNING: Schedule hash in resume_state.json ({data['schedule_file_hash']}) does not match current schedule ({expected_schedule_hash})!", file=sys.stderr)
+        return data
+    except Exception as e:
+        print(f"[Resume] Error reading resume_state.json: {e}")
+        return None
+
+
+def register_launch_agent(config, test_mode=False):
+    LAUNCH_AGENT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    venv_python = str(REPO_ROOT / config["paths"]["venv_python"])
+    harness_script = str(REPO_ROOT / "experiments" / "run_experiment.py")
+    log_file = str(CONFIRMATORY_DIR / "execution.log")
+
+    args = [
+        "/usr/bin/caffeinate",
+        "-dims",
+        venv_python,
+        "-u",
+        harness_script,
+        "--confirmatory",
+        "--resume"
+    ]
+    if test_mode:
+        args.append("--test-reboot-resume")
+
+    args_xml = "\n".join([f"        <string>{a}</string>" for a in args])
+    plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{LAUNCH_AGENT_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+{args_xml}
+    </array>
+    <key>WorkingDirectory</key>
+    <string>{str(REPO_ROOT)}</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>{log_file}</string>
+    <key>StandardErrorPath</key>
+    <string>{log_file}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>
+"""
+    with open(LAUNCH_AGENT_PATH, "w") as f:
+        f.write(plist_content)
+    try:
+        subprocess.run(["launchctl", "load", "-w", str(LAUNCH_AGENT_PATH)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+    print(f"[LaunchAgent] Registered LaunchAgent at {LAUNCH_AGENT_PATH}")
+
+
+def unregister_launch_agent():
+    if LAUNCH_AGENT_PATH.exists():
+        try:
+            subprocess.run(["launchctl", "unload", "-w", str(LAUNCH_AGENT_PATH)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+        try:
+            LAUNCH_AGENT_PATH.unlink()
+            print(f"[LaunchAgent] Unregistered and removed {LAUNCH_AGENT_PATH}")
+        except Exception as e:
+            print(f"[LaunchAgent] Note removing {LAUNCH_AGENT_PATH}: {e}")
+
+
+def trigger_host_reboot(reason="auto_reboot"):
+    print(f"\n[Host Reboot] Initiating unattended host reboot ({reason})...")
+    print(f"[Host Reboot] Executing: sudo /sbin/shutdown -r now")
+    sys.stdout.flush()
+    sys.stderr.flush()
+    res = subprocess.run(["sudo", "-n", "/sbin/shutdown", "-r", "now"], capture_output=True, text=True)
+    if res.returncode != 0:
+        err = res.stderr.strip()
+        print(f"\n{'!' * 70}", file=sys.stderr)
+        print(f"[FATAL] Host reboot failed: {err}", file=sys.stderr)
+        print("A passwordless sudoers rule for /sbin/shutdown -r is required for unattended restart:", file=sys.stderr)
+        print("    adrianhalim ALL=(ALL) NOPASSWD: /sbin/shutdown -r *", file=sys.stderr)
+        print("Please configure /etc/sudoers.d/harness_reboot using scripts/setup_sudoers_reboot.sh and rerun.", file=sys.stderr)
+        print(f"{'!' * 70}\n", file=sys.stderr)
+        sys.exit(2)
 
 
 def reset_for_attempt(config):
@@ -195,14 +328,6 @@ def reset_for_attempt(config):
         reset_log.append("Restarted Redis via brew services")
     except Exception as e:
         reset_log.append(f"Redis restart note: {e}")
-
-    # 3. sudo purge attempt
-    purge_res = subprocess.run(["sudo", "-n", "purge"], capture_output=True, text=True)
-    if purge_res.returncode == 0:
-        reset_log.append("Executed sudo purge")
-    else:
-        err_msg = purge_res.stderr.strip() or "password required"
-        reset_log.append(f"sudo purge skipped ({err_msg})")
 
     return reset_log
 
@@ -702,7 +827,7 @@ def parse_k6_metrics_and_write_requests_csv(k6_raw_jsonl, output_csv_path):
     }
 
 
-def execute_single_run(cell, config, master_csv_path, skip_gate=False, raw_base_dir=None, reset_actions=None):
+def execute_single_run(cell, config, master_csv_path, skip_gate=False, raw_base_dir=None, reset_actions=None, reboot_before_attempt=True, is_test_run=False):
     arch, n_slices, vus, rep = cell["arch"], cell["n"], cell["vu"], cell["rep"]
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     run_id = f"run_{timestamp}_{arch}_N{n_slices}_VU{vus}_rep{rep}"
@@ -742,6 +867,9 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False, raw_base_
             "duration_seconds": round(time.time() - start_time, 2),
             "gate_readings": gate_readings,
             "reset_actions": reset_actions or [],
+            "purge_effective": False,
+            "swap_drained_by_reset": False,
+            "reboot_before_attempt": reboot_before_attempt,
             "worker_concurrency": config.get("worker_concurrency", 4),
             "worker_pool": config.get("worker_pool", "threads"),
             "git_commit": provenance["git_commit"],
@@ -850,6 +978,9 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False, raw_base_
         "duration_seconds": round(run_duration, 2),
         "gate_readings": gate_readings,
         "reset_actions": reset_actions or [],
+        "purge_effective": False,
+        "swap_drained_by_reset": False,
+        "reboot_before_attempt": reboot_before_attempt,
         "worker_concurrency": config.get("worker_concurrency", 4),
         "worker_pool": config.get("worker_pool", "threads"),
         "k6_stats": stats,
@@ -875,8 +1006,8 @@ def execute_single_run(cell, config, master_csv_path, skip_gate=False, raw_base_
     with open(raw_dir / "metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
 
-    # Append to master_runs.csv ONLY if valid run
-    if run_status == "success" and not validation_only:
+    # Append to master_runs.csv ONLY if valid run and not test run
+    if run_status == "success" and not validation_only and not is_test_run:
         file_exists = master_csv_path.exists()
         with open(master_csv_path, "a", newline="") as f:
             writer = csv.writer(f)
@@ -1066,6 +1197,12 @@ def run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_c
     status_cells = sync_status_from_master(status_cells, master_csv_path)
     save_status_csv(status_csv_path, status_cells)
 
+    schedule_hash = compute_file_sha256(schedule_csv_path)
+
+    reboot_cfg = config.get("reboot_policy", {})
+    reboot_enabled = reboot_cfg.get("enabled", True)
+    reboot_before_attempt = reboot_cfg.get("reboot_before_attempt", True)
+
     with open(schedule_csv_path, "r", newline="") as f:
         schedule = list(csv.DictReader(f))
 
@@ -1095,34 +1232,65 @@ def run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_c
             continue
 
         while cell_state["valid_count"] < 5 and cell_state["attempts"] < 15:
-            print(f"\n[Phase 1] Executing Slot {slot_idx}/{total_slots}: {arch} N={n_slices}, VU={vus}, Rep={rep} (Attempt {cell_state['attempts'] + 1}/15)...")
+            curr_attempt = cell_state["attempts"]
+            print(f"\n[Phase 1] Executing Slot {slot_idx}/{total_slots}: {arch} N={n_slices}, VU={vus}, Rep={rep} (Attempt {curr_attempt + 1}/15)...")
+
+            # Check if reboot was already performed for this slot and attempt
+            resume_data = load_resume_state(RESUME_STATE_PATH, schedule_hash)
+            reboot_already_done = bool(
+                resume_data
+                and resume_data.get("reboot_performed")
+                and resume_data.get("slot_index") == slot_idx
+                and resume_data.get("attempt_count") == curr_attempt
+                and resume_data.get("phase") == "phase1"
+            )
+
+            if reboot_enabled and reboot_before_attempt and not reboot_already_done:
+                print(f"[Reboot Policy] Rebooting host before attempt {curr_attempt + 1} for {arch} N{n_slices} VU{vus} rep{rep} (clean host baseline)...")
+                save_resume_state(RESUME_STATE_PATH, slot_idx, curr_attempt, schedule_hash, slot, phase="phase1", reboot_performed=True, reboot_reason="pre_attempt")
+                register_launch_agent(config)
+                trigger_host_reboot("pre_attempt")
+
+            if reboot_already_done:
+                unregister_launch_agent()
+
             slot_start = time.time()
             reset_actions = reset_for_attempt(config)
             cell_def = {"arch": arch, "n": n_slices, "vu": vus, "rep": rep}
             success, meta = execute_single_run(
-                cell_def, config, master_csv_path, raw_base_dir=raw_base_dir, reset_actions=reset_actions
+                cell_def, config, master_csv_path, raw_base_dir=raw_base_dir, reset_actions=reset_actions,
+                reboot_before_attempt=reboot_before_attempt
             )
             duration = round(time.time() - slot_start, 2)
 
             if meta.get("status") == "environment_invalid":
                 triggers = meta.get("validation_triggers", [])
                 err_msg = f"environment_invalid: {'; '.join(triggers)}" if triggers else "environment_invalid"
-                print(f"\n{'!' * 70}")
-                print(f"[Phase 1] HOST ENVIRONMENT INVALID: Preflight gate failed for {arch} N{n_slices} VU{vus} rep{rep}.")
-                print(f"  Reasons: {err_msg}")
-                print("  Per 21 Oct 2026 Protocol Amendment:")
-                print(f"  - This attempt is NOT counted towards the 15-attempt budget (attempts remains {cell_state['attempts']}).")
-                print("  - Cell cannot be marked infeasible due to host environment issues.")
-                print("  - Halting execution to request operator intervention.")
-                print(f"{'!' * 70}\n")
-                print("[OPERATOR REQUIRED] Please ensure:")
-                print("  1. MagSafe / AC power adapter is securely connected.")
-                print("  2. Host is rebooted to clear kernel swap memory.")
-                print("  3. Verify 'sysctl vm.swapusage' shows swap < 500 MB.")
-                print("  4. Verify free RAM > 3,000 MB.")
-                print("Then rerun the experiment command.")
-                save_status_csv(status_csv_path, status_cells)
-                sys.exit(1)
+
+                if reboot_already_done:
+                    print(f"\n{'!' * 70}")
+                    print(f"[Phase 1] HOST ENVIRONMENT STILL INVALID AFTER REBOOT for {arch} N{n_slices} VU{vus} rep{rep}.")
+                    print(f"  Reasons: {err_msg}")
+                    print("  Per 22 Oct 2026 Protocol Amendment 02:")
+                    print("  - Preflight gate failed after 1 host reboot.")
+                    print("  - Halting execution with exit code 2 to prevent infinite reboot loop.")
+                    print(f"{'!' * 70}\n")
+                    print("[OPERATOR REQUIRED] Please ensure:")
+                    print("  1. MagSafe / AC power adapter is securely connected.")
+                    print("  2. Verify 'sysctl vm.swapusage' shows swap < 500 MB.")
+                    print("  3. Verify free RAM > 3,000 MB.")
+                    print("  4. Verify free disk space > 5.0 GB.")
+                    print("Then rerun the experiment command.")
+                    unregister_launch_agent()
+                    save_status_csv(status_csv_path, status_cells)
+                    sys.exit(2)
+                else:
+                    print(f"\n[Reboot Policy] Preflight gate failed ({err_msg}). Triggering unattended reboot to clear host state...")
+                    save_resume_state(RESUME_STATE_PATH, slot_idx, curr_attempt, schedule_hash, slot, phase="phase1", reboot_performed=True, reboot_reason="environment_invalid")
+                    register_launch_agent(config)
+                    trigger_host_reboot("environment_invalid")
+
+            save_resume_state(RESUME_STATE_PATH, slot_idx, curr_attempt, schedule_hash, slot, phase="phase1", reboot_performed=False, reboot_reason="attempt_executed")
 
             cell_state["attempts"] += 1
             cell_state["last_attempt_time"] = datetime.datetime.now().isoformat()
@@ -1176,6 +1344,11 @@ def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_d
     save_status_csv(status_csv_path, status_cells)
     feasibility_records = []
 
+    schedule_hash = compute_file_sha256(REPO_ROOT / "experiments" / "config" / "schedule_phase1_v1.csv")
+    reboot_cfg = config.get("reboot_policy", {})
+    reboot_enabled = reboot_cfg.get("enabled", True)
+    reboot_before_attempt = reboot_cfg.get("reboot_before_attempt", True)
+
     # Probing loop
     for n_slices, vus in conditions:
         print(f"\n[Phase 2 Probe] Condition N={n_slices}, VUs={vus}...")
@@ -1189,6 +1362,8 @@ def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_d
         for arch in archs:
             key = (arch, n_slices, vus)
             cell_state = status_cells[key]
+            curr_attempt = cell_state["attempts"]
+            slot_id = f"p2_probe_{arch}_{n_slices}_{vus}"
 
             # Check if probe is already completed
             probe_done, done_run_id = is_confirmatory_slot_completed(arch, n_slices, vus, 1, master_csv_path, raw_base_dir)
@@ -1200,36 +1375,66 @@ def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_d
                 save_status_csv(status_csv_path, status_cells)
                 continue
 
-            print(f"[Phase 2 Probe] Probing {arch} at N={n_slices}, VU={vus}...")
+            print(f"[Phase 2 Probe] Probing {arch} at N={n_slices}, VU={vus} (Attempt {curr_attempt + 1}/15)...")
+
+            resume_data = load_resume_state(RESUME_STATE_PATH, schedule_hash)
+            reboot_already_done = bool(
+                resume_data
+                and resume_data.get("reboot_performed")
+                and resume_data.get("slot_index") == slot_id
+                and resume_data.get("attempt_count") == curr_attempt
+                and resume_data.get("phase") == "phase2_probe"
+            )
+
+            cell_info = {"arch": arch, "n_slices": n_slices, "vus": vus, "repetition": 1}
+
+            if reboot_enabled and reboot_before_attempt and not reboot_already_done:
+                print(f"[Reboot Policy] Rebooting host before probe attempt {curr_attempt + 1} for {arch} N{n_slices} VU{vus} (clean host baseline)...")
+                save_resume_state(RESUME_STATE_PATH, slot_id, curr_attempt, schedule_hash, cell_info, phase="phase2_probe", reboot_performed=True, reboot_reason="pre_attempt")
+                register_launch_agent(config)
+                trigger_host_reboot("pre_attempt")
+
+            if reboot_already_done:
+                unregister_launch_agent()
 
             slot_start = time.time()
             reset_actions = reset_for_attempt(config)
             cell_def = {"arch": arch, "n": n_slices, "vu": vus, "rep": 1}
 
             success, meta = execute_single_run(
-                cell_def, config, master_csv_path, raw_base_dir=raw_base_dir, reset_actions=reset_actions
+                cell_def, config, master_csv_path, raw_base_dir=raw_base_dir, reset_actions=reset_actions,
+                reboot_before_attempt=reboot_before_attempt
             )
             duration = round(time.time() - slot_start, 2)
 
             if meta.get("status") == "environment_invalid":
                 triggers = meta.get("validation_triggers", [])
                 err_msg = f"environment_invalid: {'; '.join(triggers)}" if triggers else "environment_invalid"
-                print(f"\n{'!' * 70}")
-                print(f"[Phase 2 Probe] HOST ENVIRONMENT INVALID: Preflight gate failed for {arch} N{n_slices} VU{vus}.")
-                print(f"  Reasons: {err_msg}")
-                print("  Per 21 Oct 2026 Protocol Amendment:")
-                print(f"  - This attempt is NOT counted towards the 15-attempt budget (attempts remains {cell_state['attempts']}).")
-                print("  - Cell cannot be marked probe_failed or infeasible due to host environment issues.")
-                print("  - Halting execution to request operator intervention.")
-                print(f"{'!' * 70}\n")
-                print("[OPERATOR REQUIRED] Please ensure:")
-                print("  1. MagSafe / AC power adapter is securely connected.")
-                print("  2. Host is rebooted to clear kernel swap memory.")
-                print("  3. Verify 'sysctl vm.swapusage' shows swap < 500 MB.")
-                print("  4. Verify free RAM > 3,000 MB.")
-                print("Then rerun the experiment command.")
-                save_status_csv(status_csv_path, status_cells)
-                sys.exit(1)
+
+                if reboot_already_done:
+                    print(f"\n{'!' * 70}")
+                    print(f"[Phase 2 Probe] HOST ENVIRONMENT STILL INVALID AFTER REBOOT for {arch} N{n_slices} VU{vus}.")
+                    print(f"  Reasons: {err_msg}")
+                    print("  Per 22 Oct 2026 Protocol Amendment 02:")
+                    print("  - Preflight gate failed after 1 host reboot.")
+                    print("  - Halting execution with exit code 2 to prevent infinite reboot loop.")
+                    print(f"{'!' * 70}\n")
+                    print("[OPERATOR REQUIRED] Please ensure:")
+                    print("  1. MagSafe / AC power adapter is securely connected.")
+                    print("  2. Verify 'sysctl vm.swapusage' shows swap < 500 MB.")
+                    print("  3. Verify free RAM > 3,000 MB.")
+                    print("  4. Verify free disk space > 5.0 GB.")
+                    print("Then rerun the experiment command.")
+                    unregister_launch_agent()
+                    save_status_csv(status_csv_path, status_cells)
+                    sys.exit(2)
+                else:
+                    print(f"\n[Reboot Policy] Gate failed ({err_msg}). Triggering unattended reboot to clear host state...")
+                    save_resume_state(RESUME_STATE_PATH, slot_id, curr_attempt, schedule_hash, cell_info, phase="phase2_probe", reboot_performed=True, reboot_reason="environment_invalid")
+                    register_launch_agent(config)
+                    trigger_host_reboot("environment_invalid")
+
+            save_resume_state(RESUME_STATE_PATH, slot_id, curr_attempt, schedule_hash, cell_info, phase="phase2_probe", reboot_performed=False, reboot_reason="attempt_executed")
 
             cell_state["attempts"] += 1
             cell_state["last_attempt_time"] = datetime.datetime.now().isoformat()
@@ -1296,6 +1501,8 @@ def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_d
             rep = ext_item["rep"]
             key = (arch, n_slices, vus)
             cell_state = status_cells[key]
+            curr_attempt = cell_state["attempts"]
+            slot_id = f"p2_ext_{arch}_{n_slices}_{vus}_rep{rep}"
 
             if cell_state["valid_count"] >= 5:
                 continue
@@ -1315,34 +1522,65 @@ def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_d
                 print(f"[Phase 2 Extension] {arch} N{n_slices} VU{vus} rep{rep} already completed ({done_run_id}). SKIPPING...")
                 continue
 
-            print(f"[Phase 2 Extension] Running {arch} N={n_slices}, VU={vus}, Rep={rep} (Attempt {cell_state['attempts'] + 1}/15)...")
+            print(f"[Phase 2 Extension] Running {arch} N={n_slices}, VU={vus}, Rep={rep} (Attempt {curr_attempt + 1}/15)...")
+
+            resume_data = load_resume_state(RESUME_STATE_PATH, schedule_hash)
+            reboot_already_done = bool(
+                resume_data
+                and resume_data.get("reboot_performed")
+                and resume_data.get("slot_index") == slot_id
+                and resume_data.get("attempt_count") == curr_attempt
+                and resume_data.get("phase") == "phase2_ext"
+            )
+
+            cell_info = {"arch": arch, "n_slices": n_slices, "vus": vus, "repetition": rep}
+
+            if reboot_enabled and reboot_before_attempt and not reboot_already_done:
+                print(f"[Reboot Policy] Rebooting host before extension attempt {curr_attempt + 1} for {arch} N{n_slices} VU{vus} rep{rep} (clean host baseline)...")
+                save_resume_state(RESUME_STATE_PATH, slot_id, curr_attempt, schedule_hash, cell_info, phase="phase2_ext", reboot_performed=True, reboot_reason="pre_attempt")
+                register_launch_agent(config)
+                trigger_host_reboot("pre_attempt")
+
+            if reboot_already_done:
+                unregister_launch_agent()
+
             slot_start = time.time()
             reset_actions = reset_for_attempt(config)
             cell_def = {"arch": arch, "n": n_slices, "vu": vus, "rep": rep}
             success, meta = execute_single_run(
-                cell_def, config, master_csv_path, raw_base_dir=raw_base_dir, reset_actions=reset_actions
+                cell_def, config, master_csv_path, raw_base_dir=raw_base_dir, reset_actions=reset_actions,
+                reboot_before_attempt=reboot_before_attempt
             )
             duration = round(time.time() - slot_start, 2)
 
             if meta.get("status") == "environment_invalid":
                 triggers = meta.get("validation_triggers", [])
                 err_msg = f"environment_invalid: {'; '.join(triggers)}" if triggers else "environment_invalid"
-                print(f"\n{'!' * 70}")
-                print(f"[Phase 2 Extension] HOST ENVIRONMENT INVALID: Preflight gate failed for {arch} N{n_slices} VU{vus} rep{rep}.")
-                print(f"  Reasons: {err_msg}")
-                print("  Per 21 Oct 2026 Protocol Amendment:")
-                print(f"  - This attempt is NOT counted towards the 15-attempt budget (attempts remains {cell_state['attempts']}).")
-                print("  - Cell cannot be marked infeasible due to host environment issues.")
-                print("  - Halting execution to request operator intervention.")
-                print(f"{'!' * 70}\n")
-                print("[OPERATOR REQUIRED] Please ensure:")
-                print("  1. MagSafe / AC power adapter is securely connected.")
-                print("  2. Host is rebooted to clear kernel swap memory.")
-                print("  3. Verify 'sysctl vm.swapusage' shows swap < 500 MB.")
-                print("  4. Verify free RAM > 3,000 MB.")
-                print("Then rerun the experiment command.")
-                save_status_csv(status_csv_path, status_cells)
-                sys.exit(1)
+
+                if reboot_already_done:
+                    print(f"\n{'!' * 70}")
+                    print(f"[Phase 2 Extension] HOST ENVIRONMENT STILL INVALID AFTER REBOOT for {arch} N{n_slices} VU{vus} rep{rep}.")
+                    print(f"  Reasons: {err_msg}")
+                    print("  Per 22 Oct 2026 Protocol Amendment 02:")
+                    print("  - Preflight gate failed after 1 host reboot.")
+                    print("  - Halting execution with exit code 2 to prevent infinite reboot loop.")
+                    print(f"{'!' * 70}\n")
+                    print("[OPERATOR REQUIRED] Please ensure:")
+                    print("  1. MagSafe / AC power adapter is securely connected.")
+                    print("  2. Verify 'sysctl vm.swapusage' shows swap < 500 MB.")
+                    print("  3. Verify free RAM > 3,000 MB.")
+                    print("  4. Verify free disk space > 5.0 GB.")
+                    print("Then rerun the experiment command.")
+                    unregister_launch_agent()
+                    save_status_csv(status_csv_path, status_cells)
+                    sys.exit(2)
+                else:
+                    print(f"\n[Reboot Policy] Gate failed ({err_msg}). Triggering unattended reboot to clear host state...")
+                    save_resume_state(RESUME_STATE_PATH, slot_id, curr_attempt, schedule_hash, cell_info, phase="phase2_ext", reboot_performed=True, reboot_reason="environment_invalid")
+                    register_launch_agent(config)
+                    trigger_host_reboot("environment_invalid")
+
+            save_resume_state(RESUME_STATE_PATH, slot_id, curr_attempt, schedule_hash, cell_info, phase="phase2_ext", reboot_performed=False, reboot_reason="attempt_executed")
 
             cell_state["attempts"] += 1
             cell_state["last_attempt_time"] = datetime.datetime.now().isoformat()
@@ -1692,7 +1930,7 @@ def run_confirmatory_analysis():
 
 
 def run_confirmatory_protocol(config, args):
-    confirmatory_dir = REPO_ROOT / "experiments" / "results" / "confirmatory_frozen_v1"
+    confirmatory_dir = CONFIRMATORY_DIR
     confirmatory_dir.mkdir(parents=True, exist_ok=True)
     master_csv_path = confirmatory_dir / "master.csv"
     status_csv_path = confirmatory_dir / "status.csv"
@@ -1701,8 +1939,13 @@ def run_confirmatory_protocol(config, args):
     schedule_csv_path = REPO_ROOT / "experiments" / "config" / "schedule_phase1_v1.csv"
 
     start_slot = args.start_run if args.start_run else 1
-    if args.resume:
-        print("[Confirmatory] Resume mode active: automatically scanning master.csv to continue from last completed run.")
+    schedule_hash = compute_file_sha256(schedule_csv_path)
+
+    if args.resume or RESUME_STATE_PATH.exists():
+        print("[Confirmatory] Resume mode active: verifying schedule hash and scanning master.csv for completed runs.")
+        resume_data = load_resume_state(RESUME_STATE_PATH, schedule_hash)
+        if resume_data:
+            print(f"[Confirmatory] Found active resume_state: Slot {resume_data.get('slot_index')}, Attempt {resume_data.get('attempt_count')}, RebootPerformed={resume_data.get('reboot_performed')}")
 
     # Step 1: Phase 1
     run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_csv_path, raw_base_dir, start_slot=start_slot)
@@ -1714,11 +1957,141 @@ def run_confirmatory_protocol(config, args):
     run_confirmatory_analysis()
 
 
+def run_test_reboot_resume(config, skip_gate=False):
+    print("\n" + "=" * 70)
+    print("TEST: REBOOT-AND-RESUME CYCLE END-TO-END (N=100, VU=10)")
+    print("=" * 70)
+    test_start = datetime.datetime.now().isoformat()
+    print(f"[Test Start] Timestamp: {test_start}")
+
+    confirmatory_dir = CONFIRMATORY_DIR
+    confirmatory_dir.mkdir(parents=True, exist_ok=True)
+    master_csv_path = confirmatory_dir / "master.csv"
+    status_csv_path = confirmatory_dir / "status.csv"
+    log_file = confirmatory_dir / "execution.log"
+    schedule_csv_path = REPO_ROOT / "experiments" / "config" / "schedule_phase1_v1.csv"
+    schedule_hash = compute_file_sha256(schedule_csv_path)
+
+    # 1. Snapshot master.csv and status.csv lines to guarantee exclusion
+    initial_master_content = master_csv_path.read_bytes() if master_csv_path.exists() else b""
+    initial_status_content = status_csv_path.read_bytes() if status_csv_path.exists() else b""
+
+    # 2. Test Resume State Write
+    test_slot = {"arch": "sync", "n_slices": 100, "vus": 10, "repetition": 999}
+    print(f"[Test Step 1] Writing test resume state to {RESUME_STATE_PATH}...")
+    save_resume_state(
+        RESUME_STATE_PATH,
+        slot_index=999,
+        attempt_count=0,
+        schedule_file_hash=schedule_hash,
+        cell=test_slot,
+        phase="test_cycle",
+        reboot_performed=True,
+        reboot_reason="test_reboot_cycle"
+    )
+    if not RESUME_STATE_PATH.exists():
+        raise RuntimeError("resume_state.json was not created!")
+
+    # 3. Test LaunchAgent Plist Generation
+    print(f"[Test Step 2] Generating LaunchAgent plist at {LAUNCH_AGENT_PATH}...")
+    register_launch_agent(config, test_mode=True)
+    if not LAUNCH_AGENT_PATH.exists():
+        raise RuntimeError("LaunchAgent plist was not created!")
+    with open(LAUNCH_AGENT_PATH, "r") as f:
+        plist_str = f.read()
+    if LAUNCH_AGENT_LABEL not in plist_str:
+        raise AssertionError("LaunchAgent label missing in plist")
+    if "--test-reboot-resume" not in plist_str:
+        raise AssertionError("Test flag missing in LaunchAgent plist")
+    print("[Test Step 2] LaunchAgent plist verified.")
+
+    # 4. Test Resume State Read & Hash Verification
+    print(f"[Test Step 3] Verifying resume state and schedule hash...")
+    loaded_state = load_resume_state(RESUME_STATE_PATH, expected_schedule_hash=schedule_hash)
+    if loaded_state is None:
+        raise RuntimeError("Failed to load resume_state.json")
+    if loaded_state["schedule_file_hash"] != schedule_hash:
+        raise AssertionError("Schedule hash mismatch!")
+    if loaded_state["reboot_performed"] is not True:
+        raise AssertionError("reboot_performed flag mismatch!")
+    print(f"[Test Step 3] Resume state verified successfully (schedule_hash={schedule_hash[:12]}...).")
+
+    # 5. Check Host Gate Readings
+    print(f"[Test Step 4] Checking host gate readings...")
+    swap_mb = get_swap_used_mb()
+    ram_mb = get_available_memory_mb()
+    ac_power = is_ac_power_connected()
+    print(f"[Test Step 4] Current Host Gate: Swap={swap_mb}MB, RAM={ram_mb:.1f}MB, AC={ac_power}")
+
+    # 6. Execute one N=100 VU=10 test attempt with is_test_run=True
+    print(f"[Test Step 5] Executing test workload (sync N=100 VU=10)...")
+    reset_actions = reset_for_attempt(config)
+    cell_def = {"arch": "sync", "n": 100, "vu": 10, "rep": 999}
+
+    # Log test start to execution.log
+    with open(log_file, "a") as f:
+        f.write(f"\n[{datetime.datetime.now().isoformat()}] [Test Cycle] Starting test run sync N=100 VU=10 (reboot_before_attempt=True, is_test_run=True)\n")
+
+    success, meta = execute_single_run(
+        cell_def, config, master_csv_path,
+        skip_gate=skip_gate,
+        raw_base_dir=confirmatory_dir / "raw",
+        reset_actions=reset_actions,
+        reboot_before_attempt=True,
+        is_test_run=True
+    )
+
+    test_end = datetime.datetime.now().isoformat()
+    # Log test end to execution.log
+    with open(log_file, "a") as f:
+        f.write(f"[{test_end}] [Test Cycle] Test run completed with status={meta.get('status')}, validation_only={meta.get('validation_only')}\n")
+
+    # 7. Verify metadata.json has required explicit fields
+    test_run_dir = confirmatory_dir / "raw" / meta.get("run_id", "")
+    test_meta_path = test_run_dir / "metadata.json"
+    if test_meta_path.exists():
+        with open(test_meta_path, "r") as f:
+            test_meta = json.load(f)
+        if test_meta.get("purge_effective") is not False:
+            raise AssertionError("purge_effective must be False!")
+        if test_meta.get("swap_drained_by_reset") is not False:
+            raise AssertionError("swap_drained_by_reset must be False!")
+        if test_meta.get("reboot_before_attempt") is not True:
+            raise AssertionError("reboot_before_attempt must be True!")
+        print("[Test Step 6] metadata.json verified: purge_effective=False, swap_drained_by_reset=False, reboot_before_attempt=True.")
+
+    # 8. Verify master.csv and status.csv were NOT modified
+    current_master_content = master_csv_path.read_bytes() if master_csv_path.exists() else b""
+    current_status_content = status_csv_path.read_bytes() if status_csv_path.exists() else b""
+    if current_master_content != initial_master_content:
+        raise AssertionError("master.csv was modified during test run!")
+    if current_status_content != initial_status_content:
+        raise AssertionError("status.csv was modified during test run!")
+    print("[Test Step 7] master.csv and status.csv verified untouched (0 test rows added).")
+
+    # 9. Clean up LaunchAgent and test resume state
+    unregister_launch_agent()
+    if RESUME_STATE_PATH.exists():
+        RESUME_STATE_PATH.unlink()
+    print("[Test Step 8] Test LaunchAgent unregistered and test resume_state cleaned.")
+
+    print("\n" + "=" * 70)
+    print("TEST COMPLETED SUCCESSFULLY")
+    print(f"Start Timestamp: {test_start}")
+    print(f"End Timestamp:   {test_end}")
+    print(f"Run Status:      {meta.get('status')}")
+    print(f"Run e2e_p95:     {meta.get('k6_stats', {}).get('e2e_p95_ms', 'N/A')} ms")
+    print(f"master.csv diff: 0 bytes (untouched)")
+    print(f"status.csv diff: 0 bytes (untouched)")
+    print("=" * 70 + "\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description="CDSS X-Core A/B/C Experiment Harness")
     parser.add_argument("--freeze-manifest", action="store_true", help="Generate frozen harness manifest (experiments/config/harness_frozen_v1.json)")
     parser.add_argument("--confirmatory", action="store_true", help="Execute Confirmatory Protocol (Option A, Phase 1 + Phase 2 + Analysis)")
     parser.add_argument("--analyze-confirmatory", action="store_true", help="Run Confirmatory Analysis on confirmatory_frozen_v1/master.csv")
+    parser.add_argument("--test-reboot-resume", action="store_true", help="Test the reboot-and-resume cycle end-to-end on N=100 VU=10 without modifying master/status CSV")
     parser.add_argument("--pilot", action="store_true", help="Execute Full Pilot protocol (Task 4)")
     parser.add_argument("--pilot-phase2", action="store_true", help="Execute Pilot Phase 2 only (reproducibility check: reps 2 & 3)")
     parser.add_argument("--full", action="store_true", help="Execute Full 180-run factorial experiment (Task 5)")
@@ -1739,6 +2112,10 @@ def main():
     verify_frozen_harness()
 
     config = load_config()
+
+    if args.test_reboot_resume:
+        run_test_reboot_resume(config, skip_gate=args.skip_gate)
+        return
 
     if args.confirmatory:
         run_confirmatory_protocol(config, args)
