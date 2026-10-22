@@ -1058,7 +1058,7 @@ def sync_status_from_master(status_cells, master_csv_path):
     return status_cells
 
 
-def run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_csv_path, raw_base_dir):
+def run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_csv_path, raw_base_dir, start_slot=1):
     print("\n" + "=" * 70)
     print("PHASE 1: CONFIRMATORY EXECUTION (SCHEDULE v1)")
     print("=" * 70)
@@ -1071,6 +1071,8 @@ def run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_c
 
     total_slots = len(schedule)
     for slot_idx, slot in enumerate(schedule, 1):
+        if slot_idx < start_slot:
+            continue
         arch = slot["arch"]
         n_slices = int(slot["n_slices"])
         vus = int(slot["vus"])
@@ -1698,8 +1700,12 @@ def run_confirmatory_protocol(config, args):
     raw_base_dir.mkdir(parents=True, exist_ok=True)
     schedule_csv_path = REPO_ROOT / "experiments" / "config" / "schedule_phase1_v1.csv"
 
+    start_slot = args.start_run if args.start_run else 1
+    if args.resume:
+        print("[Confirmatory] Resume mode active: automatically scanning master.csv to continue from last completed run.")
+
     # Step 1: Phase 1
-    run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_csv_path, raw_base_dir)
+    run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_csv_path, raw_base_dir, start_slot=start_slot)
 
     # Step 2: Phase 2
     run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_dir)
