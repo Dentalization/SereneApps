@@ -1,19 +1,19 @@
 arch,n_slices,vus,valid_count,attempts,failure_reasons,last_attempt_time,wall_clock_seconds,phase,cell_status
-sync,25,10,0,0,,,0.0,phase1,pending
-background,25,10,0,0,,,0.0,phase1,pending
-celery,25,10,0,0,,,0.0,phase1,pending
-sync,25,50,0,0,,,0.0,phase1,pending
-background,25,50,0,0,,,0.0,phase1,pending
+sync,25,10,1,1,,2026-10-22T20:42:19.036168,19.31,phase1,pending
+background,25,10,1,1,,2026-10-22T21:00:49.107911,18.4,phase1,pending
+celery,25,10,1,1,,2026-10-22T20:58:10.666792,22.14,phase1,pending
+sync,25,50,1,1,,2026-10-22T21:00:30.699587,51.69,phase1,pending
+background,25,50,1,1,,2026-10-22T20:58:31.960431,21.29,phase1,pending
 celery,25,50,0,0,,,0.0,phase1,pending
-sync,25,100,0,0,,,0.0,phase1,pending
-background,25,100,0,0,,,0.0,phase1,pending
-celery,25,100,0,0,,,0.0,phase1,pending
+sync,25,100,1,1,,2026-10-22T20:39:30.743563,27.84,phase1,pending
+background,25,100,1,1,,2026-10-22T20:59:39.004448,27.58,phase1,pending
+celery,25,100,1,1,,2026-10-22T20:59:11.415083,39.45,phase1,pending
 sync,25,200,0,0,,,0.0,phase1,pending
-background,25,200,0,9,host_ram_below_500mb: k6 non-zero exit code: 99; Min available RAM 158.8 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 245.9 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 325.1 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 160.2 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 352.4 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 313.2 MB fell below 500 MB; host_ram_below_500mb: k6 non-zero exit code: 99; Min available RAM 269.4 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 345.5 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 276.7 MB fell below 500 MB,2026-10-22T20:08:28.703296,98.1,phase1,pending
-celery,25,200,0,0,,,0.0,phase1,pending
+background,25,200,0,15,host_ram_below_500mb: k6 non-zero exit code: 99; Min available RAM 158.8 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 245.9 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 325.1 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 160.2 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 352.4 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 313.2 MB fell below 500 MB; host_ram_below_500mb: k6 non-zero exit code: 99; Min available RAM 269.4 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 345.5 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 276.7 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 488.8 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 318.6 MB fell below 500 MB; host_ram_below_500mb: k6 non-zero exit code: 99; Min available RAM 225.2 MB fell below 500 MB; host_ram_below_500mb: k6 non-zero exit code: 99; Min available RAM 243.9 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 340.4 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 219.8 MB fell below 500 MB,2026-10-22T20:33:49.223596,79.73,phase1,infeasible_phase1
+celery,25,200,0,10,host_ram_below_500mb: k6 non-zero exit code: 99; Min available RAM 222.2 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 242.9 MB fell below 500 MB; host_ram_below_500mb: k6 non-zero exit code: 99; Min available RAM 120.1 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 253.8 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 290.7 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 361.4 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 226.2 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 301.9 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 297.3 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 346.5 MB fell below 500 MB,2026-10-22T21:36:54.129018,91.23,phase1,pending
 sync,100,10,1,1,,2026-10-22T18:52:37.811619,33.83,phase1,pending
-background,100,10,0,0,,,0.0,phase1,pending
-celery,100,10,0,0,,,0.0,phase1,pending
+background,100,10,1,1,,2026-10-22T20:42:42.819848,23.77,phase1,pending
+celery,100,10,1,1,,2026-10-22T20:34:26.066572,36.82,phase1,pending
 sync,100,50,0,0,,,0.0,phase2,pending
 background,100,50,0,0,,,0.0,phase2,pending
 celery,100,50,0,0,,,0.0,phase2,pending

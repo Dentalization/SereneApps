@@ -28,7 +28,7 @@
     "min_available_memory_mb": 3000.0,
     "require_ac_power": true,
     "min_disk_free_gb": 5.0,
-    "max_retries": 3,
+    "max_retries": 15,
     "retry_delay_seconds": 15,
     "recovery_timeout_seconds": 300
   },

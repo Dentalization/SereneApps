@@ -1189,7 +1189,7 @@ def sync_status_from_master(status_cells, master_csv_path):
     return status_cells
 
 
-def run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_csv_path, raw_base_dir, start_slot=1):
+def run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_csv_path, raw_base_dir, start_slot=1, skip_gate=False):
     print("\n" + "=" * 70)
     print("PHASE 1: CONFIRMATORY EXECUTION (SCHEDULE v1)")
     print("=" * 70)
@@ -1258,7 +1258,7 @@ def run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_c
             reset_actions = reset_for_attempt(config)
             cell_def = {"arch": arch, "n": n_slices, "vu": vus, "rep": rep}
             success, meta = execute_single_run(
-                cell_def, config, master_csv_path, raw_base_dir=raw_base_dir, reset_actions=reset_actions,
+                cell_def, config, master_csv_path, skip_gate=skip_gate, raw_base_dir=raw_base_dir, reset_actions=reset_actions,
                 reboot_before_attempt=reboot_before_attempt
             )
             duration = round(time.time() - slot_start, 2)
@@ -1324,7 +1324,7 @@ def run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_c
     print("\n[Phase 1] Confirmatory Phase 1 Schedule completed.")
 
 
-def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_dir):
+def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_dir, skip_gate=False):
     print("\n" + "=" * 70)
     print("PHASE 2: FEASIBILITY GATE (7 CONDITIONS × 3 ARCHITECTURES)")
     print("=" * 70)
@@ -1401,7 +1401,7 @@ def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_d
             cell_def = {"arch": arch, "n": n_slices, "vu": vus, "rep": 1}
 
             success, meta = execute_single_run(
-                cell_def, config, master_csv_path, raw_base_dir=raw_base_dir, reset_actions=reset_actions,
+                cell_def, config, master_csv_path, skip_gate=skip_gate, raw_base_dir=raw_base_dir, reset_actions=reset_actions,
                 reboot_before_attempt=reboot_before_attempt
             )
             duration = round(time.time() - slot_start, 2)
@@ -1546,7 +1546,7 @@ def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_d
             reset_actions = reset_for_attempt(config)
             cell_def = {"arch": arch, "n": n_slices, "vu": vus, "rep": rep}
             success, meta = execute_single_run(
-                cell_def, config, master_csv_path, raw_base_dir=raw_base_dir, reset_actions=reset_actions,
+                cell_def, config, master_csv_path, skip_gate=skip_gate, raw_base_dir=raw_base_dir, reset_actions=reset_actions,
                 reboot_before_attempt=reboot_before_attempt
             )
             duration = round(time.time() - slot_start, 2)
@@ -1945,10 +1945,10 @@ def run_confirmatory_protocol(config, args):
             print(f"[Confirmatory] Found active resume_state: Slot {resume_data.get('slot_index')}, Attempt {resume_data.get('attempt_count')}, RebootPerformed={resume_data.get('reboot_performed')}")
 
     # Step 1: Phase 1
-    run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_csv_path, raw_base_dir, start_slot=start_slot)
+    run_confirmatory_phase1(config, schedule_csv_path, status_csv_path, master_csv_path, raw_base_dir, start_slot=start_slot, skip_gate=getattr(args, 'skip_gate', False))
 
     # Step 2: Phase 2
-    run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_dir)
+    run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_dir, skip_gate=getattr(args, 'skip_gate', False))
 
     # Step 3: Analysis
     run_confirmatory_analysis()
