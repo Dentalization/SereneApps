@@ -9,7 +9,7 @@ sync,25,100,0,0,,,0.0,phase1,pending
 background,25,100,0,0,,,0.0,phase1,pending
 celery,25,100,0,0,,,0.0,phase1,pending
 sync,25,200,0,0,,,0.0,phase1,pending
-background,25,200,0,6,host_ram_below_500mb: k6 non-zero exit code: 99; Min available RAM 158.8 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 245.9 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 325.1 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 160.2 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 352.4 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 313.2 MB fell below 500 MB,2026-10-22T19:18:03.841260,78.57,phase1,pending
+background,25,200,0,9,host_ram_below_500mb: k6 non-zero exit code: 99; Min available RAM 158.8 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 245.9 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 325.1 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 160.2 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 352.4 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 313.2 MB fell below 500 MB; host_ram_below_500mb: k6 non-zero exit code: 99; Min available RAM 269.4 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 345.5 MB fell below 500 MB; host_ram_below_500mb: Min available RAM 276.7 MB fell below 500 MB,2026-10-22T20:08:28.703296,98.1,phase1,pending
 celery,25,200,0,0,,,0.0,phase1,pending
 sync,100,10,1,1,,2026-10-22T18:52:37.811619,33.83,phase1,pending
 background,100,10,0,0,,,0.0,phase1,pending
