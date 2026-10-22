@@ -21,6 +21,12 @@ import threading
 import time
 from pathlib import Path
 
+# Ensure immediate unbuffered output when running through pipes (e.g. | tee)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(line_buffering=True)
+
 # Unset macOS Malloc logging variables to prevent diagnostic spam from subprocesses
 for key in list(os.environ.keys()):
     if "malloc" in key.lower():
