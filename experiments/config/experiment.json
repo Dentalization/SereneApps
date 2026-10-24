@@ -15,13 +15,22 @@
   "worker_concurrency": 4,
   "worker_pool": "threads",
   "cooldown_seconds": 10,
+  "reboot_policy": {
+    "enabled": false,
+    "reboot_before_attempt": false,
+    "max_reboots_per_attempt": 1,
+    "launch_agent_label": "com.sereneapps.harness",
+    "launch_agent_path": "~/Library/LaunchAgents/com.sereneapps.harness.plist",
+    "shutdown_command": ["sudo", "/sbin/shutdown", "-r", "now"]
+  },
   "gate": {
     "max_swap_used_mb": 500.0,
     "min_available_memory_mb": 3000.0,
     "require_ac_power": true,
     "min_disk_free_gb": 5.0,
-    "max_retries": 3,
-    "retry_delay_seconds": 15
+    "max_retries": 15,
+    "retry_delay_seconds": 15,
+    "recovery_timeout_seconds": 300
   },
   "k6": {
     "poll_interval_ms": 500,

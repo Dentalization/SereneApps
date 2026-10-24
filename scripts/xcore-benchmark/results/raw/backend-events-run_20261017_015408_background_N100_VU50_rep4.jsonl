@@ -1,0 +1,4 @@
+{"runId":"run_20261017_015408_background_N100_VU50_rep4","eventType":"upload_request_received","timestamp":"2026-10-16T18:54:24.621Z","details":{"caseId":"N100_VU50","iteration":"0","fileSize":"63056242","fileCount":100}}
+{"runId":"run_20261017_015408_background_N100_VU50_rep4","eventType":"upload_saved","timestamp":"2026-10-16T18:54:27.133Z","details":{"folderName":"1792176867093"}}
+{"runId":"run_20261017_015408_background_N100_VU50_rep4","eventType":"metadata_parse_requested","timestamp":"2026-10-16T18:54:27.133Z","details":{"folderName":"1792176867093"}}
+{"runId":"run_20261017_015408_background_N100_VU50_rep4","eventType":"metadata_parse_completed","timestamp":"2026-10-16T18:54:27.328Z","details":{"folderName":"1792176867093","modality":"2D"}}

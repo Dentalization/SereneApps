@@ -76,3 +76,12 @@ coverage/
 .temp/
 check_token.js
 __pycache__/
+
+# Benchmarks
+scripts/xcore-benchmark/results/
+experiments/results/.resume_checkpoint.json
+
+# Knowledge Graph Artifacts
+graphify-out/
+
+

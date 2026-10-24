@@ -1,0 +1,40 @@
+{
+  "run_id": "run_20261021_231721_background_N25_VU10_rep1",
+  "status": "gate_failed",
+  "validation_only": true,
+  "validation_triggers": [
+    "Swap used 4973.94 MB > 500.0 MB",
+    "Available memory 1923.0 MB < 3000.0 MB",
+    "AC wall power is disconnected"
+  ],
+  "arch": "background",
+  "n_slices": 25,
+  "vus": 10,
+  "repetition": 1,
+  "timestamp": "20261021_231721",
+  "duration_seconds": 30.19,
+  "gate_readings": {
+    "swap_used_mb": 4973.94,
+    "available_memory_mb": 1923.03125,
+    "ac_power_connected": false,
+    "disk_free_gb": 6.165576934814453,
+    "thermal_state": "Note: No thermal warning level has been recorded; Note: No performance warning level has been recorded; Note: No CPU power status has been recorded"
+  },
+  "reset_actions": [
+    "Terminated leftover services (Node :4000, Uvicorn :8000, Celery workers, k6)",
+    "Restarted Redis via brew services",
+    "sudo purge skipped (sudo: a password is required)"
+  ],
+  "worker_concurrency": 4,
+  "worker_pool": "threads",
+  "git_commit": "6349b1f76b448c960fabd7ed43b458a019f37bb9",
+  "git_dirty": true,
+  "script_sha256": "c5108b5c889e7e00b235a51f8b74c6c32368973fd5ada952e65c0ab613f2e80c",
+  "harness_frozen_id": "harness-frozen-v1",
+  "harness_provenance": {
+    "git_commit": "6349b1f76b448c960fabd7ed43b458a019f37bb9",
+    "git_dirty": true,
+    "script_sha256": "c5108b5c889e7e00b235a51f8b74c6c32368973fd5ada952e65c0ab613f2e80c",
+    "harness_frozen_id": "harness-frozen-v1"
+  }
+}

@@ -1,0 +1,2 @@
+runId,timestamp,tierN,iteration,pollingMode,status,uploadDurationMs,responseToReadyMs,totalUploadToReadyMs,volumePrepDurationMs,thumbnailDurationMs,uploadSizeBytes,peakRssMb,preSwapUsedMb,postSwapUsedMb,swapGrowthMb,minAvailableMemMb,studyId,folderName,error
+smoke_N25_1791109137981,2026-10-04T10:19:00.132Z,25,1,immediate,ready,373.55,2396.59,2770.25,2310,NOT SEPARABLE,15763950,611.3,5585,5553,-32,1648.4,1480,1791109140406,

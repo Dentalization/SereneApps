@@ -1,0 +1,12 @@
+{"runId":"sweep_N401_iter5_1791341111314","eventType":"upload_request_received","timestamp":"2026-10-07T02:45:17.840Z","details":{"caseId":"N401","iteration":"5","fileSize":"252856580","fileCount":401}}
+{"runId":"sweep_N401_iter5_1791341111314","eventType":"upload_saved","timestamp":"2026-10-07T02:45:17.866Z","details":{"folderName":"1791341117841"}}
+{"runId":"sweep_N401_iter5_1791341111314","eventType":"metadata_parse_requested","timestamp":"2026-10-07T02:45:17.866Z","details":{"folderName":"1791341117841"}}
+{"runId":"sweep_N401_iter5_1791341111314","eventType":"metadata_parse_completed","timestamp":"2026-10-07T02:45:17.894Z","details":{"folderName":"1791341117841","modality":"2D"}}
+{"runId":"sweep_N401_iter5_1791341111314","eventType":"conversion_requested","timestamp":"2026-10-07T02:45:17.897Z","details":{"studyId":"1483","folderName":"1791341117841"}}
+{"runId":"sweep_N401_iter5_1791341111314","eventType":"dicom_scan_start","timestamp":"2026-10-07T02:45:18.075Z","details":{"studyId":"1791341117841"}}
+{"runId":"sweep_N401_iter5_1791341111314","eventType":"dicom_scan_end","timestamp":"2026-10-07T02:45:18.153Z","details":{"studyId":"1791341117841","series_count":1}}
+{"runId":"sweep_N401_iter5_1791341111314","eventType":"series_grouping_start","timestamp":"2026-10-07T02:45:18.154Z","details":{"studyId":"1791341117841"}}
+{"runId":"sweep_N401_iter5_1791341111314","eventType":"series_grouping_end","timestamp":"2026-10-07T02:45:18.155Z","details":{"studyId":"1791341117841","series":{"1.2.826.0.1.3680043.8.498.73439676514676553785059992317123455441":{"modality":"CT","classification":"3D","num_files":401}}}}
+{"runId":"sweep_N401_iter5_1791341111314","eventType":"volume_preparation_start","timestamp":"2026-10-07T02:45:18.161Z","details":{"studyId":"1791341117841","seriesUid":"1.2.826.0.1.3680043.8.498.73439676514676553785059992317123455441","start_rss_bytes":117587968}}
+{"runId":"sweep_N401_iter5_1791341111314","eventType":"deletion_start","timestamp":"2026-10-07T02:45:23.711Z","details":{"studyId":"1483"}}
+{"runId":"sweep_N401_iter5_1791341111314","eventType":"deletion_completed","timestamp":"2026-10-07T02:45:23.839Z","details":{"studyId":"1483"}}

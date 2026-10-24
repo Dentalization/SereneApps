@@ -62,11 +62,13 @@ def bootstrap_median_difference_ci(x, y, n_resamples=10000, seed=20261013):
 def load_all_runs_data():
     master_csv = RAW_DIR / "master_runs.csv"
     if master_csv.exists():
-        df = pd.read_csv(master_csv)
-        # Filter for completed runs
-        df = df[df["status"].isin(["success", "k6_failed"])].copy()
-        if not df.empty:
-            return df
+        try:
+            df = pd.read_csv(master_csv)
+            df = df[df["status"].isin(["success", "k6_failed"])].copy()
+            if not df.empty:
+                return df
+        except Exception as e:
+            print(f"[Analyze] Note: master_runs.csv has multiple schemas ({e}), scanning metadata.json across run folders...")
 
     # Fallback to scanning metadata.json in raw folders
     rows = []
@@ -106,6 +108,7 @@ def load_all_runs_data():
                     "peak_cpu_pct": tele.get("peak_cpu_pct"),
                     "swap_growth_mb": tele.get("swap_growth_mb"),
                     "git_commit": provenance.get("git_commit", "unknown"),
+                    "git_dirty": provenance.get("git_dirty", "unknown"),
                     "script_sha256": provenance.get("script_sha256", "unknown"),
                 })
         except Exception:
@@ -127,6 +130,13 @@ def generate_cell_summary(df):
         swaps = group["swap_growth_mb"].dropna().tolist()
         failures = group["failure_rate"].dropna().tolist()
 
+        commits = group["git_commit"].dropna().unique().tolist() if "git_commit" in group else []
+        scripts = group["script_sha256"].dropna().unique().tolist() if "script_sha256" in group else []
+        dirties = group["git_dirty"].dropna().unique().tolist() if "git_dirty" in group else []
+        c_val = str(commits[0]) if len(commits) == 1 and str(commits[0]) != "unknown" else "unknown"
+        s_val = str(scripts[0]) if len(scripts) == 1 and str(scripts[0]) != "unknown" else "unknown"
+        d_val = str(dirties[0]) if len(dirties) == 1 and str(dirties[0]) != "unknown" else "unknown"
+
         def stats(arr):
             if not arr: return [None]*6
             arr_s = sorted(arr)
@@ -140,12 +150,14 @@ def generate_cell_summary(df):
 
         lat_stats = stats(latencies)
 
+        val_only = bool(group.get("validation_only", pd.Series([False])).any())
         summary_rows.append({
             "n_slices": n,
             "vus": vu,
             "architecture": arch,
             "sample_size_n": len(group),
-            "is_pilot_validation": bool(group.get("validation_only", pd.Series([False])).any() or len(group) < 5),
+            "validation_only": val_only,
+            "is_pilot_validation": bool(val_only or len(group) < 5),
             "e2e_latency_mean_ms": lat_stats[0],
             "e2e_latency_sd_ms": lat_stats[1],
             "e2e_latency_median_ms": lat_stats[2],
@@ -159,6 +171,9 @@ def generate_cell_summary(df):
             "cpu_util_mean_pct": round(sum(cpu_avgs) / len(cpu_avgs), 2) if cpu_avgs else None,
             "cpu_util_peak_pct": round(max(cpu_peaks), 2) if cpu_peaks else None,
             "swap_growth_mean_mb": round(sum(swaps) / len(swaps), 2) if swaps else None,
+            "git_commit": c_val,
+            "script_sha256": s_val,
+            "git_dirty": d_val,
         })
 
     summary_df = pd.DataFrame(summary_rows)
