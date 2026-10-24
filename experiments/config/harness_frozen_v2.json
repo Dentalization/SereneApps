@@ -1,0 +1,20 @@
+{
+  "harness_frozen_id": "harness-frozen-v2",
+  "date": "2026-10-24",
+  "git_commit": "9601c00839bd0e91b6db0731726c982a25c85e16",
+  "file_sha256": {
+    "experiments/run_experiment.py": "9eda6b1f5dbcee1d6885a573a03cc2a8e1a2e7b9ec4858cc96b85f42aa7b9e93",
+    "experiments/load/formdata.js": "1669e3541c2d072512f420a3c2911a976a6e0cc64627c693448b3f0fcb1be9a7",
+    "experiments/load/generate_k6_workloads.py": "f8fb5aa77168204eaa4f2d96346dad0c6d0e57abf28038c829118117fbf3b7dc",
+    "experiments/load/k6_workload_N25.js": "1aa8b34668634f2bb7bab4d30a6137f2d459b1a9e56fa8603def4d46431d2c68",
+    "experiments/load/k6_workload_N100.js": "a6cf3c102a9620d6ae1fa64d872600aaa1531941157fef1cb0ce79effe437eff",
+    "experiments/load/k6_workload_N200.js": "7886cdda4f820c2d4185ef2de2345508202685f02f764691caac991f7042a266",
+    "experiments/config/experiment.json": "9a788d4f1ed62497970da78ac0c4557a58b1ef0899ae023b9593b92ff1083675",
+    "experiments/scripts/build_status.py": "cb240c7121e800556759498da96a861e7651e272ee5ce47943264977e51bda9f"
+  },
+  "environment": {
+    "python_version": "3.14.0",
+    "node_version": "v22.12.0",
+    "k6_version": "k6 v2.0.0 (commit/devel, go1.26.3, darwin/arm64)"
+  }
+}

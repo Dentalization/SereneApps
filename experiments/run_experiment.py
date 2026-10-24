@@ -45,9 +45,9 @@ def load_config():
         return json.load(f)
 
 
-HARNESS_FROZEN_ID = "harness-frozen-v1.1"
-FROZEN_MANIFEST_PATH = REPO_ROOT / "experiments" / "config" / "harness_frozen_v1.json"
-CONFIRMATORY_DIR = REPO_ROOT / "experiments" / "results" / "confirmatory_frozen_v1"
+HARNESS_FROZEN_ID = "harness-frozen-v2"
+FROZEN_MANIFEST_PATH = REPO_ROOT / "experiments" / "config" / "harness_frozen_v2.json"
+CONFIRMATORY_DIR = REPO_ROOT / "experiments" / "results" / "confirmatory_frozen_v2"
 RESUME_STATE_PATH = CONFIRMATORY_DIR / "resume_state.json"
 LAUNCH_AGENT_LABEL = "com.sereneapps.harness"
 LAUNCH_AGENT_PATH = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_AGENT_LABEL}.plist"
@@ -89,6 +89,7 @@ def generate_frozen_manifest():
         "experiments/load/k6_workload_N100.js",
         "experiments/load/k6_workload_N200.js",
         "experiments/config/experiment.json",
+        "experiments/scripts/build_status.py",
     ]
     file_hashes = {}
     for rel_path in files_to_hash:
@@ -157,7 +158,7 @@ def verify_frozen_harness():
             print(f"  Actual:   {actual_sha}", file=sys.stderr)
             sys.exit(1)
 
-    # Check git tag harness-frozen-v1.1 (or frozen id from manifest) if present in git repo
+    # Check git tag harness-frozen-v2 (or frozen id from manifest) if present in git repo
     target_tag = manifest.get("harness_frozen_id", HARNESS_FROZEN_ID)
     try:
         tag_commit = subprocess.check_output(
@@ -1609,12 +1610,12 @@ def run_confirmatory_phase2(config, status_csv_path, master_csv_path, raw_base_d
 
 
 def write_feasibility_md(status_cells, feasibility_records):
-    feasibility_path = REPO_ROOT / "experiments" / "results" / "confirmatory_frozen_v1" / "FEASIBILITY.md"
+    feasibility_path = CONFIRMATORY_DIR / "FEASIBILITY.md"
     lines = [
-        "# Protocol Feasibility Boundary Report (Frozen Harness v1)",
+        f"# Protocol Feasibility Boundary Report ({HARNESS_FROZEN_ID})",
         "",
         "**Protocol**: Option A, Feasibility-Gated Extension (Dr. Karim Protocol 19 Oct 2026)",
-        "**Dataset**: Confirmatory Frozen Dataset (`confirmatory_frozen_v1`)",
+        f"**Dataset**: Confirmatory Frozen Dataset (`{CONFIRMATORY_DIR.name}`)",
         f"**Date**: {datetime.date.today().isoformat()}",
         "",
         "---",
@@ -1782,10 +1783,10 @@ def run_confirmatory_analysis():
     from scipy import stats
     import scikit_posthocs as sp
 
-    confirmatory_dir = REPO_ROOT / "experiments" / "results" / "confirmatory_frozen_v1"
+    confirmatory_dir = CONFIRMATORY_DIR
     master_csv = confirmatory_dir / "master.csv"
-    stats_csv_path = confirmatory_dir / "stats_frozen_v1.csv"
-    desc_csv_path = confirmatory_dir / "descriptive_frozen_v1.csv"
+    stats_csv_path = confirmatory_dir / "stats_frozen_v2.csv"
+    desc_csv_path = confirmatory_dir / "descriptive_frozen_v2.csv"
     results_draft_path = confirmatory_dir / "RESULTS_DRAFT.md"
     status_csv_path = confirmatory_dir / "status.csv"
 
@@ -2085,9 +2086,9 @@ def run_test_reboot_resume(config, skip_gate=False):
 
 def main():
     parser = argparse.ArgumentParser(description="CDSS X-Core A/B/C Experiment Harness")
-    parser.add_argument("--freeze-manifest", action="store_true", help="Generate frozen harness manifest (experiments/config/harness_frozen_v1.json)")
+    parser.add_argument("--freeze-manifest", action="store_true", help="Generate frozen harness manifest (experiments/config/harness_frozen_v2.json)")
     parser.add_argument("--confirmatory", action="store_true", help="Execute Confirmatory Protocol (Option A, Phase 1 + Phase 2 + Analysis)")
-    parser.add_argument("--analyze-confirmatory", action="store_true", help="Run Confirmatory Analysis on confirmatory_frozen_v1/master.csv")
+    parser.add_argument("--analyze-confirmatory", action="store_true", help="Run Confirmatory Analysis on confirmatory_frozen_v2/master.csv")
     parser.add_argument("--test-reboot-resume", action="store_true", help="Test the reboot-and-resume cycle end-to-end on N=100 VU=10 without modifying master/status CSV")
     parser.add_argument("--pilot", action="store_true", help="Execute Full Pilot protocol (Task 4)")
     parser.add_argument("--pilot-phase2", action="store_true", help="Execute Pilot Phase 2 only (reproducibility check: reps 2 & 3)")
